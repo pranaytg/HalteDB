@@ -7,8 +7,11 @@ Endpoints:
   POST /sync-all            → Trigger full sync (inventory + incremental orders)
   POST /sync-inventory      → Trigger inventory-only sync
   POST /sync-orders         → Trigger incremental orders sync
+
+Self-schedules an hourly sync (no external cron needed).
 """
 import os
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
@@ -29,6 +32,9 @@ DATABASE_URL = os.getenv("SUPABASE_URL")
 if not DATABASE_URL:
     raise ValueError("Missing SUPABASE_URL in environment variables")
 
+# Sync interval in seconds (default: 1 hour)
+SYNC_INTERVAL = int(os.getenv("SYNC_INTERVAL_SECONDS", "3600"))
+
 # Configure logging
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -40,15 +46,31 @@ logger = logging.getLogger("haltedb")
 # SQLAlchemy engine — production settings
 engine = create_async_engine(
     DATABASE_URL,
-    echo=False,  # Disable SQL logging in production
+    echo=False,
     pool_size=5,
     max_overflow=10,
     pool_timeout=30,
-    pool_recycle=1800,  # Recycle connections every 30 min
+    pool_recycle=1800,
 )
 SessionLocal = async_sessionmaker(
     autocommit=False, autoflush=False, bind=engine, class_=AsyncSession
 )
+
+
+# ============================================
+# Background Scheduler (replaces Render cron)
+# ============================================
+async def _scheduled_sync_loop():
+    """Runs a full sync every SYNC_INTERVAL seconds. Starts after a 60s delay."""
+    await asyncio.sleep(60)  # Wait for server to fully boot
+    while True:
+        logger.info(f"⏰ Scheduled sync triggered (every {SYNC_INTERVAL}s)")
+        try:
+            async with SessionLocal() as session:
+                await run_full_sync(session)
+        except Exception as e:
+            logger.error(f"Scheduled sync failed: {e}")
+        await asyncio.sleep(SYNC_INTERVAL)
 
 
 # ============================================
@@ -57,7 +79,12 @@ SessionLocal = async_sessionmaker(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("HalteDB backend starting up...")
+    # Start the hourly sync loop in the background
+    sync_task = asyncio.create_task(_scheduled_sync_loop())
+    logger.info(f"Hourly sync scheduler started (interval: {SYNC_INTERVAL}s)")
     yield
+    # Cancel the background task on shutdown
+    sync_task.cancel()
     logger.info("HalteDB backend shutting down...")
     await engine.dispose()
 
