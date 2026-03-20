@@ -1,0 +1,230 @@
+"use client";
+
+import { useState, useEffect } from "react";
+
+interface CogsEntry {
+  id: number;
+  sku: string;
+  cogs_price: number;
+  last_updated: string;
+}
+
+export default function CogsPage() {
+  const [cogs, setCogs] = useState<CogsEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editingSku, setEditingSku] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const fetchCogs = async () => {
+    try {
+      const res = await fetch("/api/cogs");
+      const data = await res.json();
+      setCogs(data.cogs || []);
+    } catch {
+      showToast("Failed to load COGS data", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCogs();
+  }, []);
+
+  const showToast = (msg: string, type: "success" | "error") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleEdit = (sku: string, currentPrice: number) => {
+    setEditingSku(sku);
+    setEditValue(String(currentPrice));
+  };
+
+  const handleSave = async (sku: string) => {
+    const newPrice = parseFloat(editValue);
+    if (isNaN(newPrice) || newPrice < 0) {
+      showToast("Please enter a valid price", "error");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/cogs", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sku, cogs_price: newPrice }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.error || "Failed to update", "error");
+        return;
+      }
+
+      showToast(
+        `Updated ${sku} COGS to ₹${newPrice}. ${data.ordersRecalculated} orders recalculated.`,
+        "success"
+      );
+      setEditingSku(null);
+      await fetchCogs();
+    } catch {
+      showToast("Network error", "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditingSku(null);
+    setEditValue("");
+  };
+
+  const filteredCogs = cogs.filter((c) =>
+    c.sku.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="loading-spinner">
+        <div className="spinner" />
+        Loading COGS data...
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="page-header">
+        <h1 className="page-title">Cost of Goods Sold</h1>
+        <p className="page-subtitle">
+          Manage COGS per SKU — editing auto-recalculates profit on all orders
+        </p>
+      </div>
+
+      {/* Summary */}
+      <div className="metrics-grid">
+        <div className="metric-card">
+          <div className="metric-label">Total SKUs</div>
+          <div className="metric-value">{cogs.length}</div>
+        </div>
+        <div className="metric-card accent-green">
+          <div className="metric-label">Avg COGS</div>
+          <div className="metric-value">
+            ₹{cogs.length > 0
+              ? (cogs.reduce((a, b) => a + b.cogs_price, 0) / cogs.length).toFixed(2)
+              : "0"}
+          </div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Min COGS</div>
+          <div className="metric-value">
+            ₹{cogs.length > 0 ? Math.min(...cogs.map((c) => c.cogs_price)).toFixed(2) : "0"}
+          </div>
+        </div>
+        <div className="metric-card accent-orange">
+          <div className="metric-label">Max COGS</div>
+          <div className="metric-value">
+            ₹{cogs.length > 0 ? Math.max(...cogs.map((c) => c.cogs_price)).toFixed(2) : "0"}
+          </div>
+        </div>
+      </div>
+
+      {/* COGS Table */}
+      <div className="card">
+        <div className="card-header">
+          <div className="card-title">COGS Entries ({filteredCogs.length})</div>
+          <input
+            className="filter-input search-input"
+            type="text"
+            placeholder="Search SKU..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+        <div className="table-container" style={{ maxHeight: 600, overflowY: "auto" }}>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>SKU</th>
+                <th>COGS Price (₹)</th>
+                <th>Last Updated</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCogs.map((entry, i) => (
+                <tr key={entry.id}>
+                  <td style={{ color: "var(--text-muted)" }}>{i + 1}</td>
+                  <td style={{ fontWeight: 600, color: "var(--accent-hover)" }}>
+                    {entry.sku}
+                  </td>
+                  <td>
+                    {editingSku === entry.sku ? (
+                      <div className="editable-cell">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleSave(entry.sku);
+                            if (e.key === "Escape") handleCancel();
+                          }}
+                          autoFocus
+                        />
+                      </div>
+                    ) : (
+                      <span style={{ fontWeight: 600 }}>
+                        ₹{entry.cogs_price.toFixed(2)}
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                    {new Date(entry.last_updated).toLocaleDateString("en-IN")}
+                  </td>
+                  <td>
+                    {editingSku === entry.sku ? (
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          className="btn btn-success btn-sm"
+                          onClick={() => handleSave(entry.sku)}
+                          disabled={saving}
+                        >
+                          {saving ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={handleCancel}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => handleEdit(entry.sku, entry.cogs_price)}
+                      >
+                        ✏ Edit
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Toast */}
+      {toast && (
+        <div className={`toast toast-${toast.type}`}>{toast.msg}</div>
+      )}
+    </div>
+  );
+}
