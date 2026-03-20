@@ -1,7 +1,7 @@
 """
 Seed COGS Table & Backfill Profit
 =================================
-1. Fetches distinct SKUs from the inventory table
+1. Fetches distinct SKUs from BOTH inventory AND orders tables
 2. Seeds the cogs table with random prices (₹50–₹500)
 3. Backfills profit on the most recent 1000 orders: profit = item_price - cogs_price
 
@@ -23,16 +23,21 @@ SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession)
 
 async def seed_cogs():
     async with SessionLocal() as session:
-        # 1. Get distinct SKUs from inventory
-        result = await session.execute(text("SELECT DISTINCT sku FROM inventory"))
+        # 1. Get ALL distinct SKUs from both inventory AND orders
+        result = await session.execute(text("""
+            SELECT DISTINCT sku FROM (
+                SELECT DISTINCT sku FROM inventory
+                UNION
+                SELECT DISTINCT sku FROM orders
+            ) all_skus
+            ORDER BY sku
+        """))
         skus = [row[0] for row in result.fetchall()]
-        print(f"Found {len(skus)} distinct SKUs in inventory.")
+        print(f"Found {len(skus)} distinct SKUs across inventory + orders.")
 
         if not skus:
-            # Fallback: get SKUs from orders if inventory is empty
-            result = await session.execute(text("SELECT DISTINCT sku FROM orders"))
-            skus = [row[0] for row in result.fetchall()]
-            print(f"Fallback: Found {len(skus)} distinct SKUs in orders.")
+            print("No SKUs found in either table. Nothing to seed.")
+            return
 
         # 2. Insert COGS with random prices (₹50 - ₹500)
         inserted = 0
@@ -49,21 +54,19 @@ async def seed_cogs():
             inserted += 1
 
         await session.commit()
-        print(f"Seeded {inserted} COGS entries.")
+        print(f"Seeded {inserted} COGS entries (skipped existing).")
 
-        # 3. Backfill profit on recent 1000 orders
-        await session.execute(text("""
+        # 3. Backfill profit on ALL orders that have a matching COGS entry
+        result = await session.execute(text("""
             UPDATE orders o
             SET cogs_price = c.cogs_price,
                 profit = o.item_price - c.cogs_price
             FROM cogs c
             WHERE o.sku = c.sku
-            AND o.id IN (
-                SELECT id FROM orders ORDER BY purchase_date DESC NULLS LAST LIMIT 1000
-            )
+            AND (o.profit IS NULL OR o.cogs_price IS NULL)
         """))
         await session.commit()
-        print("Backfilled profit on recent 1000 orders.")
+        print(f"Backfilled profit on {result.rowcount} orders.")
 
 
 if __name__ == "__main__":

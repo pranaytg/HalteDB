@@ -18,6 +18,12 @@ export default function CogsPage() {
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Add COGS form state
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newSku, setNewSku] = useState("");
+  const [newPrice, setNewPrice] = useState("");
+  const [adding, setAdding] = useState(false);
+
   const fetchCogs = async () => {
     try {
       const res = await fetch("/api/cogs");
@@ -36,7 +42,7 @@ export default function CogsPage() {
 
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 4000);
   };
 
   const handleEdit = (sku: string, currentPrice: number) => {
@@ -45,8 +51,8 @@ export default function CogsPage() {
   };
 
   const handleSave = async (sku: string) => {
-    const newPrice = parseFloat(editValue);
-    if (isNaN(newPrice) || newPrice < 0) {
+    const price = parseFloat(editValue);
+    if (isNaN(price) || price < 0) {
       showToast("Please enter a valid price", "error");
       return;
     }
@@ -56,7 +62,7 @@ export default function CogsPage() {
       const res = await fetch("/api/cogs", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sku, cogs_price: newPrice }),
+        body: JSON.stringify({ sku, cogs_price: price }),
       });
       const data = await res.json();
 
@@ -66,7 +72,7 @@ export default function CogsPage() {
       }
 
       showToast(
-        `Updated ${sku} COGS to ₹${newPrice}. ${data.ordersRecalculated} orders recalculated.`,
+        `Updated ${sku} COGS to ₹${price}. ${data.ordersRecalculated} orders recalculated.`,
         "success"
       );
       setEditingSku(null);
@@ -81,6 +87,47 @@ export default function CogsPage() {
   const handleCancel = () => {
     setEditingSku(null);
     setEditValue("");
+  };
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const price = parseFloat(newPrice);
+    if (!newSku.trim()) {
+      showToast("Please enter a SKU", "error");
+      return;
+    }
+    if (isNaN(price) || price < 0) {
+      showToast("Please enter a valid price", "error");
+      return;
+    }
+
+    setAdding(true);
+    try {
+      const res = await fetch("/api/cogs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sku: newSku.trim(), cogs_price: price }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.error || "Failed to add COGS entry", "error");
+        return;
+      }
+
+      showToast(
+        `Added ${newSku.trim()} with COGS ₹${price}. ${data.ordersRecalculated || 0} orders updated.`,
+        "success"
+      );
+      setNewSku("");
+      setNewPrice("");
+      setShowAddForm(false);
+      await fetchCogs();
+    } catch {
+      showToast("Network error", "error");
+    } finally {
+      setAdding(false);
+    }
   };
 
   const filteredCogs = cogs.filter((c) =>
@@ -133,10 +180,61 @@ export default function CogsPage() {
         </div>
       </div>
 
+      {/* Add COGS Form */}
+      {showAddForm && (
+        <div className="card" style={{ marginBottom: 24 }}>
+          <div className="card-header">
+            <div className="card-title">Add New COGS Entry</div>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowAddForm(false)}>
+              ✕ Close
+            </button>
+          </div>
+          <form onSubmit={handleAdd} style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div className="filter-group">
+              <label className="filter-label">SKU</label>
+              <input
+                className="filter-input"
+                type="text"
+                placeholder="Enter SKU..."
+                value={newSku}
+                onChange={(e) => setNewSku(e.target.value)}
+                required
+                autoFocus
+                style={{ minWidth: 200 }}
+              />
+            </div>
+            <div className="filter-group">
+              <label className="filter-label">COGS Price (₹)</label>
+              <input
+                className="filter-input"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={newPrice}
+                onChange={(e) => setNewPrice(e.target.value)}
+                required
+                style={{ minWidth: 150 }}
+              />
+            </div>
+            <button type="submit" className="btn btn-success" disabled={adding}>
+              {adding ? "Adding..." : "➕ Add COGS"}
+            </button>
+          </form>
+        </div>
+      )}
+
       {/* COGS Table */}
       <div className="card">
         <div className="card-header">
-          <div className="card-title">COGS Entries ({filteredCogs.length})</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <div className="card-title">COGS Entries ({filteredCogs.length})</div>
+            {!showAddForm && (
+              <button className="btn btn-primary btn-sm" onClick={() => setShowAddForm(true)}>
+                ➕ Add New
+              </button>
+            )}
+          </div>
           <input
             className="filter-input search-input"
             type="text"

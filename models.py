@@ -77,3 +77,12 @@ class Order(Base):
     __table_args__ = (
         UniqueConstraint('amazon_order_id', 'sku', name='uq_order_sku'),
     )
+
+
+class SyncMeta(Base):
+    """Singleton row tracking last successful sync timestamps."""
+    __tablename__ = "sync_meta"
+
+    id = Column(Integer, primary_key=True, default=1)
+    last_orders_sync = Column(DateTime(timezone=True), nullable=True)
+    last_inventory_sync = Column(DateTime(timezone=True), nullable=True)

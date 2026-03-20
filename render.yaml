@@ -1,0 +1,44 @@
+# render.yaml — Render Blueprint (Infrastructure as Code)
+# Deploy: Connect this repo to Render and it auto-detects this file
+
+services:
+  - type: web
+    name: haltedb-backend
+    runtime: python
+    region: singapore  # Closest to India
+    plan: free
+    buildCommand: pip install -r requirements.txt && python -m alembic upgrade head
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SP_API_REFRESH_TOKEN
+        sync: false
+      - key: SP_API_LWA_APP_ID
+        sync: false
+      - key: SP_API_LWA_CLIENT_SECRET
+        sync: false
+      - key: SP_API_ENDPOINT
+        sync: false
+      - key: SP_API_MARKETPLACE_ID
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+
+  # Cron job to trigger sync every hour
+  - type: cron
+    name: haltedb-hourly-sync
+    runtime: python
+    region: singapore
+    plan: free
+    schedule: "0 * * * *"  # Every hour at minute 0
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -c "import httpx; import os; r = httpx.post(os.getenv('SELF_BASE_URL', 'https://haltedb-backend.onrender.com') + '/sync-all'); print(r.json())"
+    envVars:
+      - key: SELF_BASE_URL
+        sync: false
