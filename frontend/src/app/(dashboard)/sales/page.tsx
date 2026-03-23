@@ -125,6 +125,25 @@ export default function SalesPage() {
 
   const maxMapRevenue = useMemo(() => Math.max(...mapMarkers.map((m: any) => m.revenue), 1), [mapMarkers]);
 
+  // Choropleth: map state name → revenue for boundary fill
+  const stateRevenueMap = useMemo(() => {
+    const m: Record<string, number> = {};
+    stateData.forEach((s: any) => { m[s.name?.toLowerCase()] = s.revenue; });
+    return m;
+  }, [stateData]);
+
+  const getStateFill = useCallback((geoName: string) => {
+    const rev = stateRevenueMap[geoName?.toLowerCase()] || stateRevenueMap[geoName?.toLowerCase()?.replace(/ and /g, " & ")] || 0;
+    if (rev === 0) return "#0f172a";
+    const intensity = Math.min(1, rev / maxMapRevenue);
+    const r = Math.round(99 + intensity * 0);
+    const g = Math.round(102 + intensity * (-102 + 91));
+    const b = Math.round(241 - intensity * 0);
+    // Blend from dark (#1e293b) to accent (#6366f1)
+    const alpha = 0.15 + intensity * 0.75;
+    return `rgba(99, 102, 241, ${alpha.toFixed(2)})`;
+  }, [stateRevenueMap, maxMapRevenue]);
+
   /* ── Filter helpers ── */
   const setFilter = (key: keyof Filters, val: string) => {
     setFilters(f => ({ ...f, [key]: f[key] === val ? "" : val }));
@@ -185,6 +204,16 @@ export default function SalesPage() {
             {(geo?.filters?.cities || []).slice(0, 100).map((c: string) => <option key={c} value={c}>{c}</option>)}
           </select>
           <input className="filter-input" type="month" value={filters.month} onChange={e => { setFilters(f => ({ ...f, month: e.target.value })); setPage(0); }} style={{ width: 140 }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>From</span>
+            <input className="filter-input" type="date" value={filters.startDate}
+              onChange={e => { setFilters(f => ({ ...f, startDate: e.target.value })); setPage(0); }}
+              style={{ width: 130, fontSize: 11 }} />
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>To</span>
+            <input className="filter-input" type="date" value={filters.endDate}
+              onChange={e => { setFilters(f => ({ ...f, endDate: e.target.value })); setPage(0); }}
+              style={{ width: 130, fontSize: 11 }} />
+          </div>
           <button className="btn btn-ghost btn-sm" onClick={resetFilters} style={{ fontSize: 12 }}>
             ✕ Reset {activeFilterCount > 0 && `(${activeFilterCount})`}
           </button>
@@ -197,6 +226,8 @@ export default function SalesPage() {
             {filters.state && <span className="badge badge-accent" onClick={() => setFilter("state", filters.state)} style={{ cursor: "pointer" }}>State: {filters.state} ✕</span>}
             {filters.city && <span className="badge badge-accent" onClick={() => setFilter("city", filters.city)} style={{ cursor: "pointer" }}>City: {filters.city} ✕</span>}
             {filters.month && <span className="badge badge-accent" onClick={() => setFilter("month", filters.month)} style={{ cursor: "pointer" }}>Month: {filters.month} ✕</span>}
+            {filters.startDate && <span className="badge badge-accent" onClick={() => { setFilters(f => ({ ...f, startDate: "" })); setPage(0); }} style={{ cursor: "pointer" }}>From: {filters.startDate} ✕</span>}
+            {filters.endDate && <span className="badge badge-accent" onClick={() => { setFilters(f => ({ ...f, endDate: "" })); setPage(0); }} style={{ cursor: "pointer" }}>To: {filters.endDate} ✕</span>}
           </div>
         )}
       </div>
@@ -409,7 +440,7 @@ export default function SalesPage() {
           <div className="card" style={{ marginBottom: 16 }}>
             <div className="card-header">
               <div className="card-title">Net Sales by State</div>
-              <div className="card-subtitle">Bubble size = revenue · Click to filter</div>
+              <div className="card-subtitle">State color = revenue intensity · Bubbles = volume · Click to filter</div>
             </div>
             <div style={{ width: "100%", maxWidth: 800, margin: "0 auto" }}>
               <ComposableMap
@@ -419,32 +450,65 @@ export default function SalesPage() {
               >
                 <Geographies geography={INDIA_TOPO}>
                   {({ geographies }: any) =>
-                    geographies.map((g: any) => (
-                      <Geography key={g.rsmKey} geography={g}
-                        style={{
-                          default: { fill: "#1e293b", stroke: "#334155", strokeWidth: 0.5 },
-                          hover: { fill: "#334155", stroke: "#6366f1", strokeWidth: 1 },
-                          pressed: { fill: "#6366f1" },
-                        }}
-                      />
-                    ))
+                    geographies.map((g: any) => {
+                      const geoName = g.properties?.name || g.properties?.NAME_1 || g.properties?.ST_NM || "";
+                      const isSelected = filters.state && geoName.toLowerCase() === filters.state.toLowerCase();
+                      return (
+                        <Geography key={g.rsmKey} geography={g}
+                          onClick={() => setFilter("state", geoName)}
+                          style={{
+                            default: {
+                              fill: isSelected ? "#6366f1" : getStateFill(geoName),
+                              stroke: isSelected ? "#a5b4fc" : "#475569",
+                              strokeWidth: isSelected ? 1.5 : 0.5,
+                              outline: "none",
+                              cursor: "pointer",
+                            },
+                            hover: {
+                              fill: isSelected ? "#818cf8" : "rgba(99, 102, 241, 0.5)",
+                              stroke: "#a5b4fc",
+                              strokeWidth: 1.2,
+                              outline: "none",
+                              cursor: "pointer",
+                            },
+                            pressed: { fill: "#6366f1", outline: "none" },
+                          }}
+                        />
+                      );
+                    })
                   }
                 </Geographies>
                 {mapMarkers.map((m: any) => (
                   <Marker key={m.name} coordinates={m.coords}>
                     <circle
-                      r={Math.max(4, Math.sqrt(m.revenue / maxMapRevenue) * 30)}
-                      fill="#6366f1" fillOpacity={0.6} stroke="#6366f1" strokeWidth={1}
+                      r={Math.max(4, Math.sqrt(m.revenue / maxMapRevenue) * 25)}
+                      fill="rgba(255,255,255,0.15)" stroke="#a5b4fc" strokeWidth={1}
                       style={{ cursor: "pointer" }}
                       onClick={() => setFilter("state", m.name)}
                     />
-                    {m.revenue / maxMapRevenue > 0.15 && (
-                      <text textAnchor="middle" y={-Math.max(6, Math.sqrt(m.revenue / maxMapRevenue) * 30) - 4}
-                        style={{ fontSize: 9, fill: "var(--text-muted)", fontWeight: 600 }}>{m.name}</text>
+                    <text textAnchor="middle" y={3}
+                      style={{ fontSize: 7, fill: "#e2e8f0", fontWeight: 700, pointerEvents: "none" }}>
+                      {fmtK(m.revenue)}
+                    </text>
+                    {m.revenue / maxMapRevenue > 0.08 && (
+                      <text textAnchor="middle" y={-Math.max(6, Math.sqrt(m.revenue / maxMapRevenue) * 25) - 4}
+                        style={{ fontSize: 9, fill: "#cbd5e1", fontWeight: 600, pointerEvents: "none" }}>{m.name}</text>
                     )}
                   </Marker>
                 ))}
               </ComposableMap>
+              {/* Map Legend */}
+              <div style={{ display: "flex", justifyContent: "center", gap: 16, padding: "8px 0", fontSize: 11, color: "var(--text-muted)" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 3, background: "rgba(99,102,241,0.15)", border: "1px solid #475569" }} /> Low
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 3, background: "rgba(99,102,241,0.5)" }} /> Medium
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 3, background: "rgba(99,102,241,0.9)" }} /> High
+                </span>
+              </div>
             </div>
           </div>
 

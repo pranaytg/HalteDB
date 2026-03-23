@@ -25,3 +25,8 @@ frontend/out/
 # OS
 Thumbs.db
 .DS_Store
+
+# Data files (sensitive pricing data)
+*.csv
+*.xlsx
+import_real_cogs.js

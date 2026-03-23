@@ -141,24 +141,27 @@ export async function PUT(req: NextRequest) {
       if (!conversionRate || conversionRate <= 0)
         return NextResponse.json({ error: "Valid conversion rate required" }, { status: 400 });
 
-      // Get all rows
-      const allRows = await pool.query(`SELECT * FROM estimated_cogs`);
+      // ONLY update rows that match the selected currency
+      const matchingRows = await pool.query(
+        `SELECT * FROM estimated_cogs WHERE import_currency = $1`, [currency]
+      );
       let updated = 0;
 
-      for (const row of allRows.rows) {
-        const newRow = { ...row, conversion_rate: conversionRate, import_currency: currency };
+      for (const row of matchingRows.rows) {
+        // Keep the same currency, only update conversion_rate
+        const newRow = { ...row, conversion_rate: conversionRate };
         const calcs = recalc(newRow);
         await pool.query(`
           UPDATE estimated_cogs SET
-            import_currency=$1, conversion_rate=$2,
-            import_price_inr=$3, gst_amount=$4, final_price=$5,
-            margin1_amount=$6, cost_price_halte=$7,
-            margin2_amount=$8, selling_price=$9,
-            msp_with_gst=$10, halte_selling_price=$11, amazon_selling_price=$12,
-            profitability=$13, last_updated=NOW()
-          WHERE id=$14
+            conversion_rate=$1,
+            import_price_inr=$2, gst_amount=$3, final_price=$4,
+            margin1_amount=$5, cost_price_halte=$6,
+            margin2_amount=$7, selling_price=$8,
+            msp_with_gst=$9, halte_selling_price=$10, amazon_selling_price=$11,
+            profitability=$12, last_updated=NOW()
+          WHERE id=$13
         `, [
-          currency, conversionRate,
+          conversionRate,
           calcs.import_price_inr, calcs.gst_amount, calcs.final_price,
           calcs.margin1_amount, calcs.cost_price_halte,
           calcs.margin2_amount, calcs.selling_price,
@@ -169,7 +172,7 @@ export async function PUT(req: NextRequest) {
       }
 
       return NextResponse.json({
-        message: `Updated ${updated} SKUs with ${currency} rate ${conversionRate}`,
+        message: `Updated ${updated} ${currency} SKUs with rate ${conversionRate} (${matchingRows.rows.length} total ${currency} items)`,
         updated,
       });
     }

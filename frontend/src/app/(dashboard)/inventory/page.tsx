@@ -6,6 +6,8 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from "recharts";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 interface WarehouseSummary {
   warehouse: string;
   total_skus: string;
@@ -57,6 +59,7 @@ export default function InventoryPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "warehouse" | "predictions">("overview");
   const [overall, setOverall] = useState<SkuInventory[]>([]);
   const [warehouseSummary, setWarehouseSummary] = useState<WarehouseSummary[]>([]);
+  const [warehouseBreakdown, setWarehouseBreakdown] = useState<any[]>([]);
   const [grandTotal, setGrandTotal] = useState<GrandTotal | null>(null);
   const [skuPredictions, setSkuPredictions] = useState<SkuPrediction[]>([]);
   const [warehousePredictions, setWarehousePredictions] = useState<WarehousePrediction[]>([]);
@@ -72,6 +75,7 @@ export default function InventoryPage() {
       .then(([inv, pred]) => {
         setOverall(inv.overall || []);
         setWarehouseSummary(inv.warehouseSummary || []);
+        setWarehouseBreakdown(inv.warehouseBreakdown || []);
         setGrandTotal(inv.grandTotal || null);
         setSkuPredictions(pred.skuPredictions || []);
         setWarehousePredictions(pred.warehousePredictions || []);
@@ -91,6 +95,29 @@ export default function InventoryPage() {
     reserved: parseInt(w.total_reserved),
   }));
 
+  /* ── Pivot: build SKU × Warehouse matrix ── */
+  const warehouseList = [...new Set(warehouseBreakdown.map((r: any) => r.warehouse))].sort();
+
+  const pivotData: Record<string, { sku: string; asin: string; total: number; warehouses: Record<string, number> }> = {};
+  warehouseBreakdown.forEach((r: any) => {
+    if (!pivotData[r.sku]) {
+      pivotData[r.sku] = { sku: r.sku, asin: r.asin || "", total: 0, warehouses: {} };
+    }
+    const qty = parseInt(r.fulfillable_quantity) || 0;
+    pivotData[r.sku].warehouses[r.warehouse] = qty;
+    pivotData[r.sku].total += qty;
+  });
+
+  const pivotRows = Object.values(pivotData)
+    .filter(r => r.sku.toLowerCase().includes(searchTerm.toLowerCase()) || r.asin.toLowerCase().includes(searchTerm.toLowerCase()))
+    .sort((a, b) => b.total - a.total);
+
+  // Find max per warehouse for color scaling
+  const maxPerWarehouse: Record<string, number> = {};
+  warehouseList.forEach(w => {
+    maxPerWarehouse[w] = Math.max(...Object.values(pivotData).map(r => r.warehouses[w] || 0), 1);
+  });
+
   if (loading) {
     return (
       <div className="loading-spinner">
@@ -104,7 +131,7 @@ export default function InventoryPage() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Inventory Intelligence</h1>
-        <p className="page-subtitle">Stock levels, warehouse distribution & restock predictions</p>
+        <p className="page-subtitle">Stock levels, warehouse distribution &amp; restock predictions</p>
       </div>
 
       <div className="tabs">
@@ -112,7 +139,7 @@ export default function InventoryPage() {
           Overview
         </button>
         <button className={`tab ${activeTab === "warehouse" ? "active" : ""}`} onClick={() => setActiveTab("warehouse")}>
-          Warehouse View
+          Warehouse Matrix
         </button>
         <button className={`tab ${activeTab === "predictions" ? "active" : ""}`} onClick={() => setActiveTab("predictions")}>
           Restock Predictions
@@ -141,27 +168,18 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* Overview Tab */}
+      {/* ═══════════════════ OVERVIEW TAB ═══════════════════ */}
       {activeTab === "overview" && (
         <>
           <div className="charts-grid">
-            {/* Warehouse Distribution Pie */}
             <div className="card">
               <div className="card-header">
                 <div className="card-title">Stock by Warehouse</div>
               </div>
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
-                  <Pie
-                    data={warehouseChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={3}
-                    dataKey="fulfillable"
-                    nameKey="warehouse"
-                  >
+                  <Pie data={warehouseChartData} cx="50%" cy="50%" innerRadius={60} outerRadius={100}
+                    paddingAngle={3} dataKey="fulfillable" nameKey="warehouse">
                     {warehouseChartData.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
@@ -172,7 +190,6 @@ export default function InventoryPage() {
               </ResponsiveContainer>
             </div>
 
-            {/* Warehouse Bar */}
             <div className="card">
               <div className="card-header">
                 <div className="card-title">Warehouse Breakdown</div>
@@ -196,40 +213,26 @@ export default function InventoryPage() {
           <div className="card">
             <div className="card-header">
               <div className="card-title">SKU Inventory</div>
-              <input
-                className="filter-input search-input"
-                type="text"
-                placeholder="Search SKU or ASIN..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+              <input className="filter-input search-input" type="text" placeholder="Search SKU or ASIN..."
+                value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
             <div className="table-container" style={{ maxHeight: 500, overflowY: "auto" }}>
               <table>
                 <thead>
                   <tr>
-                    <th>SKU</th>
-                    <th>ASIN</th>
-                    <th>Fulfillable</th>
-                    <th>Reserved</th>
-                    <th>Unfulfillable</th>
-                    <th>Inbound</th>
-                    <th>Warehouses</th>
+                    <th>SKU</th><th>ASIN</th><th>Fulfillable</th><th>Reserved</th>
+                    <th>Unfulfillable</th><th>Inbound</th><th>Warehouses</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredOverall.map((item, i) => (
                     <tr key={i}>
                       <td style={{ fontWeight: 600, color: "var(--accent-hover)" }}>{item.sku}</td>
-                      <td style={{ fontFamily: "monospace", fontSize: 11 }}>{item.asin || "—"}</td>
-                      <td>
-                        <span className="badge badge-success">{parseInt(item.total_fulfillable).toLocaleString()}</span>
-                      </td>
+                      <td style={{ fontFamily: "monospace", fontSize: 11 }}>{item.asin || "\u2014"}</td>
+                      <td><span className="badge badge-success">{parseInt(item.total_fulfillable).toLocaleString()}</span></td>
                       <td>{parseInt(item.total_reserved).toLocaleString()}</td>
                       <td>{parseInt(item.total_unfulfillable).toLocaleString()}</td>
-                      <td>
-                        {(parseInt(item.total_inbound_working) + parseInt(item.total_inbound_shipped) + parseInt(item.total_inbound_receiving)).toLocaleString()}
-                      </td>
+                      <td>{(parseInt(item.total_inbound_working) + parseInt(item.total_inbound_shipped) + parseInt(item.total_inbound_receiving)).toLocaleString()}</td>
                       <td>{item.warehouse_count}</td>
                     </tr>
                   ))}
@@ -240,45 +243,109 @@ export default function InventoryPage() {
         </>
       )}
 
-      {/* Warehouse Tab */}
+      {/* ═══════════════════ WAREHOUSE MATRIX TAB ═══════════════════ */}
       {activeTab === "warehouse" && (
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Warehouse Summary</div>
+        <>
+          {/* Warehouse summary cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
+            {warehouseSummary.map((w, i) => (
+              <div key={w.warehouse} className="card" style={{ padding: "12px 14px" }}>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Warehouse</div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: COLORS[i % COLORS.length], marginBottom: 8 }}>{w.warehouse}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                  <span style={{ color: "var(--text-muted)" }}>SKUs</span>
+                  <span style={{ fontWeight: 600 }}>{parseInt(w.total_skus)}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                  <span style={{ color: "var(--text-muted)" }}>Fulfillable</span>
+                  <span style={{ fontWeight: 600, color: "#10b981" }}>{parseInt(w.total_fulfillable).toLocaleString()}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                  <span style={{ color: "var(--text-muted)" }}>Reserved</span>
+                  <span style={{ fontWeight: 600 }}>{parseInt(w.total_reserved).toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Warehouse</th>
-                  <th>SKUs</th>
-                  <th>Fulfillable</th>
-                  <th>Reserved</th>
-                  <th>Unfulfillable</th>
-                </tr>
-              </thead>
-              <tbody>
-                {warehouseSummary.map((w, i) => (
-                  <tr key={i}>
-                    <td style={{ fontWeight: 600, color: "var(--accent-hover)" }}>{w.warehouse}</td>
-                    <td>{parseInt(w.total_skus).toLocaleString()}</td>
-                    <td>
-                      <span className="badge badge-success">{parseInt(w.total_fulfillable).toLocaleString()}</span>
-                    </td>
-                    <td>{parseInt(w.total_reserved).toLocaleString()}</td>
-                    <td>{parseInt(w.total_unfulfillable).toLocaleString()}</td>
+
+          {/* Pivot Table: SKU × Warehouse */}
+          <div className="card">
+            <div className="card-header">
+              <div>
+                <div className="card-title">SKU × Warehouse Matrix</div>
+                <div className="card-subtitle">{pivotRows.length} SKUs across {warehouseList.length} warehouses · Cell color = stock intensity</div>
+              </div>
+              <input className="filter-input search-input" type="text" placeholder="Search SKU or ASIN..."
+                value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            </div>
+            <div className="table-container" style={{ maxHeight: 600, overflowY: "auto", overflowX: "auto" }}>
+              <table style={{ minWidth: warehouseList.length * 85 + 250 }}>
+                <thead>
+                  <tr>
+                    <th style={{ position: "sticky", left: 0, zIndex: 10, background: "#0f172a", minWidth: 100 }}>SKU</th>
+                    <th style={{ position: "sticky", left: 100, zIndex: 10, background: "#0f172a", minWidth: 80 }}>ASIN</th>
+                    <th style={{ minWidth: 60, fontWeight: 700, color: "#10b981" }}>Total</th>
+                    {warehouseList.map((w, i) => (
+                      <th key={w} style={{ minWidth: 75, fontSize: 10, fontWeight: 600, color: COLORS[i % COLORS.length], whiteSpace: "nowrap" }}>
+                        {w}
+                      </th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {pivotRows.map((row) => (
+                    <tr key={row.sku}>
+                      <td style={{ fontWeight: 600, color: "var(--accent-hover)", position: "sticky", left: 0, background: "#0f172a", zIndex: 5 }}>
+                        {row.sku}
+                      </td>
+                      <td style={{ fontFamily: "monospace", fontSize: 10, position: "sticky", left: 100, background: "#0f172a", zIndex: 5, color: "var(--text-muted)" }}>
+                        {row.asin?.slice(0, 10) || "\u2014"}
+                      </td>
+                      <td style={{ fontWeight: 700 }}>
+                        <span className="badge badge-success">{row.total.toLocaleString()}</span>
+                      </td>
+                      {warehouseList.map((w) => {
+                        const qty = row.warehouses[w] || 0;
+                        const intensity = maxPerWarehouse[w] > 0 ? qty / maxPerWarehouse[w] : 0;
+                        const bgColor = qty === 0
+                          ? "transparent"
+                          : `rgba(99, 102, 241, ${(0.1 + intensity * 0.5).toFixed(2)})`;
+                        return (
+                          <td key={w} style={{
+                            textAlign: "center",
+                            fontWeight: qty > 0 ? 600 : 400,
+                            color: qty === 0 ? "var(--text-muted)" : "#e2e8f0",
+                            background: bgColor,
+                            fontSize: 12,
+                            borderLeft: "1px solid rgba(255,255,255,0.04)",
+                          }}>
+                            {qty > 0 ? qty.toLocaleString() : "\u2014"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  {/* Totals row */}
+                  <tr style={{ borderTop: "2px solid rgba(255,255,255,0.15)", fontWeight: 700 }}>
+                    <td style={{ position: "sticky", left: 0, background: "#0f172a", zIndex: 5, color: "#a5b4fc" }}>TOTAL</td>
+                    <td style={{ position: "sticky", left: 100, background: "#0f172a", zIndex: 5 }} />
+                    <td><span className="badge badge-success">{pivotRows.reduce((a, r) => a + r.total, 0).toLocaleString()}</span></td>
+                    {warehouseList.map(w => (
+                      <td key={w} style={{ textAlign: "center", color: "#a5b4fc", fontSize: 12, borderLeft: "1px solid rgba(255,255,255,0.04)" }}>
+                        {pivotRows.reduce((a, r) => a + (r.warehouses[w] || 0), 0).toLocaleString()}
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* Predictions Tab */}
+      {/* ═══════════════════ PREDICTIONS TAB ═══════════════════ */}
       {activeTab === "predictions" && (
         <>
-          {/* Warehouse Predictions */}
           <div className="card" style={{ marginBottom: 24 }}>
             <div className="card-header">
               <div>
@@ -304,7 +371,6 @@ export default function InventoryPage() {
             </div>
           </div>
 
-          {/* SKU Predictions Table */}
           <div className="card">
             <div className="card-header">
               <div>
@@ -316,12 +382,8 @@ export default function InventoryPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>SKU</th>
-                    <th>Current Stock</th>
-                    <th>Predicted Demand (3M)</th>
-                    <th>Restock Needed</th>
-                    <th>Months of Stock</th>
-                    <th>Status</th>
+                    <th>SKU</th><th>Current Stock</th><th>Predicted Demand (3M)</th>
+                    <th>Restock Needed</th><th>Months of Stock</th><th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -337,12 +399,9 @@ export default function InventoryPage() {
                       <td>
                         <span className={`badge ${
                           p.months_of_stock < 1 ? "badge-danger" :
-                          p.months_of_stock < 2 ? "badge-warning" :
-                          "badge-success"
+                          p.months_of_stock < 2 ? "badge-warning" : "badge-success"
                         }`}>
-                          {p.months_of_stock < 1 ? "Critical" :
-                           p.months_of_stock < 2 ? "Low" :
-                           "Healthy"}
+                          {p.months_of_stock < 1 ? "Critical" : p.months_of_stock < 2 ? "Low" : "Healthy"}
                         </span>
                       </td>
                     </tr>
