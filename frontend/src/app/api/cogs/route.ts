@@ -50,7 +50,13 @@ export async function POST(req: NextRequest) {
 
     // Recalculate profit for any existing orders with this SKU
     const recalcQuery = `
-      UPDATE orders SET cogs_price = $1, profit = item_price - $1 WHERE sku = $2
+      UPDATE orders SET cogs_price = $1,
+        profit = item_price - $1 - CASE
+          WHEN fulfillment_channel = 'Amazon' AND COALESCE(shipping_price, 0) > 0
+            THEN shipping_price
+          ELSE 100
+        END
+      WHERE sku = $2
     `;
     const recalcResult = await pool.query(recalcQuery, [cogs_price, sku]);
 
@@ -95,7 +101,12 @@ export async function PUT(req: NextRequest) {
     // Recalculate profit for all orders with this SKU
     const recalcQuery = `
       UPDATE orders 
-      SET cogs_price = $1, profit = item_price - $1
+      SET cogs_price = $1,
+          profit = item_price - $1 - CASE
+            WHEN fulfillment_channel = 'Amazon' AND COALESCE(shipping_price, 0) > 0
+              THEN shipping_price
+            ELSE 100
+          END
       WHERE sku = $2
     `;
     const recalcResult = await pool.query(recalcQuery, [cogs_price, sku]);

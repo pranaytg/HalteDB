@@ -69,9 +69,14 @@ class Order(Base):
     item_price = Column(Float, default=0.0)
     item_tax = Column(Float, default=0.0)
 
-    # Profitability: selling price minus COGS
+    # Profitability: invoice - COGS - shipping
     cogs_price = Column(Float, nullable=True)
+    shipping_price = Column(Float, nullable=True, default=0.0)  # from SP-API or ₹100 flat for self-fulfilled
     profit = Column(Float, nullable=True)
+
+    # Shipping address (from SP-API flat file)
+    ship_city = Column(String, nullable=True, index=True)
+    ship_state = Column(String, nullable=True, index=True)
 
     # Prevent duplicate items on the exact same order
     __table_args__ = (
@@ -86,3 +91,44 @@ class SyncMeta(Base):
     id = Column(Integer, primary_key=True, default=1)
     last_orders_sync = Column(DateTime(timezone=True), nullable=True)
     last_inventory_sync = Column(DateTime(timezone=True), nullable=True)
+
+
+class EstimatedCogs(Base):
+    """Full COGS estimation with import pricing, duties, margins, and selling prices."""
+    __tablename__ = "estimated_cogs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sku = Column(String, unique=True, index=True, nullable=False)
+    article_number = Column(String, nullable=True)
+    category = Column(String, nullable=True)
+
+    # Import pricing
+    import_price = Column(Float, default=0.0)          # in foreign currency
+    import_currency = Column(String, default="USD")     # USD / EUR
+    custom_duty = Column(Float, default=0.0)            # in INR
+    conversion_rate = Column(Float, default=83.0)       # e.g. 1 USD = 83 INR
+
+    # Calculated fields
+    import_price_inr = Column(Float, default=0.0)       # import_price * conversion_rate
+    gst_percent = Column(Float, default=18.0)
+    gst_amount = Column(Float, default=0.0)
+    shipping_cost = Column(Float, default=0.0)
+    final_price = Column(Float, default=0.0)            # import_price_inr + custom_duty + gst_amount + shipping_cost
+
+    margin1_percent = Column(Float, default=0.0)
+    margin1_amount = Column(Float, default=0.0)
+    cost_price_halte = Column(Float, default=0.0)       # final_price + margin1_amount
+
+    marketing_cost = Column(Float, default=0.0)
+    margin2_percent = Column(Float, default=0.0)
+    margin2_amount = Column(Float, default=0.0)
+    selling_price = Column(Float, default=0.0)          # cost_price_halte + marketing_cost + margin2_amount
+
+    msp_with_gst = Column(Float, default=0.0)           # selling_price * (1 + gst_percent/100)
+    halte_selling_price = Column(Float, default=0.0)    # msp_with_gst * 1.05
+    amazon_selling_price = Column(Float, default=0.0)   # msp_with_gst * 1.20
+
+    profitability = Column(Float, default=0.0)          # selling_price - cost_price_halte
+
+    last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+

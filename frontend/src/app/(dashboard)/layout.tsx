@@ -8,6 +8,7 @@ const navItems = [
   { href: "/sales", label: "Sales", icon: "📊" },
   { href: "/inventory", label: "Inventory", icon: "📦" },
   { href: "/cogs", label: "COGS", icon: "💰" },
+  { href: "/cogs-estimate", label: "COGS Estimate", icon: "🧮" },
 ];
 
 export default function DashboardLayout({

@@ -277,6 +277,9 @@ async def fetch_orders_date_range(session: AsyncSession, start_time: datetime, e
                             "currency": row_data.get("currency"),
                             "item_price": safe_float(row_data.get("item-price")),
                             "item_tax": safe_float(row_data.get("item-tax")),
+                            "shipping_price": safe_float(row_data.get("shipping-price")),
+                            "ship_city": (row_data.get("ship-city") or "").strip().title() or None,
+                            "ship_state": (row_data.get("ship-state") or "").strip().title() or None,
                         }
                         batch.append(parsed_record)
 

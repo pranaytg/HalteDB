@@ -11,12 +11,14 @@ export async function GET(req: NextRequest) {
     const endDate = searchParams.get("endDate");
     const month = searchParams.get("month"); // YYYY-MM
     const year = searchParams.get("year");
+    const city = searchParams.get("city");
+    const state = searchParams.get("state");
 
     let query = `
       SELECT o.id, o.amazon_order_id, o.purchase_date, o.order_status,
              o.fulfillment_channel, o.sales_channel, o.sku, o.asin,
              o.quantity, o.currency, o.item_price, o.item_tax,
-             o.cogs_price, o.profit
+             o.cogs_price, o.profit, o.ship_city, o.ship_state
       FROM orders o
       WHERE 1=1
     `;
@@ -42,6 +44,14 @@ export async function GET(req: NextRequest) {
     if (year) {
       query += ` AND EXTRACT(YEAR FROM o.purchase_date) = $${paramIdx++}`;
       params.push(parseInt(year));
+    }
+    if (city) {
+      query += ` AND LOWER(o.ship_city) = LOWER($${paramIdx++})`;
+      params.push(city);
+    }
+    if (state) {
+      query += ` AND LOWER(o.ship_state) = LOWER($${paramIdx++})`;
+      params.push(state);
     }
 
     // Get total count

@@ -1,558 +1,589 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  BarChart, Bar, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Area, AreaChart,
-  ComposedChart, Legend
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
+  AreaChart, Area, Legend
 } from "recharts";
+import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-interface SalesFilters {
-  sku: string;
-  year: string;
-  month: string;
-  startDate: string;
-  endDate: string;
+/* ──────────────────────────────────────────────────────────
+   Constants
+   ────────────────────────────────────────────────────────── */
+const INDIA_TOPO = "https://cdn.jsdelivr.net/npm/india-topojson@1.0.0/india.json";
+const COLORS = ["#6366f1","#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899","#14b8a6","#a855f7","#f97316","#22d3ee","#84cc16"];
+const TIER_COLORS: Record<string, string> = { "Tier 1": "#6366f1", "Tier 2": "#f59e0b", "Tier 3": "#10b981" };
+
+const STATE_COORDS: Record<string, [number, number]> = {
+  "Maharashtra": [75.7,19.7], "Delhi": [77.1,28.7], "Karnataka": [75.7,15.3], "Tamil Nadu": [78.6,11.1],
+  "Telangana": [79.0,18.1], "Gujarat": [72.0,22.3], "Uttar Pradesh": [80.9,26.8], "West Bengal": [87.9,22.9],
+  "Rajasthan": [74.2,27.0], "Madhya Pradesh": [78.6,23.5], "Kerala": [76.3,10.8], "Punjab": [75.3,31.1],
+  "Haryana": [76.1,29.0], "Bihar": [85.3,25.1], "Andhra Pradesh": [79.7,15.9], "Odisha": [85.1,20.9],
+  "Jharkhand": [85.3,23.6], "Assam": [92.9,26.2], "Chandigarh": [76.8,30.7], "Chhattisgarh": [81.9,21.3],
+  "Uttarakhand": [79.0,30.1], "Himachal Pradesh": [77.2,31.1], "Goa": [74.1,15.4], "Jammu And Kashmir": [76.5,33.7],
+  "Tripura": [91.9,23.9], "Meghalaya": [91.4,25.5], "Manipur": [93.9,24.8], "Nagaland": [94.6,26.2],
+  "Arunachal Pradesh": [94.7,28.2], "Mizoram": [92.9,23.2], "Sikkim": [88.5,27.5], "Puducherry": [79.8,11.9],
+};
+
+const fmtCur = (v: number) => `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+const fmtNum = (v: number) => v.toLocaleString("en-IN");
+const fmtK = (v: number) => v >= 100000 ? `₹${(v/100000).toFixed(1)}L` : v >= 1000 ? `₹${(v/1000).toFixed(0)}K` : `₹${v.toFixed(0)}`;
+
+/* ──────────────────────────────────────────────────────────
+   Interfaces
+   ────────────────────────────────────────────────────────── */
+interface Filters {
+  sku: string; year: string; month: string; startDate: string; endDate: string;
+  city: string; state: string; tier: string;
 }
 
-interface SummaryData {
-  monthly: Array<{
-    month: string;
-    total_orders: string;
-    total_revenue: string;
-    total_profit: string;
-    total_units: string;
-  }>;
-  bySku: Array<{
-    sku: string;
-    total_orders: string;
-    total_revenue: string;
-    total_profit: string;
-    total_units: string;
-  }>;
-  daily: Array<{
-    date: string;
-    total_orders: string;
-    total_revenue: string;
-    total_profit: string;
-  }>;
-  filters: {
-    skus: string[];
-    years: number[];
-  };
-}
-
-interface PredictionData {
-  historical: Array<{
-    month: string;
-    total_quantity: number;
-    total_revenue: number;
-    type: string;
-  }>;
-  aggregateForecasts: Array<{
-    month: string;
-    predicted_quantity: number;
-    predicted_revenue: number;
-    confidence_lower: number;
-    confidence_upper: number;
-  }>;
-  methodology: string;
-}
-
-interface OrderData {
-  orders: Array<Record<string, unknown>>;
-  summary: {
-    total_orders: string;
-    total_revenue: string;
-    total_profit: string;
-    total_units: string;
-    avg_profit_per_order: string;
-  };
-  pagination: {
-    total: number;
-    limit: number;
-    offset: number;
-  };
-}
-
-const COLORS = ["#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#14b8a6"];
-
-const formatCurrency = (val: number) => `₹${val.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
-const formatNumber = (val: number) => val.toLocaleString("en-IN");
-
+/* ──────────────────────────────────────────────────────────
+   Component
+   ────────────────────────────────────────────────────────── */
 export default function SalesPage() {
-  const [filters, setFilters] = useState<SalesFilters>({
-    sku: "", year: "", month: "", startDate: "", endDate: "",
+  const [filters, setFilters] = useState<Filters>({
+    sku: "", year: "", month: "", startDate: "", endDate: "", city: "", state: "", tier: "",
   });
-  const [summary, setSummary] = useState<SummaryData | null>(null);
-  const [predictions, setPredictions] = useState<PredictionData | null>(null);
-  const [orders, setOrders] = useState<OrderData | null>(null);
+  const [summary, setSummary] = useState<any>(null);
+  const [geo, setGeo] = useState<any>(null);
+  const [orders, setOrders] = useState<any>(null);
+  const [predictions, setPredictions] = useState<any>(null);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "orders" | "predictions">("overview");
+  const [activeTab, setActiveTab] = useState<"overview"|"geography"|"orders"|"predictions">("overview");
 
-  // Fetch summary data for charts
-  const fetchSummary = useCallback(async () => {
-    try {
-      const res = await fetch("/api/sales/summary");
-      const data = await res.json();
-      setSummary(data);
-    } catch (err) {
-      console.error("Failed to fetch summary", err);
-    }
-  }, []);
+  /* ── Fetchers ── */
+  const buildParams = useCallback(() => {
+    const p = new URLSearchParams();
+    if (filters.sku) p.set("sku", filters.sku);
+    if (filters.year) p.set("year", filters.year);
+    if (filters.month) p.set("month", filters.month);
+    if (filters.startDate) p.set("startDate", filters.startDate);
+    if (filters.endDate) p.set("endDate", filters.endDate);
+    if (filters.city) p.set("city", filters.city);
+    if (filters.state) p.set("state", filters.state);
+    if (filters.tier) p.set("tier", filters.tier);
+    return p;
+  }, [filters]);
 
-  // Fetch orders with filters
-  const fetchOrders = useCallback(async () => {
-    const params = new URLSearchParams();
-    params.set("limit", "50");
-    params.set("offset", String(page * 50));
-    if (filters.sku) params.set("sku", filters.sku);
-    if (filters.year) params.set("year", filters.year);
-    if (filters.month) params.set("month", filters.month);
-    if (filters.startDate) params.set("startDate", filters.startDate);
-    if (filters.endDate) params.set("endDate", filters.endDate);
-
-    try {
-      const res = await fetch(`/api/sales?${params}`);
-      const data = await res.json();
-      setOrders(data);
-    } catch (err) {
-      console.error("Failed to fetch orders", err);
-    }
-  }, [filters, page]);
-
-  // Fetch predictions
-  const fetchPredictions = useCallback(async () => {
-    try {
-      const res = await fetch("/api/sales/predictions");
-      const data = await res.json();
-      setPredictions(data);
-    } catch (err) {
-      console.error("Failed to fetch predictions", err);
-    }
-  }, []);
-
-  useEffect(() => {
+  const fetchAll = useCallback(async () => {
     setLoading(true);
-    Promise.all([fetchSummary(), fetchPredictions(), fetchOrders()]).finally(() =>
-      setLoading(false)
-    );
-  }, [fetchSummary, fetchPredictions, fetchOrders]);
+    const p = buildParams();
+    try {
+      const [sumRes, geoRes, ordRes, predRes] = await Promise.all([
+        fetch(`/api/sales/summary?${p}`),
+        fetch(`/api/sales/geography?${p}`),
+        fetch(`/api/sales?${p.toString()}&limit=50&offset=${page*50}`),
+        fetch("/api/sales/predictions"),
+      ]);
+      const [sumData, geoData, ordData, predData] = await Promise.all([
+        sumRes.json(), geoRes.json(), ordRes.json(), predRes.json(),
+      ]);
+      setSummary(sumData);
+      setGeo(geoData);
+      setOrders(ordData);
+      setPredictions(predData);
+    } catch (err) { console.error("Fetch error", err); }
+    finally { setLoading(false); }
+  }, [buildParams, page]);
 
-  // Power BI-style: clicking a chart segment filters everything
-  const handleSkuClick = (sku: string) => {
-    setFilters((f) => ({ ...f, sku: f.sku === sku ? "" : sku }));
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  /* ── Derived data ── */
+  const totalRevenue = useMemo(() => summary?.monthly?.reduce((a: number, m: any) => a + Number(m.total_revenue || 0), 0) || 0, [summary]);
+  const totalOrders = useMemo(() => summary?.monthly?.reduce((a: number, m: any) => a + Number(m.total_orders || 0), 0) || 0, [summary]);
+  const totalProfit = useMemo(() => summary?.monthly?.reduce((a: number, m: any) => a + Number(m.total_profit || 0), 0) || 0, [summary]);
+  const totalUnits = useMemo(() => summary?.monthly?.reduce((a: number, m: any) => a + Number(m.total_units || 0), 0) || 0, [summary]);
+  const asp = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+
+  const monthlyChart = useMemo(() => summary?.monthly?.map((m: any) => ({
+    month: m.month, revenue: Number(m.total_revenue), orders: Number(m.total_orders), profit: Number(m.total_profit),
+  })) || [], [summary]);
+
+  const topSkus = useMemo(() => (summary?.bySku || [])
+    .map((s: any) => ({ name: s.sku, revenue: Number(s.total_revenue), orders: Number(s.total_orders) }))
+    .sort((a: any, b: any) => b.revenue - a.revenue).slice(0, 15), [summary]);
+
+  const stateData = useMemo(() => (geo?.byState || [])
+    .map((s: any) => ({ name: s.state, revenue: Number(s.total_revenue), orders: Number(s.total_orders), profit: Number(s.total_profit) }))
+    .sort((a: any, b: any) => b.revenue - a.revenue), [geo]);
+
+  const cityData = useMemo(() => (geo?.byCity || [])
+    .map((c: any) => ({ name: c.city, state: c.state, revenue: Number(c.total_revenue), orders: Number(c.total_orders), tier: c.tier }))
+    .sort((a: any, b: any) => b.revenue - a.revenue), [geo]);
+
+  const tierData = useMemo(() => (geo?.byTier || [])
+    .filter((t: any) => t.total_revenue > 0)
+    .map((t: any) => ({ name: t.tier, revenue: t.total_revenue, orders: t.total_orders })), [geo]);
+
+  const mapMarkers = useMemo(() => stateData
+    .filter((s: any) => STATE_COORDS[s.name])
+    .map((s: any) => ({ ...s, coords: STATE_COORDS[s.name] })), [stateData]);
+
+  const maxMapRevenue = useMemo(() => Math.max(...mapMarkers.map((m: any) => m.revenue), 1), [mapMarkers]);
+
+  /* ── Filter helpers ── */
+  const setFilter = (key: keyof Filters, val: string) => {
+    setFilters(f => ({ ...f, [key]: f[key] === val ? "" : val }));
     setPage(0);
   };
-
-  const handleMonthClick = (month: string) => {
-    setFilters((f) => ({ ...f, month: f.month === month ? "" : month }));
+  const resetFilters = () => {
+    setFilters({ sku: "", year: "", month: "", startDate: "", endDate: "", city: "", state: "", tier: "" });
     setPage(0);
   };
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
-  const handleReset = () => {
-    setFilters({ sku: "", year: "", month: "", startDate: "", endDate: "" });
-    setPage(0);
-  };
-
-  // Refetch orders when filters/page change
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
-
-  // Prepare chart data
-  const monthlyData = summary?.monthly?.map((m) => ({
-    month: m.month,
-    revenue: parseFloat(m.total_revenue),
-    profit: parseFloat(m.total_profit),
-    orders: parseInt(m.total_orders),
-  })) || [];
-
-  const dailyData = summary?.daily?.map((d) => ({
-    date: d.date.slice(5), // MM-DD
-    revenue: parseFloat(d.total_revenue),
-    profit: parseFloat(d.total_profit),
-    orders: parseInt(d.total_orders),
-  })) || [];
-
-  const skuData = summary?.bySku?.slice(0, 8).map((s) => ({
-    sku: s.sku.length > 15 ? s.sku.slice(0, 15) + "…" : s.sku,
-    fullSku: s.sku,
-    revenue: parseFloat(s.total_revenue),
-    profit: parseFloat(s.total_profit),
-  })) || [];
-
-  // Forecast chart: historical + predicted
-  const forecastChart = [
-    ...(predictions?.historical?.slice(-12) || []).map((h) => ({
-      month: h.month,
-      actual_revenue: h.total_revenue,
-      predicted_revenue: null as number | null,
-      lower: null as number | null,
-      upper: null as number | null,
-    })),
-    ...(predictions?.aggregateForecasts || []).map((f) => ({
-      month: f.month,
-      actual_revenue: null as number | null,
-      predicted_revenue: f.predicted_revenue,
-      lower: f.confidence_lower,
-      upper: f.confidence_upper,
-    })),
+  const tabs = [
+    { key: "overview", label: "📊 Overview" },
+    { key: "geography", label: "📍 Geography" },
+    { key: "orders", label: "📦 Orders" },
+    { key: "predictions", label: "🔮 Predictions" },
   ];
 
-  if (loading) {
-    return (
-      <div className="loading-spinner">
-        <div className="spinner" />
-        Loading sales data...
-      </div>
-    );
+  if (loading && !summary) {
+    return (<div className="loading-spinner"><div className="spinner" />Loading sales analytics...</div>);
   }
 
   return (
     <div>
+      {/* ═══════════════════ HEADER ═══════════════════ */}
       <div className="page-header">
         <h1 className="page-title">Sales Dashboard</h1>
-        <p className="page-subtitle">
-          Revenue, profitability & predictive analytics
-        </p>
+        <p className="page-subtitle">Power BI-style interactive analytics · Click charts to filter</p>
       </div>
 
-      {/* Tabs */}
-      <div className="tabs">
-        <button className={`tab ${activeTab === "overview" ? "active" : ""}`} onClick={() => setActiveTab("overview")}>
-          Overview
-        </button>
-        <button className={`tab ${activeTab === "orders" ? "active" : ""}`} onClick={() => setActiveTab("orders")}>
-          Orders
-        </button>
-        <button className={`tab ${activeTab === "predictions" ? "active" : ""}`} onClick={() => setActiveTab("predictions")}>
-          Predictions
-        </button>
-      </div>
-
-      {/* Filters Bar */}
-      <div className="filters-bar">
-        <div className="filter-group">
-          <span className="filter-label">SKU</span>
-          <select
-            className="filter-select"
-            value={filters.sku}
-            onChange={(e) => { setFilters((f) => ({ ...f, sku: e.target.value })); setPage(0); }}
-          >
-            <option value="">All SKUs</option>
-            {summary?.filters?.skus?.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="filter-group">
-          <span className="filter-label">Year</span>
-          <select
-            className="filter-select"
-            value={filters.year}
-            onChange={(e) => { setFilters((f) => ({ ...f, year: e.target.value })); setPage(0); }}
-          >
+      {/* ═══════════════════ FILTER BAR ═══════════════════ */}
+      <div className="card" style={{ marginBottom: 16, padding: "12px 16px" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ position: "relative" }}>
+            <input className="filter-input" list="sku-list" placeholder="🔍 Search SKU..."
+              value={filters.sku} onChange={e => { setFilters(f => ({ ...f, sku: e.target.value })); setPage(0); }}
+              style={{ width: 160, fontSize: 12 }} />
+            <datalist id="sku-list">
+              {(summary?.filters?.skus || []).map((s: string) => <option key={s} value={s} />)}
+            </datalist>
+          </div>
+          <select className="filter-select" value={filters.year} onChange={e => { setFilters(f => ({ ...f, year: e.target.value })); setPage(0); }}>
             <option value="">All Years</option>
-            {summary?.filters?.years?.map((y) => (
-              <option key={y} value={String(y)}>{y}</option>
-            ))}
+            {(summary?.filters?.years || []).map((y: number) => <option key={y} value={String(y)}>{y}</option>)}
           </select>
+          <select className="filter-select" value={filters.tier} onChange={e => { setFilters(f => ({ ...f, tier: e.target.value })); setPage(0); }}>
+            <option value="">All Tiers</option>
+            <option value="Tier 1">Tier 1</option>
+            <option value="Tier 2">Tier 2</option>
+            <option value="Tier 3">Tier 3</option>
+          </select>
+          <select className="filter-select" value={filters.state} onChange={e => { setFilters(f => ({ ...f, state: e.target.value })); setPage(0); }}>
+            <option value="">All States</option>
+            {(geo?.filters?.states || []).map((s: string) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select className="filter-select" value={filters.city} onChange={e => { setFilters(f => ({ ...f, city: e.target.value })); setPage(0); }}>
+            <option value="">All Cities</option>
+            {(geo?.filters?.cities || []).slice(0, 100).map((c: string) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <input className="filter-input" type="month" value={filters.month} onChange={e => { setFilters(f => ({ ...f, month: e.target.value })); setPage(0); }} style={{ width: 140 }} />
+          <button className="btn btn-ghost btn-sm" onClick={resetFilters} style={{ fontSize: 12 }}>
+            ✕ Reset {activeFilterCount > 0 && `(${activeFilterCount})`}
+          </button>
         </div>
-
-        <div className="filter-group">
-          <span className="filter-label">Month</span>
-          <input
-            className="filter-input"
-            type="month"
-            value={filters.month}
-            onChange={(e) => { setFilters((f) => ({ ...f, month: e.target.value })); setPage(0); }}
-          />
-        </div>
-
-        <div className="filter-group">
-          <span className="filter-label">Start Date</span>
-          <input
-            className="filter-input"
-            type="date"
-            value={filters.startDate}
-            onChange={(e) => { setFilters((f) => ({ ...f, startDate: e.target.value })); setPage(0); }}
-          />
-        </div>
-
-        <div className="filter-group">
-          <span className="filter-label">End Date</span>
-          <input
-            className="filter-input"
-            type="date"
-            value={filters.endDate}
-            onChange={(e) => { setFilters((f) => ({ ...f, endDate: e.target.value })); setPage(0); }}
-          />
-        </div>
-
-        <button className="filter-btn filter-btn-reset" onClick={handleReset}>
-          Reset
-        </button>
+        {activeFilterCount > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+            {filters.sku && <span className="badge badge-accent" onClick={() => setFilter("sku", filters.sku)} style={{ cursor: "pointer" }}>SKU: {filters.sku} ✕</span>}
+            {filters.year && <span className="badge badge-accent" onClick={() => setFilter("year", filters.year)} style={{ cursor: "pointer" }}>Year: {filters.year} ✕</span>}
+            {filters.tier && <span className="badge badge-accent" onClick={() => setFilter("tier", filters.tier)} style={{ cursor: "pointer" }}>Tier: {filters.tier} ✕</span>}
+            {filters.state && <span className="badge badge-accent" onClick={() => setFilter("state", filters.state)} style={{ cursor: "pointer" }}>State: {filters.state} ✕</span>}
+            {filters.city && <span className="badge badge-accent" onClick={() => setFilter("city", filters.city)} style={{ cursor: "pointer" }}>City: {filters.city} ✕</span>}
+            {filters.month && <span className="badge badge-accent" onClick={() => setFilter("month", filters.month)} style={{ cursor: "pointer" }}>Month: {filters.month} ✕</span>}
+          </div>
+        )}
       </div>
 
-      {/* Metrics */}
-      {orders?.summary && (
-        <div className="metrics-grid">
-          <div className="metric-card">
-            <div className="metric-label">Total Revenue</div>
-            <div className="metric-value">{formatCurrency(parseFloat(orders.summary.total_revenue))}</div>
-          </div>
-          <div className="metric-card accent-green">
-            <div className="metric-label">Total Profit</div>
-            <div className={`metric-value ${parseFloat(orders.summary.total_profit) >= 0 ? "positive" : "negative"}`}>
-              {formatCurrency(parseFloat(orders.summary.total_profit))}
-            </div>
-          </div>
-          <div className="metric-card">
-            <div className="metric-label">Total Orders</div>
-            <div className="metric-value">{formatNumber(parseInt(orders.summary.total_orders))}</div>
-          </div>
-          <div className="metric-card accent-orange">
-            <div className="metric-label">Avg Profit/Order</div>
-            <div className="metric-value">{formatCurrency(parseFloat(orders.summary.avg_profit_per_order))}</div>
-          </div>
-        </div>
-      )}
+      {/* ═══════════════════ TABS ═══════════════════ */}
+      <div className="tabs-bar" style={{ marginBottom: 16 }}>
+        {tabs.map(t => (
+          <button key={t.key} className={`tab-btn ${activeTab === t.key ? "active" : ""}`}
+            onClick={() => setActiveTab(t.key as any)}>{t.label}</button>
+        ))}
+      </div>
 
-      {/* Overview Tab */}
+      {/* ═══════════════════ KPI CARDS ═══════════════════ */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
+        {[
+          { label: "Total Sales", value: fmtCur(totalRevenue), color: "#6366f1", icon: "💰" },
+          { label: "Net Profit", value: fmtCur(totalProfit), color: totalProfit >= 0 ? "#10b981" : "#ef4444", icon: "📈" },
+          { label: "Total Units", value: fmtNum(totalUnits), color: "#06b6d4", icon: "📦" },
+          { label: "Total Orders", value: fmtNum(totalOrders), color: "#f59e0b", icon: "🛒" },
+          { label: "ASP", value: fmtCur(asp), color: "#8b5cf6", icon: "🏷️" },
+        ].map(kpi => (
+          <div key={kpi.label} className="card" style={{ padding: "16px 20px", borderLeft: `4px solid ${kpi.color}`, position: "relative" }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{kpi.label}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: kpi.color }}>{kpi.value}</div>
+            <div style={{ position: "absolute", top: 12, right: 16, fontSize: 22, opacity: 0.3 }}>{kpi.icon}</div>
+          </div>
+        ))}
+      </div>
+
+      {loading && <div style={{ textAlign: "center", padding: 8, color: "var(--text-muted)", fontSize: 12 }}>Updating...</div>}
+
+      {/* ═══════════════════ OVERVIEW TAB ═══════════════════ */}
       {activeTab === "overview" && (
         <>
-          <div className="charts-grid">
-            {/* Monthly Revenue & Profit */}
-            <div className="card chart-full-width">
-              <div className="card-header">
-                <div>
-                  <div className="card-title">Monthly Revenue & Profit</div>
-                  <div className="card-subtitle">Click a bar to filter by month</div>
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={300}>
-                <ComposedChart data={monthlyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip
-                    contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }}
-                    formatter={(value: any) => formatCurrency(Number(value))}
-                  />
-                  <Legend />
-                  <Bar
-                    dataKey="revenue"
-                    fill="#6366f1"
-                    name="Revenue"
-                    radius={[4, 4, 0, 0]}
-                    cursor="pointer"
-                    onClick={(data: any) => handleMonthClick(data.month)}
-                  />
-                  <Line type="monotone" dataKey="profit" stroke="#10b981" name="Profit" strokeWidth={2} dot={false} />
-                </ComposedChart>
+          {/* Monthly Trend */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-header"><div className="card-title">Total Sales by Month</div></div>
+            <ResponsiveContainer width="100%" height={280}>
+              <AreaChart data={monthlyChart}>
+                <defs>
+                  <linearGradient id="gRevenue" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <YAxis tickFormatter={(v) => fmtK(v)} tick={{ fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
+                  formatter={(v: any) => fmtCur(Number(v))} />
+                <Area type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2.5} fill="url(#gRevenue)" name="Revenue" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* SKU Bar + State Donut — 2 columns */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+            {/* Top SKUs Bar */}
+            <div className="card">
+              <div className="card-header"><div className="card-title">Total Sales by SKU</div><div className="card-subtitle">Click bar to filter</div></div>
+              <ResponsiveContainer width="100%" height={380}>
+                <BarChart data={topSkus} layout="vertical" margin={{ left: 70 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.06)" />
+                  <XAxis type="number" tickFormatter={fmtK} tick={{ fontSize: 10 }} />
+                  <YAxis type="category" dataKey="name" width={65} tick={{ fontSize: 10 }} />
+                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
+                    formatter={(v: any) => fmtCur(Number(v))} />
+                  <Bar dataKey="revenue" radius={[0, 4, 4, 0]} cursor="pointer"
+                    onClick={(d: any) => setFilter("sku", d.name)}>
+                    {topSkus.map((_: any, i: number) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} opacity={filters.sku && filters.sku !== topSkus[i]?.name ? 0.3 : 1} />
+                    ))}
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </div>
 
-            {/* Daily Sales (Last 30 Days) */}
+            {/* SKU Donut */}
             <div className="card">
-              <div className="card-header">
-                <div>
-                  <div className="card-title">Last 30 Days</div>
-                  <div className="card-subtitle">Daily revenue trend</div>
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={dailyData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip
-                    contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }}
-                    formatter={(value: any) => formatCurrency(Number(value))}
-                  />
-                  <Area type="monotone" dataKey="revenue" stroke="#6366f1" fill="rgba(99,102,241,0.15)" strokeWidth={2} />
-                  <Area type="monotone" dataKey="profit" stroke="#10b981" fill="rgba(16,185,129,0.1)" strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Top SKUs by Revenue */}
-            <div className="card">
-              <div className="card-header">
-                <div>
-                  <div className="card-title">Top SKUs by Revenue</div>
-                  <div className="card-subtitle">Click to filter by SKU</div>
-                </div>
-              </div>
-              <ResponsiveContainer width="100%" height={280}>
+              <div className="card-header"><div className="card-title">Sales Distribution by SKU</div></div>
+              <ResponsiveContainer width="100%" height={380}>
                 <PieChart>
-                  <Pie
-                    data={skuData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={3}
-                    dataKey="revenue"
-                    nameKey="sku"
-                    cursor="pointer"
-                    onClick={(data: any) => handleSkuClick(data.fullSku)}
-                  >
-                    {skuData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  <Pie data={topSkus.slice(0, 10)} cx="50%" cy="50%" innerRadius={70} outerRadius={130}
+                    paddingAngle={2} dataKey="revenue" nameKey="name"
+                    label={({ name, percent }: any) => `${name} (${((percent || 0) * 100).toFixed(1)}%)`}
+                    labelLine={{ strokeWidth: 1 }} cursor="pointer"
+                    onClick={(d: any) => setFilter("sku", d.name)}>
+                    {topSkus.slice(0, 10).map((_: any, i: number) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} opacity={filters.sku && filters.sku !== topSkus[i]?.name ? 0.3 : 1} />
                     ))}
                   </Pie>
-                  <Tooltip
-                    contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }}
-                    formatter={(value: any) => formatCurrency(Number(value))}
-                  />
+                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
+                    formatter={(v: any) => fmtCur(Number(v))} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
           </div>
-        </>
-      )}
 
-      {/* Orders Tab */}
-      {activeTab === "orders" && orders && (
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">Order Details</div>
-            <div className="card-subtitle">{orders.pagination.total} total orders</div>
-          </div>
-          <div className="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Order ID</th>
-                  <th>Date</th>
-                  <th>SKU</th>
-                  <th>Status</th>
-                  <th>Qty</th>
-                  <th>Price</th>
-                  <th>COGS</th>
-                  <th>Profit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {orders.orders.map((o, i) => (
-                  <tr key={i}>
-                    <td style={{ fontFamily: "monospace", fontSize: 11 }}>
-                      {String(o.amazon_order_id || "").slice(0, 15)}
-                    </td>
-                    <td>{o.purchase_date ? new Date(String(o.purchase_date)).toLocaleDateString("en-IN") : "—"}</td>
-                    <td
-                      style={{ cursor: "pointer", color: "var(--accent-hover)" }}
-                      onClick={() => handleSkuClick(String(o.sku))}
-                    >
-                      {String(o.sku || "").slice(0, 20)}
-                    </td>
-                    <td>
-                      <span className={`badge ${
-                        o.order_status === "Shipped" ? "badge-success" :
-                        o.order_status === "Pending" ? "badge-warning" :
-                        o.order_status === "Cancelled" ? "badge-danger" :
-                        "badge-info"
-                      }`}>
-                        {String(o.order_status || "Unknown")}
-                      </span>
-                    </td>
-                    <td>{String(o.quantity || 0)}</td>
-                    <td>{formatCurrency(Number(o.item_price || 0))}</td>
-                    <td>{o.cogs_price != null ? formatCurrency(Number(o.cogs_price)) : "—"}</td>
-                    <td>
-                      <span style={{
-                        color: Number(o.profit || 0) >= 0 ? "var(--success)" : "var(--danger)",
-                        fontWeight: 600,
-                      }}>
-                        {o.profit != null ? formatCurrency(Number(o.profit)) : "—"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* State Bar + State Donut — 2 columns */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+            <div className="card">
+              <div className="card-header"><div className="card-title">Total Sales by State</div><div className="card-subtitle">Click to filter</div></div>
+              <ResponsiveContainer width="100%" height={380}>
+                <BarChart data={stateData.slice(0, 12)} layout="vertical" margin={{ left: 90 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.06)" />
+                  <XAxis type="number" tickFormatter={fmtK} tick={{ fontSize: 10 }} />
+                  <YAxis type="category" dataKey="name" width={85} tick={{ fontSize: 10 }} />
+                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
+                    formatter={(v: any) => fmtCur(Number(v))} />
+                  <Bar dataKey="revenue" radius={[0, 4, 4, 0]} cursor="pointer"
+                    onClick={(d: any) => setFilter("state", d.name)}>
+                    {stateData.slice(0, 12).map((_: any, i: number) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} opacity={filters.state && filters.state !== stateData[i]?.name ? 0.3 : 1} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="card">
+              <div className="card-header"><div className="card-title">State Distribution</div></div>
+              <ResponsiveContainer width="100%" height={380}>
+                <PieChart>
+                  <Pie data={stateData.slice(0, 10)} cx="50%" cy="50%" innerRadius={70} outerRadius={130}
+                    paddingAngle={2} dataKey="revenue" nameKey="name"
+                    label={({ name, percent }: any) => `${name?.substring(0,8)} (${((percent||0)*100).toFixed(0)}%)`}
+                    labelLine={{ strokeWidth: 1 }} cursor="pointer"
+                    onClick={(d: any) => setFilter("state", d.name)}>
+                    {stateData.slice(0, 10).map((_: any, i: number) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} opacity={filters.state && filters.state !== stateData[i]?.name ? 0.3 : 1} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
+                    formatter={(v: any) => fmtCur(Number(v))} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
           </div>
 
-          {/* Pagination */}
-          <div className="pagination">
-            <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0}>
-              ← Previous
-            </button>
-            <span className="pagination-info">
-              Page {page + 1} of {Math.ceil((orders.pagination.total || 1) / 50)}
-            </span>
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={(page + 1) * 50 >= orders.pagination.total}
-            >
-              Next →
-            </button>
-          </div>
-        </div>
-      )}
+          {/* Tier Donut + Date-wise Table — 2 columns */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+            <div className="card">
+              <div className="card-header"><div className="card-title">Revenue by City Tier</div><div className="card-subtitle">Click to filter</div></div>
+              {tierData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie data={tierData} cx="50%" cy="50%" innerRadius={60} outerRadius={110}
+                      paddingAngle={4} dataKey="revenue" nameKey="name" cursor="pointer"
+                      label={({ name, percent }: any) => `${name} (${((percent||0)*100).toFixed(0)}%)`}
+                      onClick={(d: any) => setFilter("tier", d.name)}>
+                      {tierData.map((e: any) => (
+                        <Cell key={e.name} fill={TIER_COLORS[e.name] || "#64748b"} opacity={filters.tier && filters.tier !== e.name ? 0.3 : 1} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }}
+                      formatter={(v: any) => fmtCur(Number(v))} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>No tier data</div>}
+            </div>
 
-      {/* Predictions Tab */}
-      {activeTab === "predictions" && predictions && (
-        <div>
-          <div className="card" style={{ marginBottom: 24 }}>
-            <div className="card-header">
-              <div>
-                <div className="card-title">Sales Forecast (6 Months)</div>
-                <div className="card-subtitle">{predictions.methodology}</div>
+            {/* Date-wise summary table */}
+            <div className="card">
+              <div className="card-header"><div className="card-title">Date-wise Summary</div></div>
+              <div className="table-container" style={{ maxHeight: 300, overflowY: "auto" }}>
+                <table>
+                  <thead><tr><th>Month</th><th>Revenue</th><th>Profit</th><th>Orders</th><th>Units</th></tr></thead>
+                  <tbody>
+                    {monthlyChart.map((m: any) => (
+                      <tr key={m.month}>
+                        <td style={{ fontWeight: 600 }}>{m.month}</td>
+                        <td>{fmtCur(m.revenue)}</td>
+                        <td style={{ color: m.profit >= 0 ? "var(--success)" : "var(--danger)" }}>{fmtCur(m.profit)}</td>
+                        <td>{fmtNum(m.orders)}</td>
+                        <td>{fmtNum(m.revenue / (m.orders || 1))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={400}>
-              <ComposedChart data={forecastChart}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis tickFormatter={(v) => `₹${(v / 1000).toFixed(0)}k`} />
-                <Tooltip
-                  contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }}
-                  formatter={(value: any) => value != null ? formatCurrency(Number(value)) : "—"}
-                />
-                <Legend />
-                <Area type="monotone" dataKey="actual_revenue" stroke="#6366f1" fill="rgba(99,102,241,0.15)" name="Actual Revenue" strokeWidth={2} />
-                <Line type="monotone" dataKey="predicted_revenue" stroke="#f59e0b" name="Predicted Revenue" strokeWidth={2} strokeDasharray="5 5" />
-              </ComposedChart>
-            </ResponsiveContainer>
           </div>
 
-          {/* Forecast Table */}
+          {/* State-wise detail table */}
           <div className="card">
-            <div className="card-header">
-              <div className="card-title">Predicted Monthly Revenue</div>
-            </div>
-            <div className="table-container">
+            <div className="card-header"><div className="card-title">State-wise Summary</div></div>
+            <div className="table-container" style={{ maxHeight: 350, overflowY: "auto" }}>
               <table>
-                <thead>
-                  <tr>
-                    <th>Month</th>
-                    <th>Predicted Revenue</th>
-                    <th>Predicted Units</th>
-                    <th>Confidence Range</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>State</th><th>Revenue</th><th>Profit</th><th>Orders</th></tr></thead>
                 <tbody>
-                  {predictions.aggregateForecasts.map((f, i) => (
-                    <tr key={i}>
-                      <td style={{ fontWeight: 600 }}>{f.month}</td>
-                      <td>{formatCurrency(f.predicted_revenue)}</td>
-                      <td>{formatNumber(f.predicted_quantity)}</td>
-                      <td style={{ color: "var(--text-muted)" }}>
-                        {formatNumber(f.confidence_lower)} – {formatNumber(f.confidence_upper)} units
-                      </td>
+                  {stateData.map((s: any) => (
+                    <tr key={s.name} style={{ cursor: "pointer" }} onClick={() => setFilter("state", s.name)}>
+                      <td style={{ fontWeight: 600, color: filters.state === s.name ? "var(--accent)" : undefined }}>{s.name}</td>
+                      <td>{fmtCur(s.revenue)}</td>
+                      <td style={{ color: s.profit >= 0 ? "var(--success)" : "var(--danger)" }}>{fmtCur(s.profit)}</td>
+                      <td>{fmtNum(s.orders)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </div>
+        </>
+      )}
+
+      {/* ═══════════════════ GEOGRAPHY TAB ═══════════════════ */}
+      {activeTab === "geography" && (
+        <>
+          {/* India Map */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div className="card-header">
+              <div className="card-title">Net Sales by State</div>
+              <div className="card-subtitle">Bubble size = revenue · Click to filter</div>
+            </div>
+            <div style={{ width: "100%", maxWidth: 800, margin: "0 auto" }}>
+              <ComposableMap
+                projection="geoMercator"
+                projectionConfig={{ scale: 1000, center: [82, 22] }}
+                style={{ width: "100%", height: "auto" }}
+              >
+                <Geographies geography={INDIA_TOPO}>
+                  {({ geographies }: any) =>
+                    geographies.map((g: any) => (
+                      <Geography key={g.rsmKey} geography={g}
+                        style={{
+                          default: { fill: "#1e293b", stroke: "#334155", strokeWidth: 0.5 },
+                          hover: { fill: "#334155", stroke: "#6366f1", strokeWidth: 1 },
+                          pressed: { fill: "#6366f1" },
+                        }}
+                      />
+                    ))
+                  }
+                </Geographies>
+                {mapMarkers.map((m: any) => (
+                  <Marker key={m.name} coordinates={m.coords}>
+                    <circle
+                      r={Math.max(4, Math.sqrt(m.revenue / maxMapRevenue) * 30)}
+                      fill="#6366f1" fillOpacity={0.6} stroke="#6366f1" strokeWidth={1}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => setFilter("state", m.name)}
+                    />
+                    {m.revenue / maxMapRevenue > 0.15 && (
+                      <text textAnchor="middle" y={-Math.max(6, Math.sqrt(m.revenue / maxMapRevenue) * 30) - 4}
+                        style={{ fontSize: 9, fill: "var(--text-muted)", fontWeight: 600 }}>{m.name}</text>
+                    )}
+                  </Marker>
+                ))}
+              </ComposableMap>
+            </div>
+          </div>
+
+          {/* Top Cities Bar + Tier Distribution */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+            <div className="card">
+              <div className="card-header"><div className="card-title">Top Cities by Revenue</div><div className="card-subtitle">Click to filter</div></div>
+              <ResponsiveContainer width="100%" height={380}>
+                <BarChart data={cityData.slice(0, 12)} layout="vertical" margin={{ left: 80 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.06)" />
+                  <XAxis type="number" tickFormatter={fmtK} tick={{ fontSize: 10 }} />
+                  <YAxis type="category" dataKey="name" width={75} tick={{ fontSize: 10 }} />
+                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
+                    formatter={(v: any) => fmtCur(Number(v))}
+                    labelFormatter={(l: any) => { const c = cityData.find((x: any) => x.name === l); return `${l} (${c?.tier || ""})`; }}
+                  />
+                  <Bar dataKey="revenue" radius={[0, 4, 4, 0]} cursor="pointer"
+                    onClick={(d: any) => setFilter("city", d.name)}>
+                    {cityData.slice(0, 12).map((c: any, i: number) => (
+                      <Cell key={i} fill={TIER_COLORS[c.tier] || "#64748b"} opacity={filters.city && filters.city !== c.name ? 0.3 : 1} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="card">
+              <div className="card-header"><div className="card-title">Revenue by City Tier</div></div>
+              {tierData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={380}>
+                  <PieChart>
+                    <Pie data={tierData} cx="50%" cy="50%" innerRadius={70} outerRadius={130}
+                      paddingAngle={4} dataKey="revenue" nameKey="name" cursor="pointer"
+                      label={({ name, percent }: any) => `${name} (${((percent||0)*100).toFixed(0)}%)`}
+                      onClick={(d: any) => setFilter("tier", d.name)}>
+                      {tierData.map((e: any) => (
+                        <Cell key={e.name} fill={TIER_COLORS[e.name] || "#64748b"} opacity={filters.tier && filters.tier !== e.name ? 0.3 : 1} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }}
+                      formatter={(v: any) => fmtCur(Number(v))} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>No tier data</div>}
+            </div>
+          </div>
+
+          {/* City Details Table */}
+          <div className="card">
+            <div className="card-header"><div className="card-title">City-wise Sales Details</div></div>
+            <div className="table-container" style={{ maxHeight: 400, overflowY: "auto" }}>
+              <table>
+                <thead><tr><th>City</th><th>State</th><th>Tier</th><th>Revenue</th><th>Orders</th></tr></thead>
+                <tbody>
+                  {cityData.slice(0, 30).map((c: any) => (
+                    <tr key={c.name} style={{ cursor: "pointer" }} onClick={() => setFilter("city", c.name)}>
+                      <td style={{ fontWeight: 600, color: filters.city === c.name ? "var(--accent)" : undefined }}>{c.name}</td>
+                      <td>{c.state}</td>
+                      <td><span className="badge" style={{ background: TIER_COLORS[c.tier] || "#64748b", color: "#fff", fontSize: 10, padding: "2px 8px" }}>{c.tier}</span></td>
+                      <td>{fmtCur(c.revenue)}</td>
+                      <td>{fmtNum(c.orders)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ═══════════════════ ORDERS TAB ═══════════════════ */}
+      {activeTab === "orders" && orders && (
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">Order Details ({orders.pagination?.total || 0})</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" disabled={page === 0} onClick={() => setPage(p => p - 1)}>← Prev</button>
+              <span style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: "32px" }}>Page {page + 1}</span>
+              <button className="btn btn-ghost btn-sm" disabled={(page + 1) * 50 >= (orders.pagination?.total || 0)} onClick={() => setPage(p => p + 1)}>Next →</button>
+            </div>
+          </div>
+          <div className="table-container" style={{ maxHeight: 500, overflowY: "auto", overflowX: "auto" }}>
+            <table style={{ fontSize: 12 }}>
+              <thead>
+                <tr><th>Order ID</th><th>Date</th><th>SKU</th><th>Qty</th><th>Price</th><th>COGS</th><th>Profit</th><th>City</th><th>State</th><th>Channel</th></tr>
+              </thead>
+              <tbody>
+                {(orders.orders || []).map((o: any, i: number) => (
+                  <tr key={i}>
+                    <td style={{ fontSize: 11, fontFamily: "monospace" }}>{o.amazon_order_id}</td>
+                    <td style={{ fontSize: 11 }}>{o.purchase_date ? new Date(o.purchase_date).toLocaleDateString("en-IN") : "—"}</td>
+                    <td style={{ fontWeight: 600, cursor: "pointer", color: "var(--accent-hover)" }} onClick={() => setFilter("sku", o.sku)}>{o.sku}</td>
+                    <td>{o.quantity}</td>
+                    <td>{fmtCur(Number(o.item_price || 0))}</td>
+                    <td>{o.cogs_price ? fmtCur(Number(o.cogs_price)) : "—"}</td>
+                    <td style={{ color: Number(o.profit || 0) >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 600 }}>
+                      {o.profit != null ? fmtCur(Number(o.profit)) : "—"}
+                    </td>
+                    <td style={{ cursor: "pointer" }} onClick={() => o.ship_city && setFilter("city", o.ship_city)}>{o.ship_city || "—"}</td>
+                    <td style={{ cursor: "pointer" }} onClick={() => o.ship_state && setFilter("state", o.ship_state)}>{o.ship_state || "—"}</td>
+                    <td style={{ fontSize: 10 }}>{o.fulfillment_channel || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════ PREDICTIONS TAB ═══════════════════ */}
+      {activeTab === "predictions" && predictions && (
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">Sales Forecast</div>
+            <div className="card-subtitle">{predictions.methodology}</div>
+          </div>
+          {predictions.aggregateForecasts?.length > 0 ? (
+            <ResponsiveContainer width="100%" height={400}>
+              <AreaChart data={[
+                ...(predictions.historical || []).map((h: any) => ({ month: h.month, revenue: h.total_revenue, type: "historical" })),
+                ...(predictions.aggregateForecasts || []).map((f: any) => ({ month: f.month, predicted: f.predicted_revenue, lower: f.confidence_lower, upper: f.confidence_upper, type: "forecast" })),
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                <YAxis tickFormatter={fmtK} tick={{ fontSize: 10 }} />
+                <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }}
+                  formatter={(v: any) => fmtCur(Number(v))} />
+                <Area type="monotone" dataKey="revenue" stroke="#6366f1" fill="#6366f1" fillOpacity={0.2} name="Actual" />
+                <Area type="monotone" dataKey="predicted" stroke="#f59e0b" strokeDasharray="5 5" fill="#f59e0b" fillOpacity={0.1} name="Forecast" />
+                <Area type="monotone" dataKey="upper" stroke="none" fill="#f59e0b" fillOpacity={0.05} name="Upper Bound" />
+                <Legend />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ padding: 60, textAlign: "center", color: "var(--text-muted)" }}>
+              Not enough historical data for predictions. Need at least 3 months.
+            </div>
+          )}
         </div>
       )}
     </div>

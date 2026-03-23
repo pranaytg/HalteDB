@@ -54,6 +54,9 @@ async def upsert_orders_batch(session: AsyncSession, batch: list[dict]):
         "quantity": stmt.excluded.quantity,
         "item_price": stmt.excluded.item_price,
         "item_tax": stmt.excluded.item_tax,
+        "shipping_price": stmt.excluded.shipping_price,
+        "ship_city": stmt.excluded.ship_city,
+        "ship_state": stmt.excluded.ship_state,
     }
 
     upsert_stmt = stmt.on_conflict_do_update(
@@ -70,13 +73,19 @@ async def upsert_orders_batch(session: AsyncSession, batch: list[dict]):
 
 async def assign_cogs_to_orders(session: AsyncSession):
     """
-    Fills in cogs_price and profit for any orders missing them,
-    by looking up the COGS table by SKU.
+    Fills in cogs_price and profit for any orders missing them.
+    Profit = item_price - cogs - shipping_cost
+    For FBA (Amazon): uses shipping_price from report
+    For self-fulfilled: uses Rs 100 flat if no shipping_price
     """
     result = await session.execute(text("""
         UPDATE orders o
         SET cogs_price = c.cogs_price,
-            profit = o.item_price - c.cogs_price
+            profit = o.item_price - c.cogs_price - CASE
+                WHEN o.fulfillment_channel = 'Amazon' AND COALESCE(o.shipping_price, 0) > 0
+                    THEN o.shipping_price
+                ELSE 100
+            END
         FROM cogs c
         WHERE o.sku = c.sku
         AND (o.cogs_price IS NULL OR o.profit IS NULL)
