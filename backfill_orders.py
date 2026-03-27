@@ -32,8 +32,8 @@ engine = create_async_engine(DATABASE_URL, echo=False, pool_size=3, max_overflow
 SessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
 
 # How far back to sync (in days)
-LOOKBACK_DAYS = 180  # 6 months
-CHUNK_DAYS = 30      # Amazon report max range per request
+LOOKBACK_DAYS = 740   # ~2 years — covers all orders back to March 2024
+CHUNK_DAYS = 30       # Amazon report max range per request
 
 
 async def main():

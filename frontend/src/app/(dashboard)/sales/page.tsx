@@ -201,7 +201,7 @@ export default function SalesPage() {
           </select>
           <select className="filter-select" value={filters.city} onChange={e => { setFilters(f => ({ ...f, city: e.target.value })); setPage(0); }}>
             <option value="">All Cities</option>
-            {(geo?.filters?.cities || []).slice(0, 100).map((c: string) => <option key={c} value={c}>{c}</option>)}
+            {(geo?.filters?.cities || []).map((c: string) => <option key={c} value={c}>{c}</option>)}
           </select>
           <input className="filter-input" type="month" value={filters.month} onChange={e => { setFilters(f => ({ ...f, month: e.target.value })); setPage(0); }} style={{ width: 140 }} />
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -565,7 +565,7 @@ export default function SalesPage() {
                 <thead><tr><th>City</th><th>State</th><th>Tier</th><th>Revenue</th><th>Orders</th></tr></thead>
                 <tbody>
                   {cityData.slice(0, 30).map((c: any) => (
-                    <tr key={c.name} style={{ cursor: "pointer" }} onClick={() => setFilter("city", c.name)}>
+                    <tr key={`${c.name}-${c.state}`} style={{ cursor: "pointer" }} onClick={() => setFilter("city", c.name)}>
                       <td style={{ fontWeight: 600, color: filters.city === c.name ? "var(--accent)" : undefined }}>{c.name}</td>
                       <td>{c.state}</td>
                       <td><span className="badge" style={{ background: TIER_COLORS[c.tier] || "#64748b", color: "#fff", fontSize: 10, padding: "2px 8px" }}>{c.tier}</span></td>

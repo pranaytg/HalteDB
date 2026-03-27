@@ -1,40 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
-
-/* ──────────────────────────────────────────────────────────
-   Indian City Tier Classification
-   ────────────────────────────────────────────────────────── */
-
-const TIER_1_CITIES = new Set([
-  "Mumbai", "Delhi", "New Delhi", "Bangalore", "Bengaluru",
-  "Hyderabad", "Chennai", "Kolkata", "Ahmedabad", "Pune",
-]);
-
-const TIER_2_CITIES = new Set([
-  "Jaipur", "Lucknow", "Kanpur", "Nagpur", "Indore", "Bhopal",
-  "Visakhapatnam", "Patna", "Vadodara", "Coimbatore", "Ludhiana",
-  "Agra", "Madurai", "Nashik", "Vijayawada", "Meerut", "Rajkot",
-  "Varanasi", "Srinagar", "Aurangabad", "Chhatrapati Sambhajinagar",
-  "Dhanbad", "Amritsar", "Allahabad", "Prayagraj", "Ranchi",
-  "Gwalior", "Jabalpur", "Jodhpur", "Raipur", "Kota", "Chandigarh",
-  "Guwahati", "Surat", "Thiruvananthapuram", "Trivandrum", "Mysore",
-  "Mysuru", "Noida", "Greater Noida", "Gurgaon", "Gurugram",
-  "Faridabad", "Ghaziabad", "Thane", "Navi Mumbai", "Dehradun",
-  "Bhubaneswar", "Mangalore", "Mangaluru", "Tiruchirappalli",
-  "Trichy", "Hubli", "Salem", "Warangal", "Guntur", "Udaipur",
-  "Belgaum", "Belagavi", "Jammu",
-]);
-
-function getCityTier(city: string | null): string {
-  if (!city) return "Unknown";
-  // Normalize: title-case for comparison
-  const normalized = city.trim().split(/\s+/).map(
-    w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-  ).join(" ");
-  if (TIER_1_CITIES.has(normalized)) return "Tier 1";
-  if (TIER_2_CITIES.has(normalized)) return "Tier 2";
-  return "Tier 3";
-}
+import { getCityTier } from "@/lib/cityTiers";
 
 export async function GET(req: NextRequest) {
   try {
@@ -82,6 +48,36 @@ export async function GET(req: NextRequest) {
       params.push(endDate);
     }
 
+    /* ── Tier filter: resolve tier → city list, add SQL IN-clause ── */
+    if (tier) {
+      // Get all distinct city names from DB, classify them, and filter
+      const allCitiesRes = await pool.query(
+        "SELECT DISTINCT ship_city FROM orders WHERE ship_city IS NOT NULL AND ship_city != ''"
+      );
+      const tierCities = allCitiesRes.rows
+        .map((r: { ship_city: string }) => r.ship_city)
+        .filter((c: string) => getCityTier(c) === tier);
+
+      if (tierCities.length === 0) {
+        // No cities in this tier — return empty results
+        return NextResponse.json({
+          byState: [],
+          byCity: [],
+          byTier: [
+            { tier: "Tier 1", total_orders: 0, total_revenue: 0, total_profit: 0, total_units: 0 },
+            { tier: "Tier 2", total_orders: 0, total_revenue: 0, total_profit: 0, total_units: 0 },
+            { tier: "Tier 3", total_orders: 0, total_revenue: 0, total_profit: 0, total_units: 0 },
+          ],
+          filters: { states: [], cities: [] },
+        });
+      }
+
+      // Build parameterized IN clause
+      const placeholders = tierCities.map((_: string) => `$${idx++}`).join(",");
+      where += ` AND ship_city IN (${placeholders})`;
+      params.push(...tierCities);
+    }
+
     /* ── By State ── */
     const byStateQuery = `
       SELECT ship_state as state,
@@ -93,7 +89,6 @@ export async function GET(req: NextRequest) {
       AND ship_state IS NOT NULL AND ship_state != ''
       GROUP BY ship_state
       ORDER BY total_revenue DESC
-      LIMIT 25
     `;
     const byStateResult = await pool.query(byStateQuery, params);
 
@@ -107,24 +102,16 @@ export async function GET(req: NextRequest) {
       FROM orders ${where}
       GROUP BY ship_city, ship_state
       ORDER BY total_revenue DESC
-      LIMIT 25
     `;
     const byCityResult = await pool.query(byCityQuery, params);
 
-    /* ── Attach tier labels and filter by tier ── */
+    /* ── Attach tier labels ── */
     const citiesWithTier = byCityResult.rows.map((r: Record<string, unknown>) => ({
       ...r,
       tier: getCityTier(r.city as string),
     }));
 
-    const statesData = byStateResult.rows;
-    let citiesData = citiesWithTier;
-
-    if (tier) {
-      citiesData = citiesData.filter((c: Record<string, unknown>) => c.tier === tier);
-    }
-
-    /* ── By Tier (aggregated) ── */
+    /* ── By Tier (aggregated from current filtered results) ── */
     const allCitiesQuery = `
       SELECT ship_city as city,
              COUNT(*) as total_orders,
@@ -177,8 +164,8 @@ export async function GET(req: NextRequest) {
     ]);
 
     return NextResponse.json({
-      byState: statesData,
-      byCity: citiesData,
+      byState: byStateResult.rows,
+      byCity: citiesWithTier,
       byTier,
       filters: {
         states: statesList.rows.map((r: { state: string }) => r.state),

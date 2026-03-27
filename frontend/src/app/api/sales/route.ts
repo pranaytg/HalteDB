@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { getCityTier } from "@/lib/cityTiers";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,6 +14,64 @@ export async function GET(req: NextRequest) {
     const year = searchParams.get("year");
     const city = searchParams.get("city");
     const state = searchParams.get("state");
+    const tier = searchParams.get("tier");
+
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
+    let paramIdx = 1;
+
+    if (sku) {
+      conditions.push(`o.sku = $${paramIdx++}`);
+      params.push(sku);
+    }
+    if (startDate) {
+      conditions.push(`o.purchase_date >= $${paramIdx++}::timestamptz`);
+      params.push(startDate);
+    }
+    if (endDate) {
+      conditions.push(`o.purchase_date <= $${paramIdx++}::timestamptz`);
+      params.push(endDate);
+    }
+    if (month) {
+      conditions.push(`TO_CHAR(o.purchase_date, 'YYYY-MM') = $${paramIdx++}`);
+      params.push(month);
+    }
+    if (year) {
+      conditions.push(`EXTRACT(YEAR FROM o.purchase_date) = $${paramIdx++}`);
+      params.push(parseInt(year));
+    }
+    if (city) {
+      conditions.push(`LOWER(o.ship_city) = LOWER($${paramIdx++})`);
+      params.push(city);
+    }
+    if (state) {
+      conditions.push(`LOWER(o.ship_state) = LOWER($${paramIdx++})`);
+      params.push(state);
+    }
+
+    /* ── Tier filter: resolve tier → city list ── */
+    if (tier) {
+      const allCitiesRes = await pool.query(
+        "SELECT DISTINCT ship_city FROM orders WHERE ship_city IS NOT NULL AND ship_city != ''"
+      );
+      const tierCities = allCitiesRes.rows
+        .map((r: { ship_city: string }) => r.ship_city)
+        .filter((c: string) => getCityTier(c) === tier);
+
+      if (tierCities.length === 0) {
+        return NextResponse.json({
+          orders: [],
+          summary: { total_orders: 0, total_revenue: 0, total_profit: 0, total_units: 0, avg_profit_per_order: 0 },
+          pagination: { total: 0, limit, offset },
+        });
+      }
+
+      const placeholders = tierCities.map((_: string) => `$${paramIdx++}`).join(",");
+      conditions.push(`o.ship_city IN (${placeholders})`);
+      params.push(...tierCities);
+    }
+
+    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     let query = `
       SELECT o.id, o.amazon_order_id, o.purchase_date, o.order_status,
@@ -20,45 +79,11 @@ export async function GET(req: NextRequest) {
              o.quantity, o.currency, o.item_price, o.item_tax,
              o.cogs_price, o.profit, o.ship_city, o.ship_state
       FROM orders o
-      WHERE 1=1
+      ${where}
     `;
-    const params: (string | number)[] = [];
-    let paramIdx = 1;
-
-    if (sku) {
-      query += ` AND o.sku = $${paramIdx++}`;
-      params.push(sku);
-    }
-    if (startDate) {
-      query += ` AND o.purchase_date >= $${paramIdx++}::timestamptz`;
-      params.push(startDate);
-    }
-    if (endDate) {
-      query += ` AND o.purchase_date <= $${paramIdx++}::timestamptz`;
-      params.push(endDate);
-    }
-    if (month) {
-      query += ` AND TO_CHAR(o.purchase_date, 'YYYY-MM') = $${paramIdx++}`;
-      params.push(month);
-    }
-    if (year) {
-      query += ` AND EXTRACT(YEAR FROM o.purchase_date) = $${paramIdx++}`;
-      params.push(parseInt(year));
-    }
-    if (city) {
-      query += ` AND LOWER(o.ship_city) = LOWER($${paramIdx++})`;
-      params.push(city);
-    }
-    if (state) {
-      query += ` AND LOWER(o.ship_state) = LOWER($${paramIdx++})`;
-      params.push(state);
-    }
 
     // Get total count
-    const countQuery = query.replace(
-      /SELECT .* FROM/,
-      "SELECT COUNT(*) as total FROM"
-    );
+    const countQuery = `SELECT COUNT(*) as total FROM orders o ${where}`;
     const countResult = await pool.query(countQuery, params);
     const total = parseInt(countResult.rows[0].total);
 
@@ -67,7 +92,8 @@ export async function GET(req: NextRequest) {
 
     const result = await pool.query(query, params);
 
-    // Summary metrics
+    // Summary metrics (using same filters)
+    const summaryParams = params.slice(0, params.length - 2); // exclude limit/offset
     const summaryQuery = `
       SELECT 
         COUNT(*) as total_orders,
@@ -76,14 +102,9 @@ export async function GET(req: NextRequest) {
         COALESCE(SUM(quantity), 0) as total_units,
         COALESCE(AVG(profit), 0) as avg_profit_per_order
       FROM orders o
-      WHERE 1=1
-      ${sku ? `AND o.sku = '${sku}'` : ""}
-      ${startDate ? `AND o.purchase_date >= '${startDate}'::timestamptz` : ""}
-      ${endDate ? `AND o.purchase_date <= '${endDate}'::timestamptz` : ""}
-      ${month ? `AND TO_CHAR(o.purchase_date, 'YYYY-MM') = '${month}'` : ""}
-      ${year ? `AND EXTRACT(YEAR FROM o.purchase_date) = ${parseInt(year)}` : ""}
+      ${where}
     `;
-    const summaryResult = await pool.query(summaryQuery);
+    const summaryResult = await pool.query(summaryQuery, summaryParams);
 
     return NextResponse.json({
       orders: result.rows,

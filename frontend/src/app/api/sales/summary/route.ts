@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { getCityTier } from "@/lib/cityTiers";
 
 export async function GET(req: NextRequest) {
   try {
@@ -26,7 +27,26 @@ export async function GET(req: NextRequest) {
     if (startDate) { conditions.push(`purchase_date >= $${idx++}::timestamp`); params.push(startDate); }
     if (endDate) { conditions.push(`purchase_date <= $${idx++}::timestamp`); params.push(endDate); }
 
-    // Tier is handled client-side for geography, not needed here for summary
+    /* ── Tier filter: resolve tier → city list ── */
+    if (tier) {
+      const allCitiesRes = await pool.query(
+        "SELECT DISTINCT ship_city FROM orders WHERE ship_city IS NOT NULL AND ship_city != ''"
+      );
+      const tierCities = allCitiesRes.rows
+        .map((r: { ship_city: string }) => r.ship_city)
+        .filter((c: string) => getCityTier(c) === tier);
+
+      if (tierCities.length === 0) {
+        return NextResponse.json({
+          monthly: [], bySku: [], daily: [],
+          filters: { skus: [], years: [] },
+        });
+      }
+
+      const placeholders = tierCities.map((_: string) => `$${idx++}`).join(",");
+      conditions.push(`ship_city IN (${placeholders})`);
+      params.push(...tierCities);
+    }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 

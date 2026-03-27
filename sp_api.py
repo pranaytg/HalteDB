@@ -171,6 +171,134 @@ async def run_inventory_sync_job(session: AsyncSession):
 
 
 # ============================================
+# State Normalization Map (Amazon sends abbreviations & variants)
+# ============================================
+STATE_NORMALIZATION_MAP = {
+    # Two-letter abbreviations (title-cased because we .title() before lookup)
+    "Ap": "Andhra Pradesh",
+    "As": "Assam",
+    "Br": "Bihar",
+    "Ch": "Chandigarh",
+    "Dl": "Delhi",
+    "Ga": "Goa",
+    "Gj": "Gujarat",
+    "Hr": "Haryana",
+    "Jk": "Jammu & Kashmir",
+    "Ka": "Karnataka",
+    "Kl": "Kerala",
+    "Mh": "Maharashtra",
+    "Mp": "Madhya Pradesh",
+    "Pb": "Punjab",
+    "Rj": "Rajasthan",
+    "Tg": "Telangana",
+    "Tn": "Tamil Nadu",
+    "Up": "Uttar Pradesh",
+    "Wb": "West Bengal",
+    "Cg": "Chhattisgarh",
+    "Jh": "Jharkhand",
+    "Uk": "Uttarakhand",
+    "Or": "Odisha",
+    "Hp": "Himachal Pradesh",
+    "Sk": "Sikkim",
+    "Mn": "Manipur",
+    "Ml": "Meghalaya",
+    "Mz": "Mizoram",
+    "Nl": "Nagaland",
+    "Tr": "Tripura",
+    "Ar": "Arunachal Pradesh",
+    # Variant spellings
+    "Tamilnadu": "Tamil Nadu",
+    "Telangana State": "Telangana",
+    "New Delhi": "Delhi",
+    "Pondicherry": "Puducherry",
+    "Jammu And Kashmir": "Jammu & Kashmir",
+    "Chattisgarh": "Chhattisgarh",
+    "Orissa": "Odisha",
+}
+
+
+def _normalize_state(raw: str | None) -> str | None:
+    """Title-case, then fix abbreviations & variant spellings."""
+    if not raw:
+        return None
+    titled = raw.strip().title()
+    if not titled:
+        return None
+    # Handle compound entries like "Maharashtra, Dombivali"
+    if "," in titled:
+        titled = titled.split(",")[0].strip()
+    return STATE_NORMALIZATION_MAP.get(titled, titled)
+
+
+import re
+
+# Canonical city name aliases — maps misspellings/variants to correct names
+CITY_ALIAS_MAP = {
+    "Bangalore": "Bengaluru", "Banglore": "Bengaluru", "Bengalore": "Bengaluru",
+    "Bangaluru": "Bengaluru", "Bangalore North": "Bengaluru", "Bangalore South": "Bengaluru",
+    "Bangalore Rural": "Bengaluru", "Bengaluru Rural": "Bengaluru", "Bengaluru Urban": "Bengaluru",
+    "Bombay": "Mumbai", "Chennaichennai": "Chennai",
+    "Trivandrum": "Thiruvananthapuram", "Thiruvanathapuram": "Thiruvananthapuram",
+    "Thiruvanthapuram": "Thiruvananthapuram", "Thiruvananthapuramtrivandrum": "Thiruvananthapuram",
+    "Gurgaon": "Gurugram", "Mangalore": "Mangaluru", "Manglore": "Mangaluru",
+    "Mysore": "Mysuru", "Calcutta": "Kolkata", "Cochin": "Kochi",
+    "Calicut": "Kozhikode", "Allahabad": "Prayagraj", "Banaras": "Varanasi",
+    "Benaras": "Varanasi", "Pondicherry": "Puducherry", "Vizag": "Visakhapatnam",
+    "Belgaum": "Belagavi", "Hubli": "Hubballi", "Tumkur": "Tumakuru",
+    "Gulbarga": "Kalaburagi", "Shimoga": "Shivamogga", "Bellary": "Ballari",
+    "Bijapur": "Vijayapura", "Trichur": "Thrissur", "Alleapy": "Alappuzha",
+    "Trichy": "Tiruchirappalli", "Tirupur": "Tiruppur", "Palghat": "Palakkad",
+    "Bhubaneshwar": "Bhubaneswar", "Raurkela": "Rourkela", "Samastipr": "Samastipur",
+    "Azmgrh": "Azamgarh", "Dharamshala": "Dharmashala", "Dharmsala": "Dharmashala",
+    "Behrampur": "Berhampur", "Samlkha": "Samalkha", "Rajsmand": "Rajsamand",
+    "Sikandrabad": "Sikandarabad", "Jagatsinghapur": "Jagatsinghpur",
+    "Kanchipuram": "Kancheepuram", "Kasargod": "Kasaragod",
+    "Ahmadnagar": "Ahmednagar", "Jhunjhunun": "Jhunjhunu",
+    "Mandyamandya": "Mandya", "Agraagra": "Agra", "Ahmedabada": "Ahmedabad",
+    "Anantapuramu": "Anantapur", "Sultaanpur": "Sultanpur",
+    "Bardhaman": "Burdwan", "Changanacherry": "Changanassery",
+    "Nowshehra": "Nowshera", "Sulthan Bathery": "Sultan Bathery",
+    "Sulthanbathery": "Sultan Bathery", "Thoothukudi": "Thoothukkudi",
+    "Tuticorin": "Thoothukkudi", "Paradeep": "Paradip", "Paramakuti": "Paramakudi",
+    "Ranagt": "Ranaghat", "Baleshwar": "Balasore", "Shilong": "Shillong",
+    "Virajpete": "Virajpet", "Kanniyakumari": "Kanyakumari", "Alwaye": "Aluva",
+    "Yamuna Nagar": "Yamunanagar", "Chengalpet": "Chengalpattu",
+    "Sriganganagar": "Sri Ganganagar", "Hospet": "Hosapete",
+    "Patna City": "Patna", "Pune City": "Pune",
+}
+
+def _normalize_city(raw: str | None) -> str | None:
+    """Clean city names: strip numbers, commas, parentheses, colons, slashes; apply alias map."""
+    if not raw:
+        return None
+    city = raw.strip()
+    if not city:
+        return None
+    # Take first part before comma
+    if "," in city:
+        city = city.split(",")[0].strip()
+    # Take first part before colon
+    if ":" in city:
+        city = city.split(":")[0].strip()
+    # Take first part before slash
+    if "/" in city:
+        city = city.split("/")[0].strip()
+    # Remove parenthetical suffixes like "(W)" or "(East)"
+    city = re.sub(r'\([^)]*\)', '', city).strip()
+    # Remove digits (phone numbers, postcodes)
+    city = re.sub(r'[\d]+', '', city).strip()
+    # Remove trailing/leading special chars
+    city = re.sub(r'^[\s,;.\-:&]+|[\s,;.\-:&]+$', '', city).strip()
+    # Collapse multiple spaces
+    city = re.sub(r'\s+', ' ', city)
+    if not city:
+        return None
+    city = city.title()
+    # Apply canonical alias map
+    return CITY_ALIAS_MAP.get(city, city)
+
+
+# ============================================
 # Orders Fetch (Date Range Report)
 # ============================================
 
@@ -278,8 +406,8 @@ async def fetch_orders_date_range(session: AsyncSession, start_time: datetime, e
                             "item_price": safe_float(row_data.get("item-price")),
                             "item_tax": safe_float(row_data.get("item-tax")),
                             "shipping_price": safe_float(row_data.get("shipping-price")),
-                            "ship_city": (row_data.get("ship-city") or "").strip().title() or None,
-                            "ship_state": (row_data.get("ship-state") or "").strip().title() or None,
+                            "ship_city": _normalize_city(row_data.get("ship-city")),
+                            "ship_state": _normalize_state(row_data.get("ship-state")),
                         }
                         batch.append(parsed_record)
 
