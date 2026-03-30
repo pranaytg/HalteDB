@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from datetime import datetime, timezone
 
-from sp_api import run_full_sync, run_inventory_sync_job, run_incremental_orders_sync
+from sp_api import run_full_sync, run_inventory_sync_job, run_incremental_orders_sync, run_product_specs_sync
 from crud import get_sync_meta
 
 # ============================================
@@ -220,3 +220,54 @@ async def trigger_orders_sync(
 
     background_tasks.add_task(_run)
     return {"status": "accepted", "message": "Incremental orders sync started."}
+
+
+@app.post("/sync-product-specs")
+async def trigger_product_specs_sync(
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db),
+):
+    """Triggers product specifications sync (fetches dimensions/weights from SP-API)."""
+    async def _run():
+        try:
+            async with SessionLocal() as sync_session:
+                await run_product_specs_sync(sync_session)
+        except Exception as e:
+            logger.error(f"Product specs sync failed: {e}")
+
+    background_tasks.add_task(_run)
+    return {"status": "accepted", "message": "Product specifications sync started."}
+
+
+# ============================================
+# Product Specifications
+# ============================================
+
+from sqlalchemy import text
+
+@app.get("/product-specs")
+async def get_product_specs(session: AsyncSession = Depends(get_db)):
+    """Returns all product specifications (weights, dimensions)."""
+    result = await session.execute(text("""
+        SELECT sku, asin, product_name, weight_kg, length_cm, width_cm, height_cm,
+               volumetric_weight_kg, chargeable_weight_kg, last_updated
+        FROM product_specifications
+        ORDER BY sku
+    """))
+    rows = result.mappings().all()
+    return {"specs": [dict(r) for r in rows], "total": len(rows)}
+
+
+@app.get("/product-specs/{sku}")
+async def get_product_spec_by_sku(sku: str, session: AsyncSession = Depends(get_db)):
+    """Returns product specification for a specific SKU."""
+    result = await session.execute(text("""
+        SELECT sku, asin, product_name, weight_kg, length_cm, width_cm, height_cm,
+               volumetric_weight_kg, chargeable_weight_kg, last_updated
+        FROM product_specifications
+        WHERE sku = :sku
+    """), {"sku": sku})
+    row = result.mappings().first()
+    if not row:
+        return {"error": "SKU not found", "sku": sku}
+    return dict(row)

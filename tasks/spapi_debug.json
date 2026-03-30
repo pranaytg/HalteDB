@@ -1,0 +1,551 @@
+{
+  "numberOfResults": 2,
+  "items": [
+    {
+      "asin": "B0BQN1D5H1",
+      "attributes": {
+        "item_package_weight": [
+          {
+            "unit": "kilograms",
+            "value": 3.24,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "skip_offer": [
+          {
+            "value": false,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "item_weight": [
+          {
+            "unit": "kilograms",
+            "value": 5.0,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "recommended_browse_nodes": [
+          {
+            "value": "5257888031",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "bullet_point": [
+          {
+            "language_tag": "en_IN",
+            "value": "Enhanced Durability: Carburizing heat treatment gives these snow chains a higher hardness and stronger toughness than ordinary steel, ensuring better performance and longevity.",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "It comes in various sizes and is suitable for different tire types. We suggest to check your tire size first than choose the correct size for your vehicle.",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "Repairable Design: Includes a repair chain to easily fix any colored cross rope breaks, ensuring continued usability and convenience.",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "All-Weather Performance: Made from high-strength material, these snow chains are resistant to extreme cold temperatures down to minus 30 degrees Celsius, ensuring reliable traction in any weather condition.",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "Versatile Traction: Perfectly suited for tough situations like sand, mud, snow, ice, and climbing, providing your car with the necessary traction in emergent situations without damaging the tires.",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "Suitable for Tires Sizes: 135-12, 140-12, 145-12, 155/70-12, 135-13, 135/70-13, 145/70-13, 155/60-13, 160/55-13",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "Any suggestion contact us at 9914130130",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "Imported by B.K Raman & Co. Plot no 185, Industrial & Business Park, Phase-2, Chandigarh",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "Recommendation - Reduce tyre pressure to 20-25 psi to get good grip",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "NOTE: Recommended maximum speed limit is 50kmph",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "unspsc_code": [
+          {
+            "value": "25170000",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "brand": [
+          {
+            "language_tag": "en_IN",
+            "value": "bkr",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "wheel": [
+          {
+            "size": [
+              {
+                "unit": "inches",
+                "value": 12.0
+              }
+            ],
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "automotive_fit_type": [
+          {
+            "value": "vehicle_specific_fit",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "item_name": [
+          {
+            "language_tag": "en_IN",
+            "value": "BKR Snow Chain 1 pair (2pc in each pair) Carbon Steel 12mm for Alto800, K10, Eon, also for 12\" to 13\" Tyres- FREE 2 bungee ropes with 1pair of gloves for extra grip! CA0075/KN20",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "list_price": [
+          {
+            "currency": "INR",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "compatible_with_vehicle_type": [
+          {
+            "language_tag": "en_IN",
+            "value": "Car",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "compatibility_options": [
+          {
+            "language_tag": "en_IN",
+            "value": "Alto, Eon, Zen",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "product_site_launch_date": [
+          {
+            "value": "2022-12-30T10:35:01.054Z",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "item_package_dimensions": [
+          {
+            "length": {
+              "unit": "centimeters",
+              "value": 8.3
+            },
+            "width": {
+              "unit": "centimeters",
+              "value": 25.7
+            },
+            "height": {
+              "unit": "centimeters",
+              "value": 30.7
+            },
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "material": [
+          {
+            "language_tag": "en_IN",
+            "value": "Carbon Steel",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "unit_count": [
+          {
+            "type": {
+              "language_tag": "en_IN",
+              "value": "count"
+            },
+            "value": 1.0,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ]
+      },
+      "dimensions": [
+        {
+          "marketplaceId": "A21TJRUUN4KGV",
+          "item": {
+            "weight": {
+              "unit": "pounds",
+              "value": 11.0231131
+            }
+          },
+          "package": {
+            "height": {
+              "unit": "inches",
+              "value": 3.2677165321
+            },
+            "length": {
+              "unit": "inches",
+              "value": 12.0866141609
+            },
+            "weight": {
+              "unit": "pounds",
+              "value": 7.1429772888
+            },
+            "width": {
+              "unit": "inches",
+              "value": 10.1181102259
+            }
+          }
+        }
+      ],
+      "summaries": [
+        {
+          "marketplaceId": "A21TJRUUN4KGV",
+          "adultProduct": false,
+          "autographed": false,
+          "brand": "bkr",
+          "browseClassification": {
+            "displayName": "Snow Chains",
+            "classificationId": "5257888031"
+          },
+          "itemClassification": "BASE_PRODUCT",
+          "itemName": "BKR Snow Chain 1 pair (2pc in each pair) Carbon Steel 12mm for Alto800, K10, Eon, also for 12\" to 13\" Tyres- FREE 2 bungee ropes with 1pair of gloves for extra grip! CA0075/KN20",
+          "memorabilia": false,
+          "tradeInEligible": false,
+          "websiteDisplayGroup": "automotive_display_on_website",
+          "websiteDisplayGroupName": "Automotive Parts and Accessories"
+        }
+      ]
+    },
+    {
+      "asin": "B084Z6K3B4",
+      "attributes": {
+        "maximum_lifting_height": [
+          {
+            "unit": "centimeters",
+            "decimal_value": 38.0,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "skip_offer": [
+          {
+            "value": false,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "load_capacity": [
+          {
+            "unit": "Tons",
+            "value": "2",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "item_weight": [
+          {
+            "unit": "kilograms",
+            "value": 10.0,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "bullet_point": [
+          {
+            "language_tag": "en_IN",
+            "value": "High Stability and Safety: Electric Jack has a heavy-duty steel construction, large base and saddle make this car jack strong and stable. Due to the safety compact design, jack will automatically stop working when it reaches the height limitation. Size Of The Product - Electric Jack - 38Cm X 15Cm , Electric Wrench - 26Cm X 14Cm",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "Two-way Power Supply: Scissor Lift Jack can be connected to either a 12 V outlet or car battery, two connector choices make it a necessary car tool kit when run into roadside emergencies",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "High Efficiency: Floor Jack takes as short as 2 min to reach maximum height (30 to 37cm) with loading capacity as high as 3T and easily lift your vehicle off the ground. The wrench works effectively with about 5 seconds to remove the nut. Perfect match for car repair and emergency use.",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "Designed for Suv, Sedan: Car Repair Tool has two removable raised heads are respectively designed for Sedan and SUV, with two non-slip silicone sleeves, which can prevent sliding between vehicle and jack during the lifting process, to ensure safer operation. Vehicles under 2 ton can be easily lifted, but DO NOT use it on the trucks and those beyond 2 ton.",
+            "marketplace_id": "A21TJRUUN4KGV"
+          },
+          {
+            "language_tag": "en_IN",
+            "value": "The box includes: Electric car jack x 1, Battery clip x 1, Cigarette lighter power line x 1, Fuse x 3 (15A), Hand crank x 1, Electric car wrench x 1, Double sockets (17/19mm, 21/23mm) and 6months manufacturing defect warranty.",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "item_dimensions": [
+          {
+            "width": {
+              "unit": "centimeters",
+              "value": 35.0
+            },
+            "length": {
+              "unit": "centimeters",
+              "value": 35.0
+            },
+            "height": {
+              "unit": "centimeters",
+              "value": 15.0
+            },
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "minimum_height": [
+          {
+            "unit": "centimeters",
+            "value": 15.0,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "product_description": [
+          {
+            "language_tag": "en_IN",
+            "value": "<p>BKR 2 in 1 Hydraulic Electric Car Jack 141215 The electronic jack can lift up to 5-ton weight and is with a fashionable and beautiful design, and adopt the advance electric machinery technology. It's a must-have product for your car for effortless tire replacement. </p> <p>INSTRUCTION FOR CAR JACK:</p> <li>When replacing the tyre in an emergent time, turn on the caution light, put the car in a level place (no more than 6 degrees), pull the controller, and use tyre cushion or other anti skit material to keep the tyre to be stable, ensure the vehicle already safety arrestment.</li> <li> The electric car jack is connected to the 12V power supply by the following ways, CIGARETTE LIGHTER CONNECTED: Connect on eside of the cigarette lighter power line with the vehicle cigarette lighter, the other put into the remote control socket of an electric car jack. (ATTENTION: THE RATED CURRENT OF CIGARETTE LIGHTER FUSE NO LESS THAN 12A). Vehicle battery direct connected: When the current of cigarette lighter fuse less than 12A. connect the clip, red clip with the mark \"+\", black with \"-\", the other side connected with remote control handle socket.</li><li>Choose the stable car jack support points, and rotate it to the top round hole.</li><li>Accordingto the instructions provided by the automaker, the top of the jack is aligned to the appropriate position of the vehicle at the bottom. (Usually is placed on the steel beam near the replaced tyre.</li>Press the button \"^\" on the remote control to lifting the vehicle until the tyre leave the ground.</li><li>When the car is well repaired, press the button \"V\" on the remote control decline to the beginning state.</li>",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "brand": [
+          {
+            "language_tag": "en_IN",
+            "value": "bkr",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "unspsc_code": [
+          {
+            "value": "24101600",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "rtip_manufacturer_contact_information": [
+          {
+            "value": "India",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "compatible_with_vehicle_type": [
+          {
+            "language_tag": "en_IN",
+            "value": "Car",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "item_package_dimensions": [
+          {
+            "length": {
+              "unit": "centimeters",
+              "value": 12.8
+            },
+            "width": {
+              "unit": "centimeters",
+              "value": 35.1
+            },
+            "height": {
+              "unit": "centimeters",
+              "value": 44.6
+            },
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "size": [
+          {
+            "language_tag": "en_IN",
+            "value": "2 Ton",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "warranty_description": [
+          {
+            "language_tag": "en_IN",
+            "value": "6months manufacturing warranty",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "style": [
+          {
+            "language_tag": "en_IN",
+            "value": "Electric jack",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "packer_contact_information": [
+          {
+            "language_tag": "en_IN",
+            "value": "India",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "color": [
+          {
+            "language_tag": "en_IN",
+            "value": "Yellow",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "item_type_name": [
+          {
+            "language_tag": "en_IN",
+            "value": "Hydraulic Electric Car Jack Set",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "variation_theme": [
+          {
+            "name": "SIZE_NAME",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "item_package_weight": [
+          {
+            "unit": "kilograms",
+            "value": 9.26,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "manufacturer": [
+          {
+            "language_tag": "en_IN",
+            "value": "BKR",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "recommended_browse_nodes": [
+          {
+            "value": "5258552031",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "supplier_declared_dg_hz_regulation": [
+          {
+            "value": "not_applicable",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "item_name": [
+          {
+            "language_tag": "en_IN",
+            "value": "BKR\u00ae All in One Hydraulic Electric Car Jack Set DC 12V (2 Ton) with 6months Manufacturing Warranty",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "list_price": [
+          {
+            "currency": "INR",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "batteries_required": [
+          {
+            "value": false,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "compatibility_options": [
+          {
+            "language_tag": "en_IN",
+            "value": "Original",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "material": [
+          {
+            "language_tag": "en_IN",
+            "value": "Iron",
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "is_assembly_required": [
+          {
+            "value": true,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ],
+        "unit_count": [
+          {
+            "type": {
+              "language_tag": "en_IN",
+              "value": "Count"
+            },
+            "value": 6.0,
+            "marketplace_id": "A21TJRUUN4KGV"
+          }
+        ]
+      },
+      "dimensions": [
+        {
+          "marketplaceId": "A21TJRUUN4KGV",
+          "item": {
+            "height": {
+              "unit": "inches",
+              "value": 5.905511805
+            },
+            "length": {
+              "unit": "inches",
+              "value": 13.779527545
+            },
+            "weight": {
+              "unit": "pounds",
+              "value": 22.0462262
+            },
+            "width": {
+              "unit": "inches",
+              "value": 13.779527545
+            }
+          },
+          "package": {
+            "height": {
+              "unit": "inches",
+              "value": 5.0393700736
+            },
+            "length": {
+              "unit": "inches",
+              "value": 17.5590551002
+            },
+            "weight": {
+              "unit": "pounds",
+              "value": 20.4148054612
+            },
+            "width": {
+              "unit": "inches",
+              "value": 13.8188976237
+            }
+          }
+        }
+      ],
+      "summaries": [
+        {
+          "marketplaceId": "A21TJRUUN4KGV",
+          "adultProduct": false,
+          "autographed": false,
+          "brand": "bkr",
+          "browseClassification": {
+            "displayName": "Scissor Lift Jacks",
+            "classificationId": "5258552031"
+          },
+          "color": "Yellow",
+          "itemClassification": "BASE_PRODUCT",
+          "itemName": "BKR\u00ae All in One Hydraulic Electric Car Jack Set DC 12V (2 Ton) with 6months Manufacturing Warranty",
+          "manufacturer": "BKR",
+          "memorabilia": false,
+          "size": "2 Ton",
+          "style": "Electric jack",
+          "tradeInEligible": false,
+          "websiteDisplayGroup": "automotive_display_on_website",
+          "websiteDisplayGroupName": "Automotive Parts and Accessories"
+        }
+      ]
+    }
+  ]
+}

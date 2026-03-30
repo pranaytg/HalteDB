@@ -77,6 +77,7 @@ class Order(Base):
     # Shipping address (from SP-API flat file)
     ship_city = Column(String, nullable=True, index=True)
     ship_state = Column(String, nullable=True, index=True)
+    ship_postal_code = Column(String, nullable=True, index=True)
 
     # Prevent duplicate items on the exact same order
     __table_args__ = (
@@ -132,3 +133,53 @@ class EstimatedCogs(Base):
 
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+
+class ProductSpecification(Base):
+    """Product weight and dimensions fetched from SP-API Catalog."""
+    __tablename__ = "product_specifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sku = Column(String, unique=True, index=True, nullable=False)
+    asin = Column(String, nullable=True, index=True)
+    product_name = Column(String, nullable=True)
+    weight_kg = Column(Float, nullable=True)
+    length_cm = Column(Float, nullable=True)
+    width_cm = Column(Float, nullable=True)
+    height_cm = Column(Float, nullable=True)
+    volumetric_weight_kg = Column(Float, nullable=True)      # L*W*H / 5000
+    chargeable_weight_kg = Column(Float, nullable=True)      # max(weight, volumetric)
+    last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ShipmentEstimate(Base):
+    """Shipping rate estimates from multiple carriers for each order."""
+    __tablename__ = "shipment_estimates"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    amazon_order_id = Column(String, index=True, nullable=False)
+    sku = Column(String, nullable=True)
+    origin_pincode = Column(String, nullable=False, default="160012")
+    destination_pincode = Column(String, nullable=True)
+    destination_city = Column(String, nullable=True)
+    destination_state = Column(String, nullable=True)
+    package_weight_kg = Column(Float, nullable=True)
+    volumetric_weight_kg = Column(Float, nullable=True)
+    chargeable_weight_kg = Column(Float, nullable=True)
+    amazon_shipping_cost = Column(Float, nullable=True)
+    delhivery_cost = Column(Float, nullable=True)
+    bluedart_cost = Column(Float, nullable=True)
+    dtdc_cost = Column(Float, nullable=True)
+    xpressbees_cost = Column(Float, nullable=True)
+    ekart_cost = Column(Float, nullable=True)
+    cheapest_provider = Column(String, nullable=True)
+    cheapest_cost = Column(Float, nullable=True)
+    delhivery_etd = Column(String, nullable=True)
+    bluedart_etd = Column(String, nullable=True)
+    dtdc_etd = Column(String, nullable=True)
+    xpressbees_etd = Column(String, nullable=True)
+    ekart_etd = Column(String, nullable=True)
+    estimated_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint('amazon_order_id', 'sku', name='uq_shipment_order_sku'),
+    )

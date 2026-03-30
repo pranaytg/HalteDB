@@ -57,6 +57,7 @@ async def upsert_orders_batch(session: AsyncSession, batch: list[dict]):
         "shipping_price": stmt.excluded.shipping_price,
         "ship_city": stmt.excluded.ship_city,
         "ship_state": stmt.excluded.ship_state,
+        "ship_postal_code": stmt.excluded.ship_postal_code,
     }
 
     upsert_stmt = stmt.on_conflict_do_update(
