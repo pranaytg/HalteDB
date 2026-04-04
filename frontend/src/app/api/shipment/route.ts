@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
         o.ship_postal_code as destination_pincode,
         o.ship_city as destination_city,
         o.ship_state as destination_state,
+        o.fulfillment_channel,
         o.shipping_price as amazon_shipping_cost,
         se.delhivery_cost, se.bluedart_cost, se.dtdc_cost, se.xpressbees_cost, se.ekart_cost,
         se.cheapest_provider, se.cheapest_cost,

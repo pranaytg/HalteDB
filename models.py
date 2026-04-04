@@ -101,6 +101,7 @@ class EstimatedCogs(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     sku = Column(String, unique=True, index=True, nullable=False)
     article_number = Column(String, nullable=True)
+    brand = Column(String, nullable=True)
     category = Column(String, nullable=True)
 
     # Import pricing

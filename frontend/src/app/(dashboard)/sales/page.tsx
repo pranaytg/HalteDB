@@ -36,7 +36,7 @@ const fmtK = (v: number) => v >= 100000 ? `₹${(v/100000).toFixed(1)}L` : v >= 
    Interfaces
    ────────────────────────────────────────────────────────── */
 interface Filters {
-  sku: string; year: string; month: string; startDate: string; endDate: string;
+  sku: string; brand: string; year: string; month: string; startDate: string; endDate: string;
   city: string; state: string; tier: string;
 }
 
@@ -45,7 +45,7 @@ interface Filters {
    ────────────────────────────────────────────────────────── */
 export default function SalesPage() {
   const [filters, setFilters] = useState<Filters>({
-    sku: "", year: "", month: "", startDate: "", endDate: "", city: "", state: "", tier: "",
+    sku: "", brand: "", year: "", month: "", startDate: "", endDate: "", city: "", state: "", tier: "",
   });
   const [summary, setSummary] = useState<any>(null);
   const [geo, setGeo] = useState<any>(null);
@@ -59,6 +59,7 @@ export default function SalesPage() {
   const buildParams = useCallback(() => {
     const p = new URLSearchParams();
     if (filters.sku) p.set("sku", filters.sku);
+    if (filters.brand) p.set("brand", filters.brand);
     if (filters.year) p.set("year", filters.year);
     if (filters.month) p.set("month", filters.month);
     if (filters.startDate) p.set("startDate", filters.startDate);
@@ -150,7 +151,7 @@ export default function SalesPage() {
     setPage(0);
   };
   const resetFilters = () => {
-    setFilters({ sku: "", year: "", month: "", startDate: "", endDate: "", city: "", state: "", tier: "" });
+    setFilters({ sku: "", brand: "", year: "", month: "", startDate: "", endDate: "", city: "", state: "", tier: "" });
     setPage(0);
   };
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
@@ -185,6 +186,10 @@ export default function SalesPage() {
               {(summary?.filters?.skus || []).map((s: string) => <option key={s} value={s} />)}
             </datalist>
           </div>
+          <select className="filter-select" value={filters.brand} onChange={e => { setFilters(f => ({ ...f, brand: e.target.value })); setPage(0); }}>
+            <option value="">All Brands</option>
+            {(summary?.filters?.brands || []).map((b: string) => <option key={b} value={b}>{b}</option>)}
+          </select>
           <select className="filter-select" value={filters.year} onChange={e => { setFilters(f => ({ ...f, year: e.target.value })); setPage(0); }}>
             <option value="">All Years</option>
             {(summary?.filters?.years || []).map((y: number) => <option key={y} value={String(y)}>{y}</option>)}
@@ -199,10 +204,19 @@ export default function SalesPage() {
             <option value="">All States</option>
             {(geo?.filters?.states || []).map((s: string) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <select className="filter-select" value={filters.city} onChange={e => { setFilters(f => ({ ...f, city: e.target.value })); setPage(0); }}>
-            <option value="">All Cities</option>
-            {(geo?.filters?.cities || []).map((c: string) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          <div style={{ position: "relative" }}>
+            <input
+              className="filter-input"
+              list="city-list"
+              placeholder="🏙️ Search City..."
+              value={filters.city}
+              onChange={e => { setFilters(f => ({ ...f, city: e.target.value })); setPage(0); }}
+              style={{ width: 160, fontSize: 12 }}
+            />
+            <datalist id="city-list">
+              {(geo?.filters?.cities || []).map((c: string) => <option key={c} value={c} />)}
+            </datalist>
+          </div>
           <input className="filter-input" type="month" value={filters.month} onChange={e => { setFilters(f => ({ ...f, month: e.target.value })); setPage(0); }} style={{ width: 140 }} />
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>From</span>
@@ -221,6 +235,7 @@ export default function SalesPage() {
         {activeFilterCount > 0 && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
             {filters.sku && <span className="badge badge-accent" onClick={() => setFilter("sku", filters.sku)} style={{ cursor: "pointer" }}>SKU: {filters.sku} ✕</span>}
+            {filters.brand && <span className="badge badge-accent" onClick={() => setFilter("brand", filters.brand)} style={{ cursor: "pointer" }}>Brand: {filters.brand} ✕</span>}
             {filters.year && <span className="badge badge-accent" onClick={() => setFilter("year", filters.year)} style={{ cursor: "pointer" }}>Year: {filters.year} ✕</span>}
             {filters.tier && <span className="badge badge-accent" onClick={() => setFilter("tier", filters.tier)} style={{ cursor: "pointer" }}>Tier: {filters.tier} ✕</span>}
             {filters.state && <span className="badge badge-accent" onClick={() => setFilter("state", filters.state)} style={{ cursor: "pointer" }}>State: {filters.state} ✕</span>}

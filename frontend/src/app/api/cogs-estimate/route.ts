@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
 
     const query = `
       INSERT INTO estimated_cogs (
-        sku, article_number, category,
+        sku, article_number, brand, category,
         import_price, import_currency, custom_duty, conversion_rate,
         import_price_inr, gst_percent, gst_amount, shipping_cost, final_price,
         margin1_percent, margin1_amount, cost_price_halte,
@@ -78,15 +78,15 @@ export async function POST(req: NextRequest) {
         msp_with_gst, halte_selling_price, amazon_selling_price, profitability,
         last_updated
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,NOW()
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW()
       )
       ON CONFLICT (sku) DO UPDATE SET
-        article_number=$2, category=$3,
-        import_price=$4, import_currency=$5, custom_duty=$6, conversion_rate=$7,
-        import_price_inr=$8, gst_percent=$9, gst_amount=$10, shipping_cost=$11, final_price=$12,
-        margin1_percent=$13, margin1_amount=$14, cost_price_halte=$15,
-        marketing_cost=$16, margin2_percent=$17, margin2_amount=$18, selling_price=$19,
-        msp_with_gst=$20, halte_selling_price=$21, amazon_selling_price=$22, profitability=$23,
+        article_number=$2, brand=$3, category=$4,
+        import_price=$5, import_currency=$6, custom_duty=$7, conversion_rate=$8,
+        import_price_inr=$9, gst_percent=$10, gst_amount=$11, shipping_cost=$12, final_price=$13,
+        margin1_percent=$14, margin1_amount=$15, cost_price_halte=$16,
+        marketing_cost=$17, margin2_percent=$18, margin2_amount=$19, selling_price=$20,
+        msp_with_gst=$21, halte_selling_price=$22, amazon_selling_price=$23, profitability=$24,
         last_updated=NOW()
       RETURNING *
     `;
@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
     const params = [
       sku,
       body.article_number || null,
+      body.brand || null,
       body.category || null,
       Number(body.import_price) || 0,
       body.import_currency || "USD",

@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback } from "react";
 
 const navItems = [
   { href: "/sales", label: "Sales", icon: "📊" },
+  { href: "/customers", label: "Customers", icon: "👥" },
   { href: "/inventory", label: "Inventory", icon: "📦" },
   { href: "/cogs", label: "COGS", icon: "💰" },
   { href: "/cogs-estimate", label: "COGS Estimate", icon: "🧮" },

@@ -8,6 +8,7 @@ interface EstItem {
   id: number;
   sku: string;
   article_number: string | null;
+  brand: string | null;
   category: string | null;
   import_price: number;
   import_currency: string;
@@ -34,6 +35,7 @@ interface EstItem {
 
 const EDITABLE_FIELDS = [
   { key: "article_number", label: "Article #", type: "text" },
+  { key: "brand", label: "Brand", type: "text" },
   { key: "category", label: "Category", type: "text" },
   { key: "import_price", label: "Import Price", type: "number" },
   { key: "import_currency", label: "Currency", type: "select", options: ["USD", "EUR", "GBP", "CNY"] },
@@ -56,10 +58,14 @@ export default function CogsEstimatePage() {
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
+  // Security
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+
   // Add form
   const [showAdd, setShowAdd] = useState(false);
   const [addForm, setAddForm] = useState<Record<string, any>>({
-    sku: "", article_number: "", category: "", import_price: 0, import_currency: "USD",
+    sku: "", article_number: "", brand: "", category: "", import_price: 0, import_currency: "USD",
     custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0,
     margin1_percent: 0, marketing_cost: 0, margin2_percent: 0,
   });
@@ -90,7 +96,11 @@ export default function CogsEstimatePage() {
     }
   }, []);
 
-  useEffect(() => { fetchItems(); }, [fetchItems]);
+  useEffect(() => { 
+    if (isAuthorized) {
+      fetchItems(); 
+    }
+  }, [fetchItems, isAuthorized]);
 
   /* ── Add ── */
   const handleAdd = async (e: React.FormEvent) => {
@@ -106,7 +116,7 @@ export default function CogsEstimatePage() {
       if (!res.ok) { const d = await res.json(); showToast(d.error || "Failed", "error"); return; }
       showToast(`Added ${addForm.sku}`, "success");
       setShowAdd(false);
-      setAddForm({ sku: "", article_number: "", category: "", import_price: 0, import_currency: "USD", custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0, margin1_percent: 0, marketing_cost: 0, margin2_percent: 0 });
+      setAddForm({ sku: "", article_number: "", brand: "", category: "", import_price: 0, import_currency: "USD", custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0, margin1_percent: 0, marketing_cost: 0, margin2_percent: 0 });
       await fetchItems();
     } catch { showToast("Network error", "error"); }
     finally { setSaving(false); }
@@ -186,8 +196,40 @@ export default function CogsEstimatePage() {
   const filtered = items.filter(i =>
     i.sku.toLowerCase().includes(search.toLowerCase()) ||
     (i.article_number || "").toLowerCase().includes(search.toLowerCase()) ||
+    (i.brand || "").toLowerCase().includes(search.toLowerCase()) ||
     (i.category || "").toLowerCase().includes(search.toLowerCase())
   );
+
+  if (!isAuthorized) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div className="card" style={{ padding: 40, textAlign: 'center', maxWidth: 400, width: '100%' }}>
+          <h2 style={{ marginBottom: 20 }}>Security Check</h2>
+          <p style={{ marginBottom: 20, color: 'var(--text-muted)' }}>This page requires a password.</p>
+          <form onSubmit={e => {
+            e.preventDefault();
+            if (passwordInput === "OnlyForRamanSir") {
+              setIsAuthorized(true);
+            } else {
+              showToast("Incorrect password", "error");
+            }
+          }}>
+            <input 
+              type="password" 
+              className="filter-input" 
+              style={{ width: '100%', marginBottom: 16 }}
+              value={passwordInput}
+              onChange={e => setPasswordInput(e.target.value)}
+              placeholder="Enter password..."
+              autoFocus
+            />
+            <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Unlock Dashboard</button>
+          </form>
+        </div>
+        {toast && (<div className={`toast toast-${toast.type}`}>{toast.msg}</div>)}
+      </div>
+    );
+  }
 
   if (loading) {
     return (<div className="loading-spinner"><div className="spinner" />Loading COGS estimates...</div>);
@@ -301,7 +343,7 @@ export default function CogsEstimatePage() {
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div className="card-title">Estimated COGS ({filtered.length})</div>
           </div>
-          <input className="filter-input search-input" type="text" placeholder="Search SKU / Article / Category..."
+          <input className="filter-input search-input" type="text" placeholder="Search SKU / Article / Brand / Category..."
             value={search} onChange={e => setSearch(e.target.value)} />
         </div>
         <div className="table-container" style={{ maxHeight: 600, overflowY: "auto", overflowX: "auto" }}>
@@ -310,6 +352,7 @@ export default function CogsEstimatePage() {
               <tr>
                 <th style={{ position: "sticky", left: 0, background: "var(--bg-card)", zIndex: 2 }}>SKU</th>
                 <th>Article #</th>
+                <th>Brand</th>
                 <th>Category</th>
                 <th>Import Price</th>
                 <th>Currency</th>
@@ -344,6 +387,7 @@ export default function CogsEstimatePage() {
                       {item.sku}
                     </td>
                     <td>{isEditing ? <input className="filter-input" style={{ width: 80 }} value={editForm.article_number || ""} onChange={e => setEditForm(f => ({ ...f, article_number: e.target.value }))} /> : row.article_number || "—"}</td>
+                    <td>{isEditing ? <input className="filter-input" style={{ width: 80 }} value={editForm.brand || ""} onChange={e => setEditForm(f => ({ ...f, brand: e.target.value }))} /> : row.brand || "—"}</td>
                     <td>{isEditing ? <input className="filter-input" style={{ width: 80 }} value={editForm.category || ""} onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))} /> : row.category || "—"}</td>
                     <td>{isEditing ? <input className="filter-input" type="number" step="0.01" style={{ width: 80 }} value={editForm.import_price} onChange={e => setEditForm(f => ({ ...f, import_price: e.target.value }))} /> : row.import_price?.toFixed(2)}</td>
                     <td>{isEditing ? (

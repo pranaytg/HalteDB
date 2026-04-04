@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
     const city = searchParams.get("city");
     const state = searchParams.get("state");
     const tier = searchParams.get("tier");
+    const brand = searchParams.get("brand");
 
     const conditions: string[] = [];
     const params: (string | number)[] = [];
@@ -48,6 +49,10 @@ export async function GET(req: NextRequest) {
       conditions.push(`LOWER(o.ship_state) = LOWER($${paramIdx++})`);
       params.push(state);
     }
+    if (brand) {
+      conditions.push(`ec.brand = $${paramIdx++}`);
+      params.push(brand);
+    }
 
     /* ── Tier filter: resolve tier → city list ── */
     if (tier) {
@@ -72,18 +77,19 @@ export async function GET(req: NextRequest) {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const fromClause = `FROM orders o LEFT JOIN estimated_cogs ec ON o.sku = ec.sku`;
 
     let query = `
       SELECT o.id, o.amazon_order_id, o.purchase_date, o.order_status,
              o.fulfillment_channel, o.sales_channel, o.sku, o.asin,
              o.quantity, o.currency, o.item_price, o.item_tax,
              o.cogs_price, o.profit, o.ship_city, o.ship_state
-      FROM orders o
+      ${fromClause}
       ${where}
     `;
 
     // Get total count
-    const countQuery = `SELECT COUNT(*) as total FROM orders o ${where}`;
+    const countQuery = `SELECT COUNT(*) as total ${fromClause} ${where}`;
     const countResult = await pool.query(countQuery, params);
     const total = parseInt(countResult.rows[0].total);
 
@@ -95,13 +101,13 @@ export async function GET(req: NextRequest) {
     // Summary metrics (using same filters)
     const summaryParams = params.slice(0, params.length - 2); // exclude limit/offset
     const summaryQuery = `
-      SELECT 
+      SELECT
         COUNT(*) as total_orders,
-        COALESCE(SUM(item_price), 0) as total_revenue,
-        COALESCE(SUM(profit), 0) as total_profit,
-        COALESCE(SUM(quantity), 0) as total_units,
-        COALESCE(AVG(profit), 0) as avg_profit_per_order
-      FROM orders o
+        COALESCE(SUM(o.item_price), 0) as total_revenue,
+        COALESCE(SUM(o.profit), 0) as total_profit,
+        COALESCE(SUM(o.quantity), 0) as total_units,
+        COALESCE(AVG(o.profit), 0) as avg_profit_per_order
+      ${fromClause}
       ${where}
     `;
     const summaryResult = await pool.query(summaryQuery, summaryParams);

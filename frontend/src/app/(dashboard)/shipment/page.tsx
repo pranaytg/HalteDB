@@ -17,6 +17,7 @@ interface ShipmentEstimate {
   destination_pincode: string;
   destination_city: string;
   destination_state: string;
+  fulfillment_channel: string | null;
   actual_weight_kg: number | null;
   volumetric_weight_kg: number | null;
   chargeable_weight_kg: number | null;
@@ -119,7 +120,7 @@ export default function ShipmentPage() {
     setTimeout(() => setToast(null), 5000);
   };
 
-  const sorted = [...estimates].sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+  const sorted = [...estimates].sort((a: any, b: any) => {
     const aVal = a[sortField];
     const bVal = b[sortField];
     // Handle date strings
@@ -293,6 +294,7 @@ export default function ShipmentPage() {
                   <SortTh field="xpressbees_cost" label="XpressBees" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#f5a623" />
                   <SortTh field="ekart_cost" label="Ekart" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#2874f0" />
                   <SortTh field="cheapest_cost" label="Best" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#22c55e" />
+                  <th style={th}>Actual Cost</th>
                 </tr>
               </thead>
               <tbody>
@@ -417,11 +419,15 @@ export default function ShipmentPage() {
                       </td>
 
                       {/* Amazon cost */}
-                      <CostCell cost={e.amazon_shipping_cost} isMin={false} etd="" />
+                      {e.fulfillment_channel && !e.fulfillment_channel.toLowerCase().includes('amazon') && !e.fulfillment_channel.toLowerCase().includes('afn') ? (
+                        <td style={{ ...td, textAlign: "center", color: "var(--text-muted)", fontWeight: 800 }}>---</td>
+                      ) : (
+                        <CostCell cost={e.amazon_shipping_cost} isMin={false} etd="" />
+                      )}
 
                       {/* Carrier costs or Calculate button */}
                       {!hasEstimates ? (
-                        <td colSpan={6} style={{ textAlign: "center", padding: "8px" }}>
+                        <td colSpan={7} style={{ textAlign: "center", padding: "8px" }}>
                           <button
                             className="btn btn-primary btn-sm"
                             style={{ padding: "4px 12px", fontSize: 11 }}
@@ -463,6 +469,14 @@ export default function ShipmentPage() {
                             }}>
                               {e.cheapest_provider}
                               <div style={{ fontSize: 11, fontWeight: 600 }}>{fmt(e.cheapest_cost)}</div>
+                            </div>
+                          </td>
+                          <td style={{ ...td, textAlign: "center" }}>
+                            <div style={{
+                              background: "rgba(100, 116, 139, 0.1)", color: "var(--text-muted)",
+                              borderRadius: 6, padding: "4px 8px", fontSize: 11, fontStyle: "italic",
+                            }}>
+                              Pending bill
                             </div>
                           </td>
                         </>
