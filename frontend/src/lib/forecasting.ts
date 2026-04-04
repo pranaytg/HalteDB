@@ -350,7 +350,6 @@ function calcVelocity(
   today: Date
 ): number {
   let totalQty = 0;
-  let daysWithData = 0;
 
   for (let d = 0; d < windowDays; d++) {
     const date = new Date(today);
@@ -359,7 +358,6 @@ function calcVelocity(
     const qty = dailySales.get(key);
     if (qty !== undefined) {
       totalQty += qty;
-      daysWithData++;
     }
   }
 

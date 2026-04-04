@@ -90,10 +90,11 @@ export async function GET() {
     }
 
     // Attach article number to recommendations
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     result.skuRecommendations = result.skuRecommendations.map((rec: any) => ({
       ...rec,
       article_number: articleMap.get(rec.sku) || null,
-    }));
+    })) as typeof result.skuRecommendations;
 
     return NextResponse.json(result);
   } catch (error) {
