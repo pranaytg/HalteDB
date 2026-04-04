@@ -7,6 +7,7 @@ import { useEffect, useState, useCallback } from "react";
 const navItems = [
   { href: "/sales", label: "Sales", icon: "📊" },
   { href: "/inventory", label: "Inventory", icon: "📦" },
+  { href: "/replenishment", label: "Replenishment", icon: "🚚" },
   { href: "/cogs", label: "COGS", icon: "💰" },
   { href: "/cogs-estimate", label: "COGS Estimate", icon: "🧮" },
   { href: "/shipment", label: "Shipments", icon: "🚚" },
