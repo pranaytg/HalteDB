@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, useCallback } from "react";
 
 interface ProductSpec {
@@ -128,7 +129,7 @@ export default function ProductSpecsPage() {
         const err = await res.json();
         setToast(`Error: ${err.error || "Failed to update"}`);
       }
-    } catch (e) {
+    } catch {
       setToast("Network error trying to save");
     } finally {
       setSaving(false);

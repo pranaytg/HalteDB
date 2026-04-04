@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 declare module "react-simple-maps" {
   import { ComponentType, CSSProperties, ReactNode } from "react";
 

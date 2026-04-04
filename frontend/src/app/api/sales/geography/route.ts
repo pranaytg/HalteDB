@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
       }
 
       // Build parameterized IN clause
-      const placeholders = tierCities.map((_: string) => `$${idx++}`).join(",");
+      const placeholders = tierCities.map(() => `$${idx++}`).join(",");
       where += ` AND ship_city IN (${placeholders})`;
       params.push(...tierCities);
     }

@@ -6,14 +6,15 @@ import {
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
   AreaChart, Area, Legend
 } from "recharts";
-import { ComposableMap, Geographies, Geography, Marker } from "react-simple-maps";
+import dynamic from "next/dynamic";
+
+const IndiaMapChart = dynamic(() => import("./IndiaMapChart"), { ssr: false });
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 /* ──────────────────────────────────────────────────────────
    Constants
    ────────────────────────────────────────────────────────── */
-const INDIA_TOPO = "https://cdn.jsdelivr.net/npm/india-topojson@1.0.0/india.json";
 const COLORS = ["#6366f1","#8b5cf6","#06b6d4","#10b981","#f59e0b","#ef4444","#ec4899","#14b8a6","#a855f7","#f97316","#22d3ee","#84cc16"];
 const TIER_COLORS: Record<string, string> = { "Tier 1": "#6366f1", "Tier 2": "#f59e0b", "Tier 3": "#10b981" };
 
@@ -137,9 +138,6 @@ export default function SalesPage() {
     const rev = stateRevenueMap[geoName?.toLowerCase()] || stateRevenueMap[geoName?.toLowerCase()?.replace(/ and /g, " & ")] || 0;
     if (rev === 0) return "#0f172a";
     const intensity = Math.min(1, rev / maxMapRevenue);
-    const r = Math.round(99 + intensity * 0);
-    const g = Math.round(102 + intensity * (-102 + 91));
-    const b = Math.round(241 - intensity * 0);
     // Blend from dark (#1e293b) to accent (#6366f1)
     const alpha = 0.15 + intensity * 0.75;
     return `rgba(99, 102, 241, ${alpha.toFixed(2)})`;
@@ -458,60 +456,14 @@ export default function SalesPage() {
               <div className="card-subtitle">State color = revenue intensity · Bubbles = volume · Click to filter</div>
             </div>
             <div style={{ width: "100%", maxWidth: 800, margin: "0 auto" }}>
-              <ComposableMap
-                projection="geoMercator"
-                projectionConfig={{ scale: 1000, center: [82, 22] }}
-                style={{ width: "100%", height: "auto" }}
-              >
-                <Geographies geography={INDIA_TOPO}>
-                  {({ geographies }: any) =>
-                    geographies.map((g: any) => {
-                      const geoName = g.properties?.name || g.properties?.NAME_1 || g.properties?.ST_NM || "";
-                      const isSelected = filters.state && geoName.toLowerCase() === filters.state.toLowerCase();
-                      return (
-                        <Geography key={g.rsmKey} geography={g}
-                          onClick={() => setFilter("state", geoName)}
-                          style={{
-                            default: {
-                              fill: isSelected ? "#6366f1" : getStateFill(geoName),
-                              stroke: isSelected ? "#a5b4fc" : "#475569",
-                              strokeWidth: isSelected ? 1.5 : 0.5,
-                              outline: "none",
-                              cursor: "pointer",
-                            },
-                            hover: {
-                              fill: isSelected ? "#818cf8" : "rgba(99, 102, 241, 0.5)",
-                              stroke: "#a5b4fc",
-                              strokeWidth: 1.2,
-                              outline: "none",
-                              cursor: "pointer",
-                            },
-                            pressed: { fill: "#6366f1", outline: "none" },
-                          }}
-                        />
-                      );
-                    })
-                  }
-                </Geographies>
-                {mapMarkers.map((m: any) => (
-                  <Marker key={m.name} coordinates={m.coords}>
-                    <circle
-                      r={Math.max(4, Math.sqrt(m.revenue / maxMapRevenue) * 25)}
-                      fill="rgba(255,255,255,0.15)" stroke="#a5b4fc" strokeWidth={1}
-                      style={{ cursor: "pointer" }}
-                      onClick={() => setFilter("state", m.name)}
-                    />
-                    <text textAnchor="middle" y={3}
-                      style={{ fontSize: 7, fill: "#e2e8f0", fontWeight: 700, pointerEvents: "none" }}>
-                      {fmtK(m.revenue)}
-                    </text>
-                    {m.revenue / maxMapRevenue > 0.08 && (
-                      <text textAnchor="middle" y={-Math.max(6, Math.sqrt(m.revenue / maxMapRevenue) * 25) - 4}
-                        style={{ fontSize: 9, fill: "#cbd5e1", fontWeight: 600, pointerEvents: "none" }}>{m.name}</text>
-                    )}
-                  </Marker>
-                ))}
-              </ComposableMap>
+              <IndiaMapChart
+                selectedState={filters.state}
+                onStateClick={(name) => setFilter("state", name)}
+                mapMarkers={mapMarkers}
+                maxMapRevenue={maxMapRevenue}
+                getStateFill={getStateFill}
+                fmtK={fmtK}
+              />
               {/* Map Legend */}
               <div style={{ display: "flex", justifyContent: "center", gap: 16, padding: "8px 0", fontSize: 11, color: "var(--text-muted)" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 4 }}>

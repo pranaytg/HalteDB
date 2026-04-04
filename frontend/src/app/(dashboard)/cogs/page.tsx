@@ -38,6 +38,7 @@ export default function CogsPage() {
 
   useEffect(() => {
     fetchCogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const showToast = (msg: string, type: "success" | "error") => {

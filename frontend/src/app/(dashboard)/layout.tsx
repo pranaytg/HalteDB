@@ -12,6 +12,7 @@ const navItems = [
   { href: "/cogs-estimate", label: "COGS Estimate", icon: "🧮" },
   { href: "/shipment", label: "Shipments", icon: "🚚" },
   { href: "/product-specs", label: "Product Specs", icon: "📐" },
+  { href: "/reports", label: "Reports", icon: "📥" },
 ];
 
 export default function DashboardLayout({

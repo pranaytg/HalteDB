@@ -67,6 +67,7 @@ export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     Promise.all([
       fetch("/api/inventory").then((r) => r.json()),

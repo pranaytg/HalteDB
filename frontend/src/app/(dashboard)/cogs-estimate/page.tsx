@@ -435,7 +435,7 @@ export default function CogsEstimatePage() {
               })}
               {filtered.length === 0 && (
                 <tr><td colSpan={24} style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
-                  No COGS estimates yet. Click "Add SKU" to get started.
+                  No COGS estimates yet. Click &quot;Add SKU&quot; to get started.
                 </td></tr>
               )}
             </tbody>

@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
         });
       }
 
-      const placeholders = tierCities.map((_: string) => `$${idx++}`).join(",");
+      const placeholders = tierCities.map(() => `$${idx++}`).join(",");
       conditions.push(`orders.ship_city IN (${placeholders})`);
       params.push(...tierCities);
     }
