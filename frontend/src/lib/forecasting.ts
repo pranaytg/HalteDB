@@ -279,6 +279,7 @@ export interface ReplenishmentConfig {
 }
 
 export type UrgencyLevel = "CRITICAL" | "URGENT" | "LOW" | "HEALTHY" | "OVERSTOCK";
+export type VelocityWindow = "7d" | "14d" | "weighted" | "30d" | "90d";
 export type TrendDirection = "accelerating" | "stable" | "declining";
 
 export interface SkuVelocity {
@@ -406,7 +407,8 @@ export function calculateReplenishment(
     lead_time_days: 15,
     coverage_days: 60,
     safety_factor: 1.25,
-  }
+  },
+  window: VelocityWindow = "weighted"
 ): ReplenishmentResult {
   const today = new Date();
 
@@ -473,16 +475,23 @@ export function calculateReplenishment(
     // Weights: 7d=3, 14d=2, 30d=1.5, 90d=1 → total weight = 7.5
     const weightedVelocity = (v7d * 3 + v14d * 2 + v30d * 1.5 + v90d * 1) / 7.5;
 
+    // Select effective velocity based on window parameter
+    const effectiveVelocity = window === "7d" ? v7d
+      : window === "14d" ? v14d
+      : window === "30d" ? v30d
+      : window === "90d" ? v90d
+      : weightedVelocity;
+
     const trend = detectTrend(v7d, v30d, v90d);
 
     // Demand projections
-    const leadTimeDemand = Math.ceil(weightedVelocity * config.lead_time_days * config.safety_factor);
-    const targetStock = Math.ceil(weightedVelocity * config.coverage_days * config.safety_factor);
+    const leadTimeDemand = Math.ceil(effectiveVelocity * config.lead_time_days * config.safety_factor);
+    const targetStock = Math.ceil(effectiveVelocity * config.coverage_days * config.safety_factor);
 
     // Coverage calculation
     const availableStock = stock.fulfillable + stock.inTransit;
-    const daysCoverage = weightedVelocity > 0
-      ? Math.round((availableStock / weightedVelocity) * 10) / 10
+    const daysCoverage = effectiveVelocity > 0
+      ? Math.round((availableStock / effectiveVelocity) * 10) / 10
       : availableStock > 0 ? 999 : 0;
 
     // Reorder quantity
@@ -540,7 +549,7 @@ export function calculateReplenishment(
     skuRecommendations.push({
       sku,
       asin: stock.asin,
-      weighted_velocity: Math.round(weightedVelocity * 100) / 100,
+      weighted_velocity: Math.round(effectiveVelocity * 100) / 100,
       velocity_7d: Math.round(v7d * 100) / 100,
       velocity_14d: Math.round(v14d * 100) / 100,
       velocity_30d: Math.round(v30d * 100) / 100,

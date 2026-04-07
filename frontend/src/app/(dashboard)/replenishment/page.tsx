@@ -83,6 +83,24 @@ const TREND_ICONS: Record<string, string> = {
   declining: "📉",
 };
 
+type VelocityWindow = "7d" | "14d" | "weighted" | "30d" | "90d";
+
+const WINDOW_OPTIONS: { value: VelocityWindow; label: string }[] = [
+  { value: "7d", label: "7d" },
+  { value: "14d", label: "14d" },
+  { value: "weighted", label: "Weighted" },
+  { value: "30d", label: "30d" },
+  { value: "90d", label: "90d" },
+];
+
+const WINDOW_DESCRIPTIONS: Record<VelocityWindow, string> = {
+  "7d": "Most reactive — best for new SKUs or active campaigns",
+  "14d": "Balances recency with short-term stability",
+  "weighted": "Default — blends all windows, best for most SKUs",
+  "30d": "Reliable for stable products, lags on sudden changes",
+  "90d": "Conservative long-term baseline, misses recent trends",
+};
+
 const WH_COLORS = ["#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#14b8a6"];
 
 // ── Main Component ─────────────────────────────────────
@@ -103,12 +121,13 @@ export default function ReplenishmentPage() {
   const [expandedSku, setExpandedSku] = useState<string | null>(null);
   const [sortField, setSortField] = useState<string>("urgency");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [velocityWindow, setVelocityWindow] = useState<VelocityWindow>("weighted");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/inventory/replenishment");
+      const res = await fetch(`/api/inventory/replenishment?window=${velocityWindow}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setConfig(data.config);
@@ -121,7 +140,7 @@ export default function ReplenishmentPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [velocityWindow]);
 
   useEffect(() => {
     fetchData();
@@ -291,18 +310,53 @@ export default function ReplenishmentPage() {
             Lead-time-aware demand projection · {config?.lead_time_days}d lead time · {config?.coverage_days}d target coverage · {Math.round(((config?.safety_factor || 1.25) - 1) * 100)}% safety buffer
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {generatedAt && (
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              Updated: {new Date(generatedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-          <button className="btn btn-primary" onClick={fetchData} style={{ fontSize: 13 }}>
-            🔄 Refresh
-          </button>
-          <button className="btn" onClick={exportCSV} style={{ fontSize: 13, background: "rgba(99,102,241,0.15)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.3)" }}>
-            📥 Export CSV
-          </button>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{
+              display: "inline-flex",
+              background: "rgba(255,255,255,0.04)",
+              borderRadius: 10,
+              padding: 3,
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}>
+              {WINDOW_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setVelocityWindow(opt.value)}
+                  style={{
+                    padding: "6px 14px",
+                    fontSize: 12,
+                    fontWeight: velocityWindow === opt.value ? 600 : 400,
+                    color: velocityWindow === opt.value ? "#fff" : "var(--text-muted)",
+                    background: velocityWindow === opt.value
+                      ? "linear-gradient(135deg, #6366f1, #8b5cf6)"
+                      : "transparent",
+                    border: "none",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {generatedAt && (
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                Updated: {new Date(generatedAt).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+            <button className="btn btn-primary" onClick={fetchData} style={{ fontSize: 13 }}>
+              🔄 Refresh
+            </button>
+            <button className="btn" onClick={exportCSV} style={{ fontSize: 13, background: "rgba(99,102,241,0.15)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.3)" }}>
+              📥 Export CSV
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic", textAlign: "right" }}>
+            {WINDOW_DESCRIPTIONS[velocityWindow]}
+          </div>
         </div>
       </div>
 
@@ -497,14 +551,33 @@ export default function ReplenishmentPage() {
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <input
-                className="filter-input search-input"
-                type="text"
-                placeholder="Search SKU or ASIN..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ minWidth: 180 }}
-              />
+              <div style={{ position: "relative", width: 260 }}>
+                <svg
+                  style={{
+                    position: "absolute",
+                    left: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    width: 16,
+                    height: 16,
+                    color: "var(--text-muted)",
+                    pointerEvents: "none",
+                  }}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  className="filter-input search-input"
+                  type="text"
+                  placeholder="Search SKU or ASIN..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{ width: "100%", paddingLeft: 34 }}
+                />
+              </div>
               <select
                 className="filter-input"
                 value={urgencyFilter}
@@ -663,6 +736,14 @@ export default function ReplenishmentPage() {
                     )}
                   </>
                 ))}
+                {filteredSkus.length === 0 && (
+                  <tr>
+                    <td colSpan={11} style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>🔍</div>
+                      <div style={{ fontSize: 14, fontWeight: 500 }}>No SKUs match your search</div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -730,14 +811,33 @@ export default function ReplenishmentPage() {
                 <div className="card-title">Warehouse × SKU Reorder Matrix</div>
                 <div className="card-subtitle">Units to send to each warehouse · Only showing SKUs that need reorder</div>
               </div>
-              <input
-                className="filter-input search-input"
-                type="text"
-                placeholder="Search SKU..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ minWidth: 180 }}
-              />
+              <div style={{ position: "relative", width: 260 }}>
+                <svg
+                  style={{
+                    position: "absolute",
+                    left: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    width: 16,
+                    height: 16,
+                    color: "var(--text-muted)",
+                    pointerEvents: "none",
+                  }}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  className="filter-input search-input"
+                  type="text"
+                  placeholder="Search SKU..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{ width: "100%", paddingLeft: 34 }}
+                />
+              </div>
             </div>
             <div className="table-container" style={{ maxHeight: 600, overflowY: "auto", overflowX: "auto" }}>
               <table style={{ minWidth: warehouseSummary.length * 100 + 350 }}>

@@ -38,48 +38,28 @@ interface GrandTotal {
   total_warehouses: string;
 }
 
-interface SkuPrediction {
-  sku: string;
-  current_stock: number;
-  predicted_demand_3m: number;
-  restock_needed: number;
-  months_of_stock: number;
-}
 
-interface WarehousePrediction {
-  warehouse: string;
-  total_stock: number;
-  total_predicted_demand: number;
-  total_restock_needed: number;
-}
 
 const COLORS = ["#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#14b8a6"];
 
 export default function InventoryPage() {
-  const [activeTab, setActiveTab] = useState<"overview" | "warehouse" | "predictions">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "warehouse">("overview");
   const [overall, setOverall] = useState<SkuInventory[]>([]);
   const [warehouseSummary, setWarehouseSummary] = useState<WarehouseSummary[]>([]);
   const [warehouseBreakdown, setWarehouseBreakdown] = useState<any[]>([]);
   const [grandTotal, setGrandTotal] = useState<GrandTotal | null>(null);
-  const [skuPredictions, setSkuPredictions] = useState<SkuPrediction[]>([]);
-  const [warehousePredictions, setWarehousePredictions] = useState<WarehousePrediction[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    Promise.all([
-      fetch("/api/inventory").then((r) => r.json()),
-      fetch("/api/inventory/predictions").then((r) => r.json()),
-    ])
-      .then(([inv, pred]) => {
+    fetch("/api/inventory").then((r) => r.json())
+      .then((inv) => {
         setOverall(inv.overall || []);
         setWarehouseSummary(inv.warehouseSummary || []);
         setWarehouseBreakdown(inv.warehouseBreakdown || []);
         setGrandTotal(inv.grandTotal || null);
-        setSkuPredictions(pred.skuPredictions || []);
-        setWarehousePredictions(pred.warehousePredictions || []);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -141,9 +121,6 @@ export default function InventoryPage() {
         </button>
         <button className={`tab ${activeTab === "warehouse" ? "active" : ""}`} onClick={() => setActiveTab("warehouse")}>
           Warehouse Matrix
-        </button>
-        <button className={`tab ${activeTab === "predictions" ? "active" : ""}`} onClick={() => setActiveTab("predictions")}>
-          Restock Predictions
         </button>
       </div>
 
@@ -344,75 +321,6 @@ export default function InventoryPage() {
         </>
       )}
 
-      {/* ═══════════════════ PREDICTIONS TAB ═══════════════════ */}
-      {activeTab === "predictions" && (
-        <>
-          <div className="card" style={{ marginBottom: 24 }}>
-            <div className="card-header">
-              <div>
-                <div className="card-title">Warehouse Restock Predictions</div>
-                <div className="card-subtitle">3-month forecast based on sales velocity</div>
-              </div>
-            </div>
-            <div className="charts-grid" style={{ marginBottom: 0 }}>
-              <div style={{ gridColumn: "1 / -1" }}>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={warehousePredictions}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="warehouse" />
-                    <YAxis />
-                    <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }} />
-                    <Legend />
-                    <Bar dataKey="total_stock" fill="#6366f1" name="Current Stock" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="total_predicted_demand" fill="#f59e0b" name="Predicted Demand (3M)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="total_restock_needed" fill="#ef4444" name="Restock Needed" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header">
-              <div>
-                <div className="card-title">SKU Restock Predictions</div>
-                <div className="card-subtitle">Sorted by urgency (highest restock need first)</div>
-              </div>
-            </div>
-            <div className="table-container" style={{ maxHeight: 500, overflowY: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>SKU</th><th>Current Stock</th><th>Predicted Demand (3M)</th>
-                    <th>Restock Needed</th><th>Months of Stock</th><th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {skuPredictions.map((p, i) => (
-                    <tr key={i}>
-                      <td style={{ fontWeight: 600 }}>{p.sku}</td>
-                      <td>{p.current_stock.toLocaleString()}</td>
-                      <td>{p.predicted_demand_3m.toLocaleString()}</td>
-                      <td style={{ fontWeight: 600, color: p.restock_needed > 0 ? "var(--danger)" : "var(--success)" }}>
-                        {p.restock_needed.toLocaleString()}
-                      </td>
-                      <td>{p.months_of_stock}</td>
-                      <td>
-                        <span className={`badge ${
-                          p.months_of_stock < 1 ? "badge-danger" :
-                          p.months_of_stock < 2 ? "badge-warning" : "badge-success"
-                        }`}>
-                          {p.months_of_stock < 1 ? "Critical" : p.months_of_stock < 2 ? "Low" : "Healthy"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
     </div>
   );
 }

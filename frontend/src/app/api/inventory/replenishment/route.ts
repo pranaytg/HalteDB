@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { calculateReplenishment } from "@/lib/forecasting";
-import type { DailySalesRow, InventoryRow } from "@/lib/forecasting";
+import type { DailySalesRow, InventoryRow, VelocityWindow } from "@/lib/forecasting";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const windowParam = searchParams.get("window");
+    const validWindows: VelocityWindow[] = ["7d", "14d", "weighted", "30d", "90d"];
+    const window: VelocityWindow = validWindows.includes(windowParam as VelocityWindow)
+      ? (windowParam as VelocityWindow)
+      : "weighted";
+
     // ── 1. Daily sales for last 90 days       
     const dailySalesQuery = `
       SELECT 
@@ -77,7 +84,7 @@ export async function GET() {
       lead_time_days: 15,
       coverage_days: 60,
       safety_factor: 1.25,
-    });
+    }, window);
 
     // ── 5. Fetch article numbers from estimated_cogs ──
     const articleQuery = `SELECT sku, article_number FROM estimated_cogs`;
