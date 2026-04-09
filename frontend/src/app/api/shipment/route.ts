@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { normalizeProviderName } from "@/lib/shipment";
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
+    const filter = searchParams.get("filter") || "all"; // all | estimated | pending
 
-    // Fetch orders with their shipment estimates + product specs (weight/dimensions)
+    // Build filter clause
+    let filterClause = "";
+    if (filter === "estimated") {
+      filterClause = "AND se.id IS NOT NULL";
+    } else if (filter === "pending") {
+      filterClause = "AND se.id IS NULL";
+    }
+
+    // Fetch orders with their shipment estimates + product specs
     const estimatesResult = await pool.query(`
       SELECT
         o.amazon_order_id, o.sku, o.item_price, o.quantity, o.purchase_date,
@@ -15,7 +25,15 @@ export async function GET(req: NextRequest) {
         o.ship_city as destination_city,
         o.ship_state as destination_state,
         o.fulfillment_channel,
-        o.shipping_price as amazon_shipping_cost,
+        CASE
+          WHEN se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
+          ELSE o.shipping_price
+        END as amazon_shipping_cost,
+        CASE
+          WHEN o.shipping_price IS NOT NULL AND o.shipping_price > 0 THEN 'actual'
+          WHEN se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0 THEN 'estimated'
+          ELSE NULL
+        END as amazon_cost_source,
         se.delhivery_cost, se.bluedart_cost, se.dtdc_cost, se.xpressbees_cost, se.ekart_cost,
         se.cheapest_provider, se.cheapest_cost,
         se.delhivery_etd, se.bluedart_etd, se.dtdc_etd, se.xpressbees_etd, se.ekart_etd,
@@ -29,17 +47,21 @@ export async function GET(req: NextRequest) {
       LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
       LEFT JOIN product_specifications ps ON o.sku = ps.sku
       WHERE o.ship_postal_code IS NOT NULL AND o.ship_postal_code != ''
+        ${filterClause}
       ORDER BY o.purchase_date DESC NULLS LAST
       LIMIT $1 OFFSET $2
     `, [limit, offset]);
 
-    // Total count
-    const countResult = await pool.query(
-      "SELECT COUNT(*) as total FROM orders WHERE ship_postal_code IS NOT NULL AND ship_postal_code != ''"
-    );
+    // Total count (for the current filter)
+    const countQuery = filter === "estimated"
+      ? `SELECT COUNT(*) as total FROM orders o INNER JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku WHERE o.ship_postal_code IS NOT NULL AND o.ship_postal_code != ''`
+      : filter === "pending"
+      ? `SELECT COUNT(*) as total FROM orders o LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku WHERE o.ship_postal_code IS NOT NULL AND o.ship_postal_code != '' AND se.id IS NULL`
+      : `SELECT COUNT(*) as total FROM orders WHERE ship_postal_code IS NOT NULL AND ship_postal_code != ''`;
+    const countResult = await pool.query(countQuery);
     const total = parseInt(countResult.rows[0].total);
 
-    // Overall summary (single row)
+    // Overall summary
     const overallResult = await pool.query(`
       SELECT
         COUNT(*) as total_estimates,
@@ -54,7 +76,7 @@ export async function GET(req: NextRequest) {
       FROM shipment_estimates
     `);
 
-    // Provider wins breakdown
+    // Provider wins breakdown — normalize names on the fly
     const winsResult = await pool.query(`
       SELECT cheapest_provider as provider, COUNT(*) as wins
       FROM shipment_estimates
@@ -63,20 +85,60 @@ export async function GET(req: NextRequest) {
       ORDER BY wins DESC
     `);
 
-    const providerWins = winsResult.rows.map((r: Record<string, unknown>) => ({
-      provider: r.provider,
-      wins: parseInt(r.wins as string),
-    }));
+    // Merge wins for variant names (e.g. "XpressBees" and "Xpressbees")
+    const winsMap: Record<string, number> = {};
+    for (const r of winsResult.rows) {
+      const normalized = normalizeProviderName(r.provider as string);
+      winsMap[normalized] = (winsMap[normalized] || 0) + parseInt(r.wins as string);
+    }
+    const providerWins = Object.entries(winsMap)
+      .map(([provider, wins]) => ({ provider, wins }))
+      .sort((a, b) => b.wins - a.wins);
+
+    // Pending count (orders without estimates)
+    const pendingResult = await pool.query(`
+      SELECT COUNT(*) as pending FROM orders o
+      LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
+      WHERE o.ship_postal_code IS NOT NULL AND o.ship_postal_code != '' AND se.id IS NULL
+    `);
 
     return NextResponse.json({
       estimates: estimatesResult.rows,
       total,
       summary: overallResult.rows[0] || {},
       providerWins,
+      pendingCount: parseInt(pendingResult.rows[0].pending),
       pagination: { total, limit, offset },
     });
   } catch (error) {
     console.error("Shipment API error:", error);
     return NextResponse.json({ error: "Failed to fetch shipment data" }, { status: 500 });
+  }
+}
+
+/** PUT — normalize all existing provider names in DB */
+export async function PUT() {
+  try {
+    // Fix inconsistent provider names in existing data
+    const updates = [
+      ["XpressBees", "Xpressbees"],
+      ["expressbees", "Xpressbees"],
+      ["Expressbees", "Xpressbees"],
+      ["xpressbees", "Xpressbees"],
+      ["bluedartt", "BlueDart"],
+      ["Bluedartt", "BlueDart"],
+    ];
+    let fixed = 0;
+    for (const [oldName, newName] of updates) {
+      const result = await pool.query(
+        `UPDATE shipment_estimates SET cheapest_provider = $1 WHERE cheapest_provider = $2`,
+        [newName, oldName]
+      );
+      fixed += result.rowCount || 0;
+    }
+    return NextResponse.json({ message: `Normalized ${fixed} provider name(s)`, fixed });
+  } catch (error) {
+    console.error("Shipment normalize error:", error);
+    return NextResponse.json({ error: "Failed to normalize" }, { status: 500 });
   }
 }

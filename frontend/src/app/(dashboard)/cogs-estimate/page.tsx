@@ -29,6 +29,7 @@ interface EstItem {
   msp_with_gst: number;
   halte_selling_price: number;
   amazon_selling_price: number;
+  amazon_fee_percent: number;
   profitability: number;
   last_updated: string;
 }
@@ -38,7 +39,7 @@ const EDITABLE_FIELDS = [
   { key: "brand", label: "Brand", type: "text" },
   { key: "category", label: "Category", type: "text" },
   { key: "import_price", label: "Import Price", type: "number" },
-  { key: "import_currency", label: "Currency", type: "select", options: ["USD", "EUR", "GBP", "CNY"] },
+  { key: "import_currency", label: "Currency", type: "select", options: ["USD", "EUR", "GBP", "CNY", "INR"] },
   { key: "custom_duty", label: "Custom Duty (₹)", type: "number" },
   { key: "conversion_rate", label: "Conv. Rate", type: "number" },
   { key: "gst_percent", label: "GST %", type: "number" },
@@ -46,6 +47,7 @@ const EDITABLE_FIELDS = [
   { key: "margin1_percent", label: "Margin 1 %", type: "number" },
   { key: "marketing_cost", label: "Marketing (₹)", type: "number" },
   { key: "margin2_percent", label: "Margin 2 %", type: "number" },
+  { key: "amazon_fee_percent", label: "Amazon Fee %", type: "number" },
 ] as const;
 
 const fmtCur = (v: number) => `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
@@ -67,7 +69,7 @@ export default function CogsEstimatePage() {
   const [addForm, setAddForm] = useState<Record<string, any>>({
     sku: "", article_number: "", brand: "", category: "", import_price: 0, import_currency: "USD",
     custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0,
-    margin1_percent: 0, marketing_cost: 0, margin2_percent: 0,
+    margin1_percent: 0, marketing_cost: 0, margin2_percent: 0, amazon_fee_percent: 15,
   });
 
   // Edit
@@ -116,7 +118,7 @@ export default function CogsEstimatePage() {
       if (!res.ok) { const d = await res.json(); showToast(d.error || "Failed", "error"); return; }
       showToast(`Added ${addForm.sku}`, "success");
       setShowAdd(false);
-      setAddForm({ sku: "", article_number: "", brand: "", category: "", import_price: 0, import_currency: "USD", custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0, margin1_percent: 0, marketing_cost: 0, margin2_percent: 0 });
+      setAddForm({ sku: "", article_number: "", brand: "", category: "", import_price: 0, import_currency: "USD", custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0, margin1_percent: 0, marketing_cost: 0, margin2_percent: 0, amazon_fee_percent: 15 });
       await fetchItems();
     } catch { showToast("Network error", "error"); }
     finally { setSaving(false); }
@@ -191,6 +193,23 @@ export default function CogsEstimatePage() {
       else showToast(data.error || "Sync failed", "error");
     } catch { showToast("Network error", "error"); }
     finally { setSyncing(false); }
+  };
+
+  /* ── Recalculate All ── */
+  const handleRecalcAll = async () => {
+    if (!confirm("This will recalculate all derived fields for every SKU using the corrected formulas. Continue?")) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/cogs-estimate", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "recalc_all" }),
+      });
+      const data = await res.json();
+      if (res.ok) { showToast(data.message, "success"); await fetchItems(); }
+      else showToast(data.error || "Failed", "error");
+    } catch { showToast("Network error", "error"); }
+    finally { setSaving(false); }
   };
 
   const filtered = items.filter(i =>
@@ -277,7 +296,10 @@ export default function CogsEstimatePage() {
           💱 Mass Currency Update
         </button>
         <button className="btn btn-success" onClick={handleSyncCogs} disabled={syncing || items.length === 0}>
-          {syncing ? "Syncing..." : "🔄 Sync to COGS"}
+          {syncing ? "Syncing..." : "Sync to COGS"}
+        </button>
+        <button className="btn btn-primary" style={{ background: "#8b5cf6" }} onClick={handleRecalcAll} disabled={saving || items.length === 0}>
+          {saving ? "Recalculating..." : "Recalculate All"}
         </button>
       </div>
 
@@ -292,9 +314,10 @@ export default function CogsEstimatePage() {
               <span className="filter-label">Currency</span>
               <select className="filter-select" value={massCurrency} onChange={e => setMassCurrency(e.target.value)}>
                 <option value="USD">USD ($)</option>
-                <option value="EUR">EUR (€)</option>
-                <option value="GBP">GBP (£)</option>
-                <option value="CNY">CNY (¥)</option>
+                <option value="EUR">EUR (&euro;)</option>
+                <option value="GBP">GBP (&pound;)</option>
+                <option value="CNY">CNY (&yen;)</option>
+                <option value="INR">INR (&rupee;)</option>
               </select>
             </div>
             <div className="filter-group">
@@ -370,7 +393,6 @@ export default function CogsEstimatePage() {
                 <th>M2 %</th>
                 <th>M2 (₹)</th>
                 <th>Selling ₹</th>
-                <th>MSP+GST</th>
                 <th>Halte SP</th>
                 <th>Amazon SP</th>
                 <th>Profit/Unit</th>
@@ -392,7 +414,7 @@ export default function CogsEstimatePage() {
                     <td>{isEditing ? <input className="filter-input" type="number" step="0.01" style={{ width: 80 }} value={editForm.import_price} onChange={e => setEditForm(f => ({ ...f, import_price: e.target.value }))} /> : row.import_price?.toFixed(2)}</td>
                     <td>{isEditing ? (
                       <select className="filter-select" style={{ width: 70 }} value={editForm.import_currency} onChange={e => setEditForm(f => ({ ...f, import_currency: e.target.value }))}>
-                        <option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="CNY">CNY</option>
+                        <option value="USD">USD</option><option value="EUR">EUR</option><option value="GBP">GBP</option><option value="CNY">CNY</option><option value="INR">INR</option>
                       </select>
                     ) : row.import_currency}</td>
                     <td>{isEditing ? <input className="filter-input" type="number" step="0.01" style={{ width: 70 }} value={editForm.custom_duty} onChange={e => setEditForm(f => ({ ...f, custom_duty: e.target.value }))} /> : fmtCur(row.custom_duty || 0)}</td>
@@ -409,7 +431,6 @@ export default function CogsEstimatePage() {
                     <td>{isEditing ? <input className="filter-input" type="number" step="0.1" style={{ width: 60 }} value={editForm.margin2_percent} onChange={e => setEditForm(f => ({ ...f, margin2_percent: e.target.value }))} /> : `${row.margin2_percent}%`}</td>
                     <td>{fmtCur(row.margin2_amount || 0)}</td>
                     <td style={{ fontWeight: 600 }}>{fmtCur(row.selling_price || 0)}</td>
-                    <td>{fmtCur(row.msp_with_gst || 0)}</td>
                     <td style={{ color: "#8b5cf6", fontWeight: 600 }}>{fmtCur(row.halte_selling_price || 0)}</td>
                     <td style={{ color: "#f59e0b", fontWeight: 600 }}>{fmtCur(row.amazon_selling_price || 0)}</td>
                     <td>
@@ -434,7 +455,7 @@ export default function CogsEstimatePage() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={24} style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
+                <tr><td colSpan={23} style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
                   No COGS estimates yet. Click &quot;Add SKU&quot; to get started.
                 </td></tr>
               )}
@@ -447,7 +468,7 @@ export default function CogsEstimatePage() {
       <div className="card" style={{ marginTop: 20 }}>
         <div className="card-header"><div className="card-title">📋 Formula Reference</div></div>
         <div style={{ padding: "0 0 16px", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.8 }}>
-          <div><strong>Import Price (₹)</strong> = Import Price × Conversion Rate</div>
+          <div><strong>Import Price (₹)</strong> = Import Price × Conversion Rate (INR items use rate=1)</div>
           <div><strong>GST Amount</strong> = (Import Price ₹ + Custom Duty) × GST%</div>
           <div><strong>Final Price</strong> = Import Price ₹ + Custom Duty + GST Amount + Shipping</div>
           <div><strong>Cost Price Halte</strong> = Final Price + Margin 1 Amount</div>
@@ -455,9 +476,9 @@ export default function CogsEstimatePage() {
           <div><strong>MSP (with GST)</strong> = Selling Price × (1 + GST%)</div>
           <div><strong>Halte Selling Price</strong> = MSP × 1.05 (+5%)</div>
           <div><strong>Amazon Selling Price</strong> = MSP × 1.20 (+20%)</div>
-          <div><strong>Profitability (per unit)</strong> = Margin 1 + Margin 2</div>
+          <div><strong>Profitability (per unit)</strong> = Amazon SP − COGS − Amazon Fee − Shipping − Marketing</div>
           <div style={{ marginTop: 12, color: "var(--accent)" }}>
-            <strong>🔄 Sync to COGS</strong> → Sets COGS price = Cost Price Halte, then recalculates order profit as: Invoice Amount − COGS − Shipping (FBA: from report, Self-fulfilled: ₹100)
+            <strong>🔄 Sync to COGS</strong> → Sets COGS price = Final Price (actual COGS), then recalculates order profit as: Selling Price − COGS − Amazon Fee (%) − Shipping − Marketing. Returns: −2 × Shipping.
           </div>
         </div>
       </div>

@@ -1,0 +1,327 @@
+/**
+ * Shared shipment calculation logic — used by both bulk and single estimate routes.
+ */
+
+// ═══════════════════════════════════════════════════
+// Shiprocket Live API
+// ═══════════════════════════════════════════════════
+
+let cachedToken: string | null = null;
+let tokenExpiresAt = 0;
+
+export async function getShiprocketToken(): Promise<string | null> {
+  if (cachedToken && Date.now() < tokenExpiresAt) return cachedToken;
+
+  const email = process.env.SHIPROCKET_EMAIL;
+  const password = process.env.SHIPROCKET_PASSWORD;
+  if (!email || !password) {
+    console.warn("[Shiprocket] No credentials found in env");
+    return null;
+  }
+
+  try {
+    const res = await fetch("https://apiv2.shiprocket.in/v1/external/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      console.warn(`[Shiprocket] Auth failed: ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    if (!data.token) return null;
+
+    cachedToken = data.token;
+    tokenExpiresAt = Date.now() + 9 * 24 * 60 * 60 * 1000; // 9 days
+    console.log("[Shiprocket] Token acquired");
+    return cachedToken;
+  } catch (e) {
+    console.warn("[Shiprocket] Auth error:", e);
+    return null;
+  }
+}
+
+// Canonical carrier keys used throughout the app
+const CARRIER_PATTERNS: Record<string, string> = {
+  delhivery: "delhivery",
+  bluedart: "blue dart",
+  dtdc: "dtdc",
+  xpressbees: "xpressbees",
+  ekart: "ekart",
+};
+
+/** Canonical display name for each carrier key */
+export const CARRIER_LABELS: Record<string, string> = {
+  amazon: "Amazon",
+  delhivery: "Delhivery",
+  bluedart: "BlueDart",
+  dtdc: "DTDC",
+  xpressbees: "Xpressbees",
+  ekart: "Ekart",
+};
+
+// Multiple name patterns per carrier — handles Shiprocket API variants
+const CARRIER_MULTI_PATTERNS: Record<string, string[]> = {
+  amazon:      ["amazon shipping", "amazon prepaid", "amazon"],
+  delhivery:  ["delhivery"],
+  bluedart:   ["blue dart", "bluedart"],
+  dtdc:       ["dtdc"],
+  xpressbees: ["xpressbees", "expressbees"],
+  ekart:      ["ekart", "e-kart"],
+};
+
+export interface ShiprocketDimensions {
+  length?: number;  // cm
+  breadth?: number; // cm
+  height?: number;  // cm
+}
+
+function roundCost(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+export function normalizePincode(pin: string | number | null | undefined): string {
+  return String(pin ?? "").replace(/\D/g, "").slice(0, 6);
+}
+
+export function isAmazonFulfilled(fulfillmentChannel: string | null | undefined): boolean {
+  const normalized = String(fulfillmentChannel ?? "").toLowerCase();
+  return normalized.includes("amazon") || normalized.includes("afn");
+}
+
+export async function fetchShiprocketRates(
+  originPin: string, destPin: string, weightKg: number,
+  dims?: ShiprocketDimensions
+): Promise<{ rates: Record<string, { cost: number; etd: string }>; source: "shiprocket" } | null> {
+  const token = await getShiprocketToken();
+  if (!token) {
+    console.warn("[Shiprocket] Skipping rate fetch — no auth token");
+    return null;
+  }
+
+  const safeWeight = Math.max(weightKg || 0.5, 0.1);
+  const sanitizedOriginPin = normalizePincode(originPin);
+  const sanitizedDestPin = normalizePincode(destPin);
+  if (sanitizedOriginPin.length !== 6 || sanitizedDestPin.length !== 6) {
+    console.warn(`[Shiprocket] Invalid pincode(s): origin=${originPin} dest=${destPin}`);
+    return null;
+  }
+
+  try {
+    const paramObj: Record<string, string> = {
+      pickup_postcode: sanitizedOriginPin,
+      delivery_postcode: sanitizedDestPin,
+      weight: String(safeWeight),
+      cod: "0",
+      declared_value: "500",
+    };
+    // Pass dimensions when available — improves accuracy and avoids rejections
+    if (dims?.length) paramObj.length = String(Math.ceil(dims.length));
+    if (dims?.breadth) paramObj.breadth = String(Math.ceil(dims.breadth));
+    if (dims?.height) paramObj.height = String(Math.ceil(dims.height));
+
+    const params = new URLSearchParams(paramObj);
+    const res = await fetch(
+      `https://apiv2.shiprocket.in/v1/external/courier/serviceability/?${params}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.warn(`[Shiprocket] Rates API failed: ${res.status} — ${body.slice(0, 200)}`);
+      return null;
+    }
+    const data = await res.json();
+
+    // Handle API-level errors (HTTP 200 but status field indicates error)
+    if (data?.status && data.status !== 200 && data.status !== "200") {
+      console.warn(`[Shiprocket] API returned non-success status: ${data.status} — ${data.message || ""}`);
+      return null;
+    }
+
+    const companies: Record<string, unknown>[] = data?.data?.available_courier_companies || [];
+    if (companies.length === 0) {
+      console.warn(`[Shiprocket] No courier companies returned for ${originPin}→${destPin} weight=${safeWeight}`);
+      return null;
+    }
+
+    const rates: Record<string, { cost: number; etd: string }> = {};
+
+    for (const courier of companies) {
+      const name = ((courier.courier_name as string) || "").toLowerCase().replace(/[^a-z\s]/g, "");
+      for (const [key, patterns] of Object.entries(CARRIER_MULTI_PATTERNS)) {
+        if (patterns.some(p => name.includes(p))) {
+          // Try multiple field names for rate (API has changed over time)
+          const cost = parseFloat(
+            String(courier.rate || courier.freight_charge || courier.total_charges || "0")
+          );
+          const etd = String(courier.estimated_delivery_days || courier.etd || "");
+          if (cost > 0 && (!rates[key] || cost < rates[key].cost)) {
+            rates[key] = {
+              cost: roundCost(cost),
+              etd: etd ? `${etd} days` : "N/A",
+            };
+          }
+        }
+      }
+    }
+
+    if (Object.keys(rates).length === 0) {
+      console.warn(`[Shiprocket] No matching carriers in response (got ${companies.length} total). Names: ${companies.slice(0,5).map(c => c.courier_name).join(", ")}`);
+      return null;
+    }
+
+    return { rates, source: "shiprocket" };
+  } catch (e) {
+    console.warn("[Shiprocket] Rates error:", e);
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// Fallback Rate Card (zone-based Indian rates)
+// ═══════════════════════════════════════════════════
+
+const ZONE_MAP: Record<string, string> = {
+  "11": "North", "12": "North", "13": "North", "14": "North", "15": "North",
+  "16": "North", "17": "North", "18": "North", "19": "North",
+  "20": "North", "21": "North", "22": "North", "23": "North",
+  "24": "North", "25": "North", "26": "North", "27": "North", "28": "North",
+  "30": "South", "31": "South", "32": "South",
+  "33": "South", "34": "South", "35": "South", "36": "West",
+  "37": "South", "38": "West", "39": "West",
+  "40": "West", "41": "West", "42": "West", "43": "West", "44": "West",
+  "45": "Central", "46": "Central", "47": "Central", "48": "Central", "49": "Central",
+  "50": "South", "51": "South", "52": "South", "53": "South",
+  "56": "South", "57": "South", "58": "South", "59": "South",
+  "60": "South", "61": "South", "62": "South", "63": "South", "64": "South",
+  "67": "South", "68": "South", "69": "South",
+  "70": "East", "71": "East", "72": "East", "73": "East", "74": "East",
+  "75": "East", "76": "East", "77": "East",
+  "78": "NorthEast", "79": "NorthEast",
+  "80": "East", "81": "East", "82": "East", "83": "East", "84": "East", "85": "East",
+};
+
+const RATE_CARDS: Record<string, Record<string, [number, number]>> = {
+  delhivery:  { local: [28, 16], intra_zone: [35, 20], same_zone: [45, 25], adjacent: [60, 30], national: [75, 38] },
+  bluedart:   { local: [45, 25], intra_zone: [55, 30], same_zone: [70, 35], adjacent: [90, 42], national: [110, 50] },
+  dtdc:       { local: [30, 18], intra_zone: [38, 22], same_zone: [50, 28], adjacent: [65, 33], national: [82, 40] },
+  xpressbees: { local: [25, 15], intra_zone: [32, 18], same_zone: [42, 24], adjacent: [55, 28], national: [70, 35] },
+  ekart:      { local: [30, 17], intra_zone: [38, 21], same_zone: [48, 26], adjacent: [62, 31], national: [78, 38] },
+};
+
+const ETD_CARDS: Record<string, Record<string, string>> = {
+  delhivery:  { local: "1-2", intra_zone: "2-3", same_zone: "3-4", adjacent: "4-5", national: "5-7" },
+  bluedart:   { local: "1",   intra_zone: "1-2", same_zone: "2-3", adjacent: "3-4", national: "4-5" },
+  dtdc:       { local: "2-3", intra_zone: "3-4", same_zone: "4-5", adjacent: "5-6", national: "6-8" },
+  xpressbees: { local: "1-2", intra_zone: "2-3", same_zone: "3-5", adjacent: "4-6", national: "5-7" },
+  ekart:      { local: "2-3", intra_zone: "3-4", same_zone: "4-5", adjacent: "5-6", national: "6-8" },
+};
+
+function getZone(pin: string): string {
+  return ZONE_MAP[pin.substring(0, 2)] || "National";
+}
+
+function getDistance(originPin: string, destPin: string): string {
+  if (originPin.substring(0, 3) === destPin.substring(0, 3)) return "local";
+  if (originPin.substring(0, 2) === destPin.substring(0, 2)) return "intra_zone";
+  const oz = getZone(originPin), dz = getZone(destPin);
+  if (oz === dz) return "same_zone";
+  const adj = new Set([
+    "North-Central", "Central-North", "North-West", "West-North",
+    "Central-West", "West-Central", "South-West", "West-South",
+    "East-Central", "Central-East",
+  ]);
+  if (adj.has(`${oz}-${dz}`)) return "adjacent";
+  return "national";
+}
+
+function estimateFallbackRate(carrier: string, originPin: string, destPin: string, weightKg: number) {
+  const dist = getDistance(originPin, destPin);
+  const [base, increment] = RATE_CARDS[carrier]?.[dist] || [75, 38];
+  let cost = base;
+  if (weightKg > 0.5) {
+    cost += Math.ceil((weightKg - 0.5) / 0.5) * increment;
+  }
+  cost = Math.round(cost * 1.18 * 100) / 100; // +18% GST
+  const etd = ETD_CARDS[carrier]?.[dist] || "5-7";
+  return { cost, etd: `${etd} days` };
+}
+
+export function getFallbackRates(originPin: string, destPin: string, weightKg: number) {
+  const rates: Record<string, { cost: number; etd: string }> = {};
+  for (const carrier of Object.keys(RATE_CARDS)) {
+    rates[carrier] = estimateFallbackRate(carrier, originPin, destPin, weightKg);
+  }
+  return { rates, source: "fallback" as const };
+}
+
+export const ORIGIN_PIN = process.env.ORIGIN_PINCODE || "160012";
+
+export function resolveAmazonShippingCost(
+  actualAmazonCost: number | string | null | undefined,
+  fulfillmentChannel: string | null | undefined,
+  rates: Record<string, { cost: number; etd: string }>
+): number {
+  const actualCost = Number(actualAmazonCost) || 0;
+  if (actualCost > 0) return roundCost(actualCost);
+  if (!isAmazonFulfilled(fulfillmentChannel)) return 0;
+
+  const liveAmazonCost = rates.amazon?.cost || 0;
+  if (liveAmazonCost > 0) return roundCost(liveAmazonCost);
+
+  const alternativeCosts = Object.entries(rates)
+    .filter(([carrier, info]) => carrier !== "amazon" && info.cost > 0)
+    .map(([, info]) => info.cost)
+    .sort((a, b) => a - b);
+
+  if (alternativeCosts.length === 0) return 0;
+
+  const middle = Math.floor(alternativeCosts.length / 2);
+  const median = alternativeCosts.length % 2 === 0
+    ? (alternativeCosts[middle - 1] + alternativeCosts[middle]) / 2
+    : alternativeCosts[middle];
+
+  return roundCost(median);
+}
+
+/**
+ * Given rates from either Shiprocket or fallback plus Amazon's cost,
+ * returns the cheapest provider & cost.
+ */
+export function findCheapest(
+  rates: Record<string, { cost: number; etd: string }>,
+  amazonCost: number
+): { cheapestProvider: string; cheapestCost: number } {
+  const allCosts: Record<string, number> = {};
+  if (amazonCost > 0) allCosts["Amazon"] = amazonCost;
+  for (const [carrier, info] of Object.entries(rates)) {
+    if (carrier === "amazon") continue;
+    if (info.cost > 0) {
+      allCosts[CARRIER_LABELS[carrier] || carrier] = info.cost;
+    }
+  }
+
+  let cheapestProvider = "";
+  let cheapestCost = Infinity;
+  for (const [provider, cost] of Object.entries(allCosts)) {
+    if (cost < cheapestCost) {
+      cheapestCost = cost;
+      cheapestProvider = provider;
+    }
+  }
+  return { cheapestProvider, cheapestCost };
+}
+
+/** Normalize various spellings of carrier names to our canonical forms */
+export function normalizeProviderName(name: string): string {
+  if (!name) return name;
+  const lower = name.toLowerCase().replace(/[^a-z]/g, "");
+  if (lower.includes("xpressbees") || lower.includes("expressbees")) return "Xpressbees";
+  if (lower.includes("bluedart") || lower.includes("bluedartt")) return "BlueDart";
+  if (lower.includes("delhivery")) return "Delhivery";
+  if (lower.includes("dtdc")) return "DTDC";
+  if (lower.includes("ekart")) return "Ekart";
+  if (lower.includes("amazon")) return "Amazon";
+  return name;
+}

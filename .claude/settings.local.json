@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(npm run:*)",
-      "Bash(npx eslint:*)"
+      "Bash(npx eslint:*)",
+      "Bash(node -e \"require\\('xlsx'\\)\")",
+      "Bash(npm install:*)"
     ]
   }
 }

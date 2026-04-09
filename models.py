@@ -130,9 +130,31 @@ class EstimatedCogs(Base):
     halte_selling_price = Column(Float, default=0.0)    # msp_with_gst * 1.05
     amazon_selling_price = Column(Float, default=0.0)   # msp_with_gst * 1.20
 
-    profitability = Column(Float, default=0.0)          # selling_price - cost_price_halte
+    profitability = Column(Float, default=0.0)          # Amazon SP - COGS - Amazon Fee - Shipping - Marketing
+    amazon_fee_percent = Column(Float, default=15.0)    # Amazon referral fee percentage
 
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class Customer(Base):
+    """Customer data for CRM and messaging."""
+    __tablename__ = "customers"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    customer_id = Column(String, unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False)
+    phone = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    city = Column(String, nullable=True, index=True)
+    state = Column(String, nullable=True, index=True)
+    pincode = Column(String, nullable=True, index=True)
+    total_orders = Column(Integer, default=0)
+    total_spent = Column(Float, default=0.0)
+    last_order_date = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class ProductSpecification(Base):
@@ -179,6 +201,7 @@ class ShipmentEstimate(Base):
     dtdc_etd = Column(String, nullable=True)
     xpressbees_etd = Column(String, nullable=True)
     ekart_etd = Column(String, nullable=True)
+    rate_source = Column(String, nullable=True)  # "shiprocket" or "fallback"
     estimated_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (

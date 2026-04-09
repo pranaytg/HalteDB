@@ -1,363 +1,697 @@
 import { NextRequest, NextResponse } from "next/server";
-import pool from "@/lib/db";
 import * as XLSX from "xlsx";
+
+import pool from "@/lib/db";
+import { generateForecasts } from "@/lib/forecasting";
+import {
+  POWER_BI_SALES_COLUMNS,
+  formatPowerBiSalesRowForExport,
+} from "@/lib/powerBiSales";
+
+export const runtime = "nodejs";
+
+type ReportType = "sales" | "inventory" | "cogs" | "profit" | "amazonInvoices";
+
+const SHIPPING_EXPR = `
+  CASE
+    WHEN LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+      OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
+    THEN COALESCE(
+      NULLIF(o.shipping_price, 0),
+      NULLIF(se.amazon_shipping_cost, 0),
+      0
+    )
+    ELSE COALESCE(o.shipping_price, 0)
+  END
+`;
+
+const PROFIT_EXPR = `
+  CASE
+    WHEN o.order_status IN ('Cancelled', 'Returned') THEN
+      -2 * (${SHIPPING_EXPR})
+    ELSE
+      o.item_price
+      - COALESCE(ec.final_price, COALESCE(o.cogs_price, 0), 0)
+      - (o.item_price * COALESCE(ec.amazon_fee_percent, 15) / 100)
+      - (${SHIPPING_EXPR})
+      - COALESCE(ec.marketing_cost, 0)
+  END
+`;
+
+function addDateRangeConditions(
+  conditions: string[],
+  params: (string | number)[],
+  startDate: string | null,
+  endDate: string | null,
+  column = "o.purchase_date",
+) {
+  let index = params.length + 1;
+
+  if (startDate) {
+    conditions.push(`${column} >= $${index++}::timestamp`);
+    params.push(startDate);
+  }
+
+  if (endDate) {
+    conditions.push(`${column} <= $${index++}::timestamp`);
+    params.push(`${endDate} 23:59:59`);
+  }
+}
+
+function jsonSheet(rows: Record<string, unknown>[], header?: string[]) {
+  return XLSX.utils.json_to_sheet(rows, header ? { header } : undefined);
+}
+
+async function appendSalesReport(
+  workbook: XLSX.WorkBook,
+  period: string,
+  startDate: string | null,
+  endDate: string | null,
+  sku: string | null,
+  brand: string | null,
+) {
+  const conditions: string[] = ["o.purchase_date IS NOT NULL"];
+  const params: (string | number)[] = [];
+
+  addDateRangeConditions(conditions, params, startDate, endDate);
+
+  if (sku) {
+    conditions.push(`o.sku = $${params.length + 1}`);
+    params.push(sku);
+  }
+
+  if (brand) {
+    conditions.push(`ec.brand = $${params.length + 1}`);
+    params.push(brand);
+  }
+
+  const where = `WHERE ${conditions.join(" AND ")}`;
+  const fromClause = `
+    FROM orders o
+    LEFT JOIN estimated_cogs ec ON o.sku = ec.sku
+  `;
+  const groupFormat =
+    period === "weekly" ? "IYYY-IW" : period === "yearly" ? "YYYY" : "YYYY-MM";
+
+  const summaryRes = await pool.query(
+    `
+      SELECT
+        TO_CHAR(o.purchase_date, '${groupFormat}') AS period,
+        COUNT(*) AS orders,
+        COALESCE(SUM(o.quantity), 0) AS units,
+        ROUND(COALESCE(SUM(o.item_price), 0)::numeric, 2) AS revenue,
+        ROUND(COALESCE(SUM(o.profit), 0)::numeric, 2) AS profit,
+        ROUND(COALESCE(AVG(o.item_price), 0)::numeric, 2) AS avg_order_value
+      ${fromClause}
+      ${where}
+      GROUP BY TO_CHAR(o.purchase_date, '${groupFormat}')
+      ORDER BY period ASC
+    `,
+    params,
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(
+      summaryRes.rows.map((row) => ({
+        Period: row.period,
+        Orders: Number(row.orders),
+        Units: Number(row.units),
+        "Revenue (INR)": Number(row.revenue),
+        "Profit (INR)": Number(row.profit),
+        "Avg Order Value (INR)": Number(row.avg_order_value),
+      })),
+    ),
+    `Sales by ${period.charAt(0).toUpperCase() + period.slice(1)}`,
+  );
+
+  const skuRes = await pool.query(
+    `
+      SELECT
+        o.sku,
+        ec.brand,
+        COUNT(*) AS orders,
+        COALESCE(SUM(o.quantity), 0) AS units,
+        ROUND(COALESCE(SUM(o.item_price), 0)::numeric, 2) AS revenue,
+        ROUND(COALESCE(SUM(o.profit), 0)::numeric, 2) AS profit,
+        ROUND(COALESCE(AVG(o.cogs_price), 0)::numeric, 2) AS avg_cogs
+      ${fromClause}
+      ${where}
+      GROUP BY o.sku, ec.brand
+      ORDER BY revenue DESC
+    `,
+    params,
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(
+      skuRes.rows.map((row) => ({
+        SKU: row.sku,
+        Brand: row.brand || "-",
+        Orders: Number(row.orders),
+        Units: Number(row.units),
+        "Revenue (INR)": Number(row.revenue),
+        "Profit (INR)": Number(row.profit),
+        "Avg COGS (INR)": Number(row.avg_cogs),
+      })),
+    ),
+    "By SKU",
+  );
+
+  const stateRes = await pool.query(
+    `
+      SELECT
+        o.ship_state AS state,
+        COUNT(*) AS orders,
+        COALESCE(SUM(o.quantity), 0) AS units,
+        ROUND(COALESCE(SUM(o.item_price), 0)::numeric, 2) AS revenue,
+        ROUND(COALESCE(SUM(o.profit), 0)::numeric, 2) AS profit
+      ${fromClause}
+      ${where}
+      GROUP BY o.ship_state
+      ORDER BY revenue DESC
+    `,
+    params,
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(
+      stateRes.rows.map((row) => ({
+        State: row.state || "Unknown",
+        Orders: Number(row.orders),
+        Units: Number(row.units),
+        "Revenue (INR)": Number(row.revenue),
+        "Profit (INR)": Number(row.profit),
+      })),
+    ),
+    "By State",
+  );
+
+  const ordersRes = await pool.query(
+    `
+      SELECT
+        o.amazon_order_id,
+        TO_CHAR(o.purchase_date, 'YYYY-MM-DD') AS purchase_date,
+        o.order_status,
+        o.fulfillment_channel,
+        o.sku,
+        o.asin,
+        ec.brand,
+        o.quantity,
+        o.item_price,
+        o.item_tax,
+        o.cogs_price,
+        o.profit,
+        o.ship_city,
+        o.ship_state
+      ${fromClause}
+      ${where}
+      ORDER BY o.purchase_date DESC NULLS LAST
+      LIMIT 10000
+    `,
+    params,
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(
+      ordersRes.rows.map((row) => ({
+        "Order ID": row.amazon_order_id,
+        Date: row.purchase_date,
+        Status: row.order_status,
+        Channel: row.fulfillment_channel,
+        SKU: row.sku,
+        ASIN: row.asin,
+        Brand: row.brand || "-",
+        Quantity: Number(row.quantity || 0),
+        "Item Price (INR)": Number(row.item_price || 0),
+        "Item Tax (INR)": Number(row.item_tax || 0),
+        "COGS (INR)": row.cogs_price == null ? null : Number(row.cogs_price),
+        "Profit (INR)": row.profit == null ? null : Number(row.profit),
+        City: row.ship_city || "-",
+        State: row.ship_state || "-",
+      })),
+    ),
+    "Raw Orders",
+  );
+}
+
+async function appendInventoryReport(workbook: XLSX.WorkBook) {
+  const overallRes = await pool.query(`
+    SELECT
+      sku,
+      asin,
+      fnsku,
+      SUM(fulfillable_quantity) AS total_fulfillable,
+      SUM(unfulfillable_quantity) AS total_unfulfillable,
+      SUM(reserved_quantity) AS total_reserved,
+      SUM(inbound_working_quantity) AS total_inbound_working,
+      SUM(inbound_shipped_quantity) AS total_inbound_shipped,
+      SUM(inbound_receiving_quantity) AS total_inbound_receiving,
+      COUNT(DISTINCT fulfillment_center_id) AS warehouse_count,
+      MAX(last_updated) AS last_updated
+    FROM inventory
+    GROUP BY sku, asin, fnsku
+    ORDER BY SUM(fulfillable_quantity) DESC, sku ASC
+  `);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(
+      overallRes.rows.map((row) => ({
+        SKU: row.sku,
+        ASIN: row.asin || "-",
+        FNSKU: row.fnsku || "-",
+        Fulfillable: Number(row.total_fulfillable || 0),
+        Reserved: Number(row.total_reserved || 0),
+        Unfulfillable: Number(row.total_unfulfillable || 0),
+        "Inbound Working": Number(row.total_inbound_working || 0),
+        "Inbound Shipped": Number(row.total_inbound_shipped || 0),
+        "Inbound Receiving": Number(row.total_inbound_receiving || 0),
+        "Inbound Total":
+          Number(row.total_inbound_working || 0) +
+          Number(row.total_inbound_shipped || 0) +
+          Number(row.total_inbound_receiving || 0),
+        Warehouses: Number(row.warehouse_count || 0),
+        "Last Updated": row.last_updated
+          ? new Date(row.last_updated).toISOString().replace("T", " ").slice(0, 19)
+          : null,
+      })),
+    ),
+    "SKU Inventory",
+  );
+
+  const warehouseSummaryRes = await pool.query(`
+    SELECT
+      fulfillment_center_id AS warehouse,
+      COUNT(DISTINCT sku) AS total_skus,
+      SUM(fulfillable_quantity) AS total_fulfillable,
+      SUM(unfulfillable_quantity) AS total_unfulfillable,
+      SUM(reserved_quantity) AS total_reserved,
+      SUM(inbound_working_quantity + inbound_shipped_quantity + inbound_receiving_quantity) AS total_inbound
+    FROM inventory
+    GROUP BY fulfillment_center_id
+    ORDER BY total_fulfillable DESC, warehouse ASC
+  `);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(
+      warehouseSummaryRes.rows.map((row) => ({
+        Warehouse: row.warehouse,
+        "Total SKUs": Number(row.total_skus || 0),
+        Fulfillable: Number(row.total_fulfillable || 0),
+        Reserved: Number(row.total_reserved || 0),
+        Unfulfillable: Number(row.total_unfulfillable || 0),
+        "Inbound Total": Number(row.total_inbound || 0),
+      })),
+    ),
+    "Warehouse Summary",
+  );
+
+  const warehouseBreakdownRes = await pool.query(`
+    SELECT
+      fulfillment_center_id AS warehouse,
+      sku,
+      asin,
+      fulfillable_quantity,
+      reserved_quantity,
+      unfulfillable_quantity,
+      inbound_working_quantity,
+      inbound_shipped_quantity,
+      inbound_receiving_quantity,
+      last_updated
+    FROM inventory
+    ORDER BY warehouse ASC, sku ASC
+  `);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(
+      warehouseBreakdownRes.rows.map((row) => ({
+        Warehouse: row.warehouse,
+        SKU: row.sku,
+        ASIN: row.asin || "-",
+        Fulfillable: Number(row.fulfillable_quantity || 0),
+        Reserved: Number(row.reserved_quantity || 0),
+        Unfulfillable: Number(row.unfulfillable_quantity || 0),
+        "Inbound Working": Number(row.inbound_working_quantity || 0),
+        "Inbound Shipped": Number(row.inbound_shipped_quantity || 0),
+        "Inbound Receiving": Number(row.inbound_receiving_quantity || 0),
+        "Last Updated": row.last_updated
+          ? new Date(row.last_updated).toISOString().replace("T", " ").slice(0, 19)
+          : null,
+      })),
+    ),
+    "Warehouse Breakdown",
+  );
+
+  const salesVelocityRes = await pool.query(`
+    SELECT
+      TO_CHAR(purchase_date, 'YYYY-MM') AS month,
+      sku,
+      COALESCE(SUM(quantity), 0) AS total_quantity,
+      COALESCE(SUM(item_price), 0) AS total_revenue
+    FROM orders
+    WHERE purchase_date IS NOT NULL
+    GROUP BY TO_CHAR(purchase_date, 'YYYY-MM'), sku
+    ORDER BY month ASC
+  `);
+
+  const forecasts = generateForecasts(
+    salesVelocityRes.rows.map((row) => ({
+      month: row.month,
+      sku: row.sku,
+      total_quantity: Number(row.total_quantity || 0),
+      total_revenue: Number(row.total_revenue || 0),
+    })),
+    3,
+  );
+
+  const currentStockRes = await pool.query(`
+    SELECT
+      sku,
+      SUM(fulfillable_quantity) AS current_stock
+    FROM inventory
+    GROUP BY sku
+  `);
+  const currentStock = new Map<string, number>(
+    currentStockRes.rows.map((row) => [row.sku as string, Number(row.current_stock || 0)]),
+  );
+
+  const warehouseStockRes = await pool.query(`
+    SELECT
+      fulfillment_center_id AS warehouse,
+      sku,
+      fulfillable_quantity AS current_stock
+    FROM inventory
+  `);
+
+  const skuForecasts = new Map<string, number>();
+  for (const forecast of forecasts) {
+    skuForecasts.set(
+      forecast.sku,
+      (skuForecasts.get(forecast.sku) || 0) + Number(forecast.predicted_quantity || 0),
+    );
+  }
+
+  const skuPredictions = [...skuForecasts.entries()]
+    .map(([forecastSku, demand3m]) => {
+      const stock = currentStock.get(forecastSku) || 0;
+      const monthlyDemand = demand3m / 3;
+      const monthsOfStock = monthlyDemand > 0 ? stock / monthlyDemand : 999;
+      return {
+        SKU: forecastSku,
+        "Current Stock": stock,
+        "Predicted Demand (3M)": demand3m,
+        "Restock Needed": Math.max(0, demand3m - stock),
+        "Months of Stock": Math.round(monthsOfStock * 10) / 10,
+      };
+    })
+    .sort((left, right) => Number(right["Restock Needed"]) - Number(left["Restock Needed"]));
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(skuPredictions),
+    "Restock Predictions",
+  );
+
+  const warehouseStockMap = new Map<string, Map<string, number>>();
+  for (const row of warehouseStockRes.rows) {
+    if (!warehouseStockMap.has(row.warehouse)) {
+      warehouseStockMap.set(row.warehouse, new Map<string, number>());
+    }
+    warehouseStockMap.get(row.warehouse)?.set(row.sku, Number(row.current_stock || 0));
+  }
+
+  const warehouseForecastRows = [...warehouseStockMap.entries()]
+    .map(([warehouse, skuMap]) => {
+      let totalStock = 0;
+      let totalDemand = 0;
+      let totalRestock = 0;
+
+      for (const [warehouseSku, stock] of skuMap.entries()) {
+        totalStock += stock;
+        const skuDemand = skuForecasts.get(warehouseSku) || 0;
+        const totalSkuStock = currentStock.get(warehouseSku) || 1;
+        const warehouseDemand = totalSkuStock > 0 ? Math.round(skuDemand * (stock / totalSkuStock)) : 0;
+        totalDemand += warehouseDemand;
+        totalRestock += Math.max(0, warehouseDemand - stock);
+      }
+
+      return {
+        Warehouse: warehouse,
+        "Current Stock": totalStock,
+        "Predicted Demand (3M)": totalDemand,
+        "Restock Needed": totalRestock,
+      };
+    })
+    .sort((left, right) => Number(right["Restock Needed"]) - Number(left["Restock Needed"]));
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(warehouseForecastRows),
+    "Warehouse Forecast",
+  );
+}
+
+async function appendCogsReport(workbook: XLSX.WorkBook) {
+  const cogsRes = await pool.query(`
+    SELECT
+      COALESCE(c.sku, ec.sku) AS sku,
+      ec.article_number,
+      ec.brand,
+      ec.category,
+      c.cogs_price,
+      ec.final_price,
+      ec.cost_price_halte,
+      ec.amazon_fee_percent,
+      ec.marketing_cost,
+      ps.weight_kg,
+      ps.length_cm,
+      ps.width_cm,
+      ps.height_cm,
+      ps.volumetric_weight_kg,
+      ps.chargeable_weight_kg,
+      GREATEST(
+        COALESCE(c.last_updated, TIMESTAMP 'epoch'),
+        COALESCE(ec.last_updated, TIMESTAMP 'epoch'),
+        COALESCE(ps.last_updated, TIMESTAMP 'epoch')
+      ) AS last_updated
+    FROM cogs c
+    FULL OUTER JOIN estimated_cogs ec ON c.sku = ec.sku
+    LEFT JOIN product_specifications ps ON ps.sku = COALESCE(c.sku, ec.sku)
+    ORDER BY COALESCE(ec.brand, ''), COALESCE(c.sku, ec.sku)
+  `);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(
+      cogsRes.rows.map((row) => ({
+        SKU: row.sku,
+        "Article Number": row.article_number || "-",
+        Brand: row.brand || "-",
+        Category: row.category || "-",
+        "COGS Price (INR)": row.cogs_price == null ? null : Number(row.cogs_price),
+        "Estimated Final Price (INR)": row.final_price == null ? null : Number(row.final_price),
+        "Cost Price Halte (INR)": row.cost_price_halte == null ? null : Number(row.cost_price_halte),
+        "Amazon Fee (%)": row.amazon_fee_percent == null ? null : Number(row.amazon_fee_percent),
+        "Marketing Cost (INR)": row.marketing_cost == null ? null : Number(row.marketing_cost),
+        "Weight (kg)": row.weight_kg == null ? null : Number(row.weight_kg),
+        "Length (cm)": row.length_cm == null ? null : Number(row.length_cm),
+        "Width (cm)": row.width_cm == null ? null : Number(row.width_cm),
+        "Height (cm)": row.height_cm == null ? null : Number(row.height_cm),
+        "Volumetric Weight (kg)":
+          row.volumetric_weight_kg == null ? null : Number(row.volumetric_weight_kg),
+        "Chargeable Weight (kg)":
+          row.chargeable_weight_kg == null ? null : Number(row.chargeable_weight_kg),
+        "Last Updated": row.last_updated
+          ? new Date(row.last_updated).toISOString().replace("T", " ").slice(0, 19)
+          : null,
+      })),
+    ),
+    "COGS & Product Specs",
+  );
+}
+
+async function appendProfitReport(
+  workbook: XLSX.WorkBook,
+  startDate: string | null,
+  endDate: string | null,
+) {
+  const conditions: string[] = ["o.item_price > 0"];
+  const params: (string | number)[] = [];
+  addDateRangeConditions(conditions, params, startDate, endDate);
+
+  const where = `WHERE ${conditions.join(" AND ")}`;
+  const fromClause = `
+    FROM orders o
+    LEFT JOIN estimated_cogs ec ON o.sku = ec.sku
+    LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
+  `;
+
+  const monthlyRes = await pool.query(
+    `
+      SELECT
+        TO_CHAR(o.purchase_date, 'YYYY-MM') AS month,
+        COUNT(*) AS orders,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.item_price ELSE 0 END)::numeric, 2) AS revenue,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN COALESCE(ec.final_price, COALESCE(o.cogs_price, 0), 0) ELSE 0 END)::numeric, 2) AS cogs,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.item_price * COALESCE(ec.amazon_fee_percent, 15) / 100 ELSE 0 END)::numeric, 2) AS amazon_fees,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN (${SHIPPING_EXPR}) ELSE 0 END)::numeric, 2) AS shipping,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN COALESCE(ec.marketing_cost, 0) ELSE 0 END)::numeric, 2) AS marketing,
+        ROUND(SUM(${PROFIT_EXPR})::numeric, 2) AS profit
+      ${fromClause}
+      ${where} AND o.purchase_date IS NOT NULL
+      GROUP BY TO_CHAR(o.purchase_date, 'YYYY-MM')
+      ORDER BY month ASC
+    `,
+    params,
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(
+      monthlyRes.rows.map((row) => ({
+        Month: row.month,
+        Orders: Number(row.orders),
+        "Revenue (INR)": Number(row.revenue),
+        "COGS (INR)": Number(row.cogs),
+        "Amazon Fees (INR)": Number(row.amazon_fees),
+        "Shipping (INR)": Number(row.shipping),
+        "Marketing (INR)": Number(row.marketing),
+        "Net Profit (INR)": Number(row.profit),
+        "Margin (%)":
+          Number(row.revenue) > 0
+            ? Math.round((Number(row.profit) / Number(row.revenue)) * 10000) / 100
+            : 0,
+      })),
+    ),
+    "P&L Monthly",
+  );
+
+  const brandRes = await pool.query(
+    `
+      SELECT
+        COALESCE(ec.brand, 'Unassigned') AS brand,
+        COUNT(*) AS orders,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.item_price ELSE 0 END)::numeric, 2) AS revenue,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN COALESCE(ec.final_price, COALESCE(o.cogs_price, 0), 0) ELSE 0 END)::numeric, 2) AS cogs,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN o.item_price * COALESCE(ec.amazon_fee_percent, 15) / 100 ELSE 0 END)::numeric, 2) AS amazon_fees,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN (${SHIPPING_EXPR}) ELSE 0 END)::numeric, 2) AS shipping,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled', 'Returned') THEN COALESCE(ec.marketing_cost, 0) ELSE 0 END)::numeric, 2) AS marketing,
+        ROUND(SUM(${PROFIT_EXPR})::numeric, 2) AS profit
+      ${fromClause}
+      ${where}
+      GROUP BY COALESCE(ec.brand, 'Unassigned')
+      ORDER BY revenue DESC, brand ASC
+    `,
+    params,
+  );
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(
+      brandRes.rows.map((row) => ({
+        Brand: row.brand,
+        Orders: Number(row.orders),
+        "Revenue (INR)": Number(row.revenue),
+        "COGS (INR)": Number(row.cogs),
+        "Amazon Fees (INR)": Number(row.amazon_fees),
+        "Shipping (INR)": Number(row.shipping),
+        "Marketing (INR)": Number(row.marketing),
+        "Net Profit (INR)": Number(row.profit),
+        "Margin (%)":
+          Number(row.revenue) > 0
+            ? Math.round((Number(row.profit) / Number(row.revenue)) * 10000) / 100
+            : 0,
+      })),
+    ),
+    "P&L by Brand",
+  );
+}
+
+async function appendAmazonInvoicesReport(workbook: XLSX.WorkBook) {
+  const tableExistsRes = await pool.query<{ exists: boolean }>(`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_name = 'PowerBISales'
+    ) AS exists
+  `);
+
+  if (!tableExistsRes.rows[0]?.exists) {
+    XLSX.utils.book_append_sheet(
+      workbook,
+      jsonSheet([], [...POWER_BI_SALES_COLUMNS]),
+      "Amazon Sales Invoices",
+    );
+    return;
+  }
+
+  const invoiceRowsRes = await pool.query(`
+    SELECT ${POWER_BI_SALES_COLUMNS.map((column) => `"${column}"`).join(", ")}
+    FROM "PowerBISales"
+    ORDER BY "Invoice Date" DESC NULLS LAST, "Invoice Number" DESC NULLS LAST
+  `);
+
+  const rows = invoiceRowsRes.rows.map((row) => formatPowerBiSalesRowForExport(row));
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(rows, [...POWER_BI_SALES_COLUMNS]),
+    "Amazon Sales Invoices",
+  );
+}
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const type = searchParams.get("type") || "sales";
-    const period = searchParams.get("period") || "monthly"; // weekly | monthly | yearly
+    const type = (searchParams.get("type") || "sales") as ReportType;
+    const period = searchParams.get("period") || "monthly";
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
     const sku = searchParams.get("sku");
     const brand = searchParams.get("brand");
-
     const workbook = XLSX.utils.book_new();
 
     if (type === "sales") {
-      /* ── Build WHERE ── */
-      const conditions: string[] = ["o.purchase_date IS NOT NULL"];
-      const params: (string | number)[] = [];
-      let idx = 1;
-
-      if (startDate) { conditions.push(`o.purchase_date >= $${idx++}::timestamp`); params.push(startDate); }
-      if (endDate) { conditions.push(`o.purchase_date <= $${idx++}::timestamp`); params.push(endDate); }
-      if (sku) { conditions.push(`o.sku = $${idx++}`); params.push(sku); }
-      if (brand) { conditions.push(`ec.brand = $${idx++}`); params.push(brand); }
-
-      const where = `WHERE ${conditions.join(" AND ")}`;
-      const from = `FROM orders o LEFT JOIN estimated_cogs ec ON o.sku = ec.sku`;
-
-      // Determine grouping format
-      const groupFormat =
-        period === "weekly" ? "IYYY-IW"
-        : period === "yearly" ? "YYYY"
-        : "YYYY-MM";
-
-      // Summary sheet by period
-      const summaryRes = await pool.query(`
-        SELECT
-          TO_CHAR(o.purchase_date, '${groupFormat}') as period,
-          COUNT(*) as orders,
-          COALESCE(SUM(o.quantity), 0) as units,
-          ROUND(COALESCE(SUM(o.item_price), 0)::numeric, 2) as revenue,
-          ROUND(COALESCE(SUM(o.profit), 0)::numeric, 2) as profit,
-          ROUND(COALESCE(AVG(o.item_price), 0)::numeric, 2) as avg_order_value
-        ${from} ${where}
-        GROUP BY TO_CHAR(o.purchase_date, '${groupFormat}')
-        ORDER BY period ASC
-      `, params);
-
-      const summarySheet = XLSX.utils.json_to_sheet(
-        summaryRes.rows.map(r => ({
-          Period: r.period,
-          Orders: Number(r.orders),
-          Units: Number(r.units),
-          "Revenue (₹)": Number(r.revenue),
-          "Profit (₹)": Number(r.profit),
-          "Avg Order Value (₹)": Number(r.avg_order_value),
-        }))
-      );
-      XLSX.utils.book_append_sheet(workbook, summarySheet, `Sales by ${period.charAt(0).toUpperCase() + period.slice(1)}`);
-
-      // SKU-wise sheet
-      const skuRes = await pool.query(`
-        SELECT
-          o.sku,
-          ec.brand,
-          COUNT(*) as orders,
-          COALESCE(SUM(o.quantity), 0) as units,
-          ROUND(COALESCE(SUM(o.item_price), 0)::numeric, 2) as revenue,
-          ROUND(COALESCE(SUM(o.profit), 0)::numeric, 2) as profit,
-          ROUND(COALESCE(AVG(o.cogs_price), 0)::numeric, 2) as avg_cogs
-        ${from} ${where}
-        GROUP BY o.sku, ec.brand
-        ORDER BY revenue DESC
-      `, params);
-
-      const skuSheet = XLSX.utils.json_to_sheet(
-        skuRes.rows.map(r => ({
-          SKU: r.sku,
-          Brand: r.brand || "—",
-          Orders: Number(r.orders),
-          Units: Number(r.units),
-          "Revenue (₹)": Number(r.revenue),
-          "Profit (₹)": Number(r.profit),
-          "Avg COGS (₹)": Number(r.avg_cogs),
-        }))
-      );
-      XLSX.utils.book_append_sheet(workbook, skuSheet, "By SKU");
-
-      // State-wise sheet
-      const stateRes = await pool.query(`
-        SELECT
-          o.ship_state as state,
-          COUNT(*) as orders,
-          COALESCE(SUM(o.quantity), 0) as units,
-          ROUND(COALESCE(SUM(o.item_price), 0)::numeric, 2) as revenue,
-          ROUND(COALESCE(SUM(o.profit), 0)::numeric, 2) as profit
-        ${from} ${where}
-        GROUP BY o.ship_state
-        ORDER BY revenue DESC
-      `, params);
-
-      const stateSheet = XLSX.utils.json_to_sheet(
-        stateRes.rows.map(r => ({
-          State: r.state || "Unknown",
-          Orders: Number(r.orders),
-          Units: Number(r.units),
-          "Revenue (₹)": Number(r.revenue),
-          "Profit (₹)": Number(r.profit),
-        }))
-      );
-      XLSX.utils.book_append_sheet(workbook, stateSheet, "By State");
-
-      // Raw orders sheet
-      const ordersRes = await pool.query(`
-        SELECT
-          o.amazon_order_id,
-          TO_CHAR(o.purchase_date, 'YYYY-MM-DD') as purchase_date,
-          o.order_status,
-          o.fulfillment_channel,
-          o.sku,
-          o.asin,
-          ec.brand,
-          o.quantity,
-          o.item_price,
-          o.item_tax,
-          o.cogs_price,
-          o.profit,
-          o.ship_city,
-          o.ship_state
-        ${from} ${where}
-        ORDER BY o.purchase_date DESC
-        LIMIT 10000
-      `, params);
-
-      const ordersSheet = XLSX.utils.json_to_sheet(
-        ordersRes.rows.map(r => ({
-          "Order ID": r.amazon_order_id,
-          Date: r.purchase_date,
-          Status: r.order_status,
-          Channel: r.fulfillment_channel,
-          SKU: r.sku,
-          ASIN: r.asin,
-          Brand: r.brand || "—",
-          Quantity: Number(r.quantity || 0),
-          "Item Price (₹)": Number(r.item_price || 0),
-          "Item Tax (₹)": Number(r.item_tax || 0),
-          "COGS (₹)": r.cogs_price ? Number(r.cogs_price) : "—",
-          "Profit (₹)": r.profit != null ? Number(r.profit) : "—",
-          City: r.ship_city || "—",
-          State: r.ship_state || "—",
-        }))
-      );
-      XLSX.utils.book_append_sheet(workbook, ordersSheet, "Raw Orders");
-
+      await appendSalesReport(workbook, period, startDate, endDate, sku, brand);
     } else if (type === "inventory") {
-      const invRes = await pool.query(`
-        SELECT
-          sku,
-          asin,
-          fnsku,
-          product_name,
-          condition,
-          available,
-          pending_removal,
-          total_units,
-          last_updated
-        FROM inventory
-        ORDER BY sku
-      `);
-
-      const invSheet = XLSX.utils.json_to_sheet(
-        invRes.rows.map(r => ({
-          SKU: r.sku,
-          ASIN: r.asin,
-          FNSKU: r.fnsku,
-          "Product Name": r.product_name,
-          Condition: r.condition,
-          Available: Number(r.available || 0),
-          "Pending Removal": Number(r.pending_removal || 0),
-          "Total Units": Number(r.total_units || 0),
-          "Last Updated": r.last_updated ? new Date(r.last_updated).toLocaleDateString("en-IN") : "—",
-        }))
-      );
-      XLSX.utils.book_append_sheet(workbook, invSheet, "Current Inventory");
-
-      // Inventory needed: estimate based on 30-day sales velocity
-      const neededRes = await pool.query(`
-        WITH sales_velocity AS (
-          SELECT
-            sku,
-            ROUND(SUM(quantity)::numeric / NULLIF(EXTRACT(DAY FROM (MAX(purchase_date) - MIN(purchase_date))), 0) * 30, 1) as monthly_velocity,
-            SUM(quantity) as total_sold_90d
-          FROM orders
-          WHERE purchase_date >= NOW() - INTERVAL '90 days'
-          GROUP BY sku
-        )
-        SELECT
-          i.sku,
-          i.product_name,
-          i.available as current_stock,
-          COALESCE(sv.monthly_velocity, 0) as monthly_velocity,
-          GREATEST(0, ROUND(COALESCE(sv.monthly_velocity, 0) * 2 - i.available, 0)) as units_needed_2mo,
-          CASE
-            WHEN i.available = 0 THEN 'OUT OF STOCK'
-            WHEN i.available < COALESCE(sv.monthly_velocity, 0) THEN 'LOW STOCK'
-            WHEN i.available < COALESCE(sv.monthly_velocity, 0) * 2 THEN 'REORDER SOON'
-            ELSE 'OK'
-          END as stock_status
-        FROM inventory i
-        LEFT JOIN sales_velocity sv ON i.sku = sv.sku
-        ORDER BY
-          CASE
-            WHEN i.available = 0 THEN 0
-            WHEN i.available < COALESCE(sv.monthly_velocity, 0) THEN 1
-            WHEN i.available < COALESCE(sv.monthly_velocity, 0) * 2 THEN 2
-            ELSE 3
-          END, i.sku
-      `);
-
-      const neededSheet = XLSX.utils.json_to_sheet(
-        neededRes.rows.map(r => ({
-          SKU: r.sku,
-          "Product Name": r.product_name || "—",
-          "Current Stock": Number(r.current_stock || 0),
-          "Monthly Velocity (units/mo)": Number(r.monthly_velocity || 0),
-          "Units Needed (2-month buffer)": Number(r.units_needed_2mo || 0),
-          Status: r.stock_status,
-        }))
-      );
-      XLSX.utils.book_append_sheet(workbook, neededSheet, "Inventory Needed");
-
+      await appendInventoryReport(workbook);
     } else if (type === "cogs") {
-      const cogsRes = await pool.query(`
-        SELECT
-          ec.sku,
-          ec.brand,
-          ec.cogs_price,
-          ec.last_updated,
-          ps.weight_kg,
-          ps.length_cm,
-          ps.width_cm,
-          ps.height_cm,
-          ps.volumetric_weight_kg,
-          ps.chargeable_weight_kg
-        FROM estimated_cogs ec
-        LEFT JOIN product_specifications ps ON ec.sku = ps.sku
-        ORDER BY ec.brand, ec.sku
-      `);
-
-      const cogsSheet = XLSX.utils.json_to_sheet(
-        cogsRes.rows.map(r => ({
-          SKU: r.sku,
-          Brand: r.brand || "—",
-          "COGS Price (₹)": Number(r.cogs_price || 0),
-          "Last Updated": r.last_updated ? new Date(r.last_updated).toLocaleDateString("en-IN") : "—",
-          "Weight (kg)": r.weight_kg ? Number(r.weight_kg) : "—",
-          "Length (cm)": r.length_cm ? Number(r.length_cm) : "—",
-          "Width (cm)": r.width_cm ? Number(r.width_cm) : "—",
-          "Height (cm)": r.height_cm ? Number(r.height_cm) : "—",
-          "Volumetric Weight (kg)": r.volumetric_weight_kg ? Number(r.volumetric_weight_kg) : "—",
-          "Chargeable Weight (kg)": r.chargeable_weight_kg ? Number(r.chargeable_weight_kg) : "—",
-        }))
-      );
-      XLSX.utils.book_append_sheet(workbook, cogsSheet, "COGS & Product Specs");
-
+      await appendCogsReport(workbook);
     } else if (type === "profit") {
-      // P&L summary
-      const conditions: string[] = ["o.purchase_date IS NOT NULL"];
-      const params: (string | number)[] = [];
-      let idx = 1;
-
-      if (startDate) { conditions.push(`o.purchase_date >= $${idx++}::timestamp`); params.push(startDate); }
-      if (endDate) { conditions.push(`o.purchase_date <= $${idx++}::timestamp`); params.push(endDate); }
-      const where = `WHERE ${conditions.join(" AND ")}`;
-
-      const plRes = await pool.query(`
-        SELECT
-          TO_CHAR(o.purchase_date, 'YYYY-MM') as month,
-          COUNT(*) as orders,
-          COALESCE(SUM(o.quantity), 0) as units,
-          ROUND(COALESCE(SUM(o.item_price), 0)::numeric, 2) as revenue,
-          ROUND(COALESCE(SUM(o.item_tax), 0)::numeric, 2) as tax_collected,
-          ROUND(COALESCE(SUM(o.cogs_price * o.quantity), 0)::numeric, 2) as total_cogs,
-          ROUND(COALESCE(SUM(o.profit), 0)::numeric, 2) as gross_profit,
-          ROUND(
-            CASE WHEN COALESCE(SUM(o.item_price), 0) > 0
-            THEN (COALESCE(SUM(o.profit), 0) / COALESCE(SUM(o.item_price), 0)) * 100
-            ELSE 0 END::numeric, 2
-          ) as profit_margin_pct
-        FROM orders o ${where}
-        GROUP BY TO_CHAR(o.purchase_date, 'YYYY-MM')
-        ORDER BY month ASC
-      `, params);
-
-      const plSheet = XLSX.utils.json_to_sheet(
-        plRes.rows.map(r => ({
-          Month: r.month,
-          Orders: Number(r.orders),
-          Units: Number(r.units),
-          "Revenue (₹)": Number(r.revenue),
-          "Tax Collected (₹)": Number(r.tax_collected),
-          "Total COGS (₹)": Number(r.total_cogs),
-          "Gross Profit (₹)": Number(r.gross_profit),
-          "Profit Margin (%)": Number(r.profit_margin_pct),
-        }))
-      );
-      XLSX.utils.book_append_sheet(workbook, plSheet, "P&L Monthly");
-
-      // Brand P&L
-      const brandRes = await pool.query(`
-        SELECT
-          ec.brand,
-          COUNT(*) as orders,
-          COALESCE(SUM(o.quantity), 0) as units,
-          ROUND(COALESCE(SUM(o.item_price), 0)::numeric, 2) as revenue,
-          ROUND(COALESCE(SUM(o.profit), 0)::numeric, 2) as profit,
-          ROUND(
-            CASE WHEN COALESCE(SUM(o.item_price), 0) > 0
-            THEN (COALESCE(SUM(o.profit), 0) / COALESCE(SUM(o.item_price), 0)) * 100
-            ELSE 0 END::numeric, 2
-          ) as margin_pct
-        FROM orders o ${where}
-        LEFT JOIN estimated_cogs ec ON o.sku = ec.sku
-        GROUP BY ec.brand
-        ORDER BY revenue DESC
-      `, params);
-
-      const brandSheet = XLSX.utils.json_to_sheet(
-        brandRes.rows.map(r => ({
-          Brand: r.brand || "Unassigned",
-          Orders: Number(r.orders),
-          Units: Number(r.units),
-          "Revenue (₹)": Number(r.revenue),
-          "Profit (₹)": Number(r.profit),
-          "Margin (%)": Number(r.margin_pct),
-        }))
-      );
-      XLSX.utils.book_append_sheet(workbook, brandSheet, "P&L by Brand");
+      await appendProfitReport(workbook, startDate, endDate);
+    } else if (type === "amazonInvoices") {
+      await appendAmazonInvoicesReport(workbook);
+    } else {
+      return NextResponse.json({ error: "Unknown report type" }, { status: 400 });
     }
 
-    // Generate Excel buffer
     const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
-
-    // Build filename
     const dateStr = new Date().toISOString().slice(0, 10);
-    const periodStr = period ? `_${period}` : "";
+    const periodStr = type === "sales" && period ? `_${period}` : "";
     const filename = `haltedb_${type}${periodStr}_${dateStr}.xlsx`;
 
     return new NextResponse(buffer, {
       status: 200,
       headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${filename}"`,
         "Cache-Control": "no-store",
       },
     });
   } catch (error) {
     console.error("Reports API error:", error);
-    return NextResponse.json({ error: "Failed to generate report" }, { status: 500 });
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to generate report",
+      },
+      { status: 500 },
+    );
   }
 }

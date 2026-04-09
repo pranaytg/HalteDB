@@ -8,7 +8,7 @@ const CARRIERS = [
   { key: "delhivery", label: "Delhivery", color: "#e23744" },
   { key: "bluedart", label: "BlueDart", color: "#0066cc" },
   { key: "dtdc", label: "DTDC", color: "#d42027" },
-  { key: "xpressbees", label: "XpressBees", color: "#f5a623" },
+  { key: "xpressbees", label: "Xpressbees", color: "#f5a623" },
   { key: "ekart", label: "Ekart", color: "#2874f0" },
 ];
 
@@ -26,6 +26,7 @@ interface ShipmentEstimate {
   width_cm: number | null;
   height_cm: number | null;
   amazon_shipping_cost: number;
+  amazon_cost_source: string | null;
   delhivery_cost: number | null;
   bluedart_cost: number | null;
   dtdc_cost: number | null;
@@ -57,25 +58,29 @@ interface Summary {
   total_potential_savings: number;
 }
 
+type FilterMode = "all" | "estimated" | "pending";
+
 const fmt = (n: number | null | undefined) => {
-  if (n == null) return "—";
-  return `₹${Number(n).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+  if (n == null) return "\u2014";
+  return `\u20B9${Number(n).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 };
 
 const fmtDecimal = (n: number | null | undefined) => {
-  if (n == null) return "—";
-  return `₹${Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (n == null) return "\u2014";
+  return `\u20B9${Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 const fmtWeight = (n: number | null | undefined) => {
-  if (n == null) return "—";
+  if (n == null) return "\u2014";
   return `${Number(n).toFixed(2)} kg`;
 };
 
 const fmtDate = (d: string | null | undefined) => {
-  if (!d) return "—";
+  if (!d) return "\u2014";
   return new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
 };
+
+const PAGE_SIZE = 50;
 
 export default function ShipmentPage() {
   const [estimates, setEstimates] = useState<ShipmentEstimate[]>([]);
@@ -83,28 +88,36 @@ export default function ShipmentPage() {
   const [providerWins, setProviderWins] = useState<{ provider: string; wins: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [estimating, setEstimating] = useState(false);
+  const [recalculating, setRecalculating] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [sortField, setSortField] = useState<string>("purchase_date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [filter, setFilter] = useState<FilterMode>("all");
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (currentFilter?: FilterMode, currentPage?: number) => {
     setLoading(true);
+    const f = currentFilter ?? filter;
+    const p = currentPage ?? page;
     try {
-      const res = await fetch("/api/shipment?limit=100");
+      const res = await fetch(`/api/shipment?limit=${PAGE_SIZE}&offset=${p * PAGE_SIZE}&filter=${f}`);
       if (res.ok) {
         const data = await res.json();
         setEstimates(data.estimates || []);
         setSummary(data.summary || null);
         setProviderWins(data.providerWins || []);
+        setTotal(data.pagination?.total || 0);
+        setPendingCount(data.pendingCount || 0);
       }
     } catch (e) {
       console.error("Failed to fetch shipment data", e);
     }
     setLoading(false);
-  }, []);
+  }, [filter, page]);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const triggerEstimate = async () => {
@@ -122,10 +135,32 @@ export default function ShipmentPage() {
     setTimeout(() => setToast(null), 5000);
   };
 
+  const recalculateOrder = async (orderId: string, sku: string) => {
+    const key = `${orderId}-${sku}`;
+    setRecalculating(key);
+    try {
+      const r = await fetch("/api/shipment/estimate-single", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amazon_order_id: orderId, sku })
+      });
+      const data = await r.json();
+      if (r.ok) {
+        setToast(`Rate ${data.rate_source === "shiprocket" ? "live" : "estimated"} for ${orderId.slice(-8)}`);
+        fetchData();
+      } else {
+        setToast(data.error || "Failed to calculate rate");
+      }
+    } catch {
+      setToast("Error calculating rate");
+    }
+    setRecalculating(null);
+    setTimeout(() => setToast(null), 4000);
+  };
+
   const sorted = [...estimates].sort((a: any, b: any) => {
     const aVal = a[sortField];
     const bVal = b[sortField];
-    // Handle date strings
     if (sortField === "purchase_date") {
       const aDate = aVal ? new Date(aVal as string).getTime() : 0;
       const bDate = bVal ? new Date(bVal as string).getTime() : 0;
@@ -145,6 +180,13 @@ export default function ShipmentPage() {
     }
   };
 
+  const changeFilter = (f: FilterMode) => {
+    setFilter(f);
+    setPage(0);
+    fetchData(f, 0);
+  };
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
   const totalWins = providerWins.reduce((s, p) => s + p.wins, 0) || 1;
 
   return (
@@ -152,36 +194,40 @@ export default function ShipmentPage() {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800 }}>🚚 Shipment Rate Comparison</h1>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800 }}>Shipment Rate Comparison</h1>
           <p style={{ margin: "4px 0 0", color: "var(--text-muted)", fontSize: 14 }}>
-            Compare shipping costs across carriers · Origin: Chandigarh (160012) · Destination from SP-API orders
+            Compare shipping costs across carriers &middot; Origin: Chandigarh (160012)
           </p>
         </div>
-        <button
-          onClick={triggerEstimate}
-          disabled={estimating}
-          className="btn btn-primary"
-          style={{ fontSize: 14, padding: "10px 24px", gap: 8, display: "flex", alignItems: "center" }}
-        >
-          {estimating ? (
-            <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Estimating...</>
-          ) : (
-            "⚡ Estimate New Orders"
-          )}
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={triggerEstimate}
+            disabled={estimating}
+            className="btn btn-primary"
+            style={{ fontSize: 14, padding: "10px 24px", gap: 8, display: "flex", alignItems: "center" }}
+          >
+            {estimating ? (
+              <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Estimating...</>
+            ) : (
+              <>Estimate New Orders {pendingCount > 0 && <span style={{
+                background: "rgba(255,255,255,0.25)", borderRadius: 10, padding: "1px 8px", fontSize: 11, marginLeft: 4
+              }}>{pendingCount}</span>}</>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}
       {summary && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 24 }}>
-          <KPICard title="AVG AMAZON COST" value={fmtDecimal(summary.avg_amazon_cost)} icon="📦" color="#ff9900" />
-          <KPICard title="AVG CHEAPEST ALT" value={fmtDecimal(summary.avg_cheapest_cost)} icon="💰" color="#22c55e" />
-          <KPICard title="AVG DELHIVERY" value={fmtDecimal(summary.avg_delhivery_cost)} icon="🔴" color="#e23744" />
-          <KPICard title="AVG BLUEDART" value={fmtDecimal(summary.avg_bluedart_cost)} icon="🔵" color="#0066cc" />
+          <KPICard title="AVG AMAZON COST" value={fmtDecimal(summary.avg_amazon_cost)} color="#ff9900" />
+          <KPICard title="AVG CHEAPEST ALT" value={fmtDecimal(summary.avg_cheapest_cost)} color="#22c55e" />
+          <KPICard title="AVG DELHIVERY" value={fmtDecimal(summary.avg_delhivery_cost)} color="#e23744" />
+          <KPICard title="AVG BLUEDART" value={fmtDecimal(summary.avg_bluedart_cost)} color="#0066cc" />
           <KPICard
             title="POTENTIAL SAVINGS"
             value={fmt(summary.total_potential_savings)}
-            icon="🎯" color="#a855f7"
+            color="#a855f7"
             subtitle={`Across ${summary.total_estimates} orders`}
           />
         </div>
@@ -189,16 +235,15 @@ export default function ShipmentPage() {
 
       {/* Provider Wins + Avg Rates Chart */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 24 }}>
-        {/* Provider Wins */}
         <div className="card" style={{ padding: 20 }}>
-          <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>🏆 Who Wins Most Often?</h3>
+          <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>Who Wins Most Often?</h3>
           {providerWins.length === 0 ? (
-            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No data yet — click &quot;Estimate New Orders&quot;</p>
+            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No data yet</p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {providerWins.map((p) => {
                 const carrier = CARRIERS.find(c =>
-                  c.label.toLowerCase().includes(p.provider.toLowerCase()) || p.provider.toLowerCase().includes(c.key)
+                  c.label.toLowerCase() === p.provider.toLowerCase() || p.provider.toLowerCase().includes(c.key)
                 );
                 const pct = Math.round((p.wins / totalWins) * 100);
                 return (
@@ -221,9 +266,8 @@ export default function ShipmentPage() {
           )}
         </div>
 
-        {/* Avg Rate Comparison Chart */}
         <div className="card" style={{ padding: 20 }}>
-          <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>📊 Average Rate by Carrier</h3>
+          <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 700 }}>Average Rate by Carrier</h3>
           {!summary ? (
             <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No data yet</p>
           ) : (
@@ -236,7 +280,7 @@ export default function ShipmentPage() {
                 const heightPct = maxVal > 0 ? (val / maxVal) * 100 : 0;
                 return (
                   <div key={c.key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: c.color }}>{val > 0 ? `₹${val}` : "—"}</span>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: c.color }}>{val > 0 ? `\u20B9${val}` : "\u2014"}</span>
                     <div style={{
                       width: "100%",
                       height: `${Math.max(heightPct, 5)}%`,
@@ -253,12 +297,26 @@ export default function ShipmentPage() {
         </div>
       </div>
 
-      {/* Rate Comparison Table */}
+      {/* Filter Tabs + Table */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>📋 Order-wise Rate Comparison</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Order-wise Rate Comparison</h3>
+            <div style={{ display: "flex", gap: 4 }}>
+              {(["all", "estimated", "pending"] as FilterMode[]).map(f => (
+                <button key={f} onClick={() => changeFilter(f)} style={{
+                  padding: "4px 12px", fontSize: 11, fontWeight: 600, borderRadius: 6, border: "1px solid var(--border)",
+                  background: filter === f ? "var(--accent)" : "transparent",
+                  color: filter === f ? "#fff" : "var(--text-muted)", cursor: "pointer",
+                  textTransform: "capitalize",
+                }}>
+                  {f} {f === "pending" && pendingCount > 0 ? `(${pendingCount})` : ""}
+                </button>
+              ))}
+            </div>
+          </div>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {estimates.length} orders · Sorted by latest first · Click headers to sort
+            {total} orders &middot; Page {page + 1} of {Math.max(totalPages, 1)}
           </span>
         </div>
 
@@ -269,12 +327,12 @@ export default function ShipmentPage() {
           </div>
         ) : estimates.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center" }}>
-            <p style={{ fontSize: 48, margin: "0 0 12px" }}>📦</p>
-            <p style={{ color: "var(--text-muted)", marginBottom: 16 }}>No shipment estimates yet</p>
-            <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-              Click <strong>&quot;Estimate New Orders&quot;</strong> to compute shipping costs for your recent orders.
-              <br />Make sure your orders have postal codes (run a sync first).
-            </p>
+            <p style={{ color: "var(--text-muted)", marginBottom: 16 }}>No orders found for this filter.</p>
+            {filter === "all" && (
+              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                Click <strong>&quot;Estimate New Orders&quot;</strong> to compute shipping costs.
+              </p>
+            )}
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -286,17 +344,17 @@ export default function ShipmentPage() {
                   <th style={th}>SKU</th>
                   <th style={th}>Destination</th>
                   <th style={{ ...th, cursor: "pointer", textAlign: "center" }} onClick={() => handleSort("chargeable_weight_kg")}>
-                    Weights {sortField === "chargeable_weight_kg" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+                    Weights {sortField === "chargeable_weight_kg" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
                   </th>
                   <th style={{ ...th, textAlign: "center", fontSize: 10, color: "var(--text-muted)" }}>Source</th>
                   <SortTh field="amazon_shipping_cost" label="Amazon" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#ff9900" />
                   <SortTh field="delhivery_cost" label="Delhivery" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#e23744" />
                   <SortTh field="bluedart_cost" label="BlueDart" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#0066cc" />
                   <SortTh field="dtdc_cost" label="DTDC" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#d42027" />
-                  <SortTh field="xpressbees_cost" label="XpressBees" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#f5a623" />
+                  <SortTh field="xpressbees_cost" label="Xpressbees" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#f5a623" />
                   <SortTh field="ekart_cost" label="Ekart" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#2874f0" />
                   <SortTh field="cheapest_cost" label="Best" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#22c55e" />
-                  <th style={th}>Actual Cost</th>
+                  <th style={th}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -313,37 +371,33 @@ export default function ShipmentPage() {
                   const minCost = validCosts.length > 0 ? Math.min(...validCosts) : null;
                   const hasEstimates = e.delhivery_cost != null || e.bluedart_cost != null || e.cheapest_provider != null;
                   const isExpanded = expandedRow === rowKey;
+                  const isRecalcing = recalculating === rowKey;
 
                   return (
                     <tr key={rowKey} style={{ borderBottom: "1px solid var(--border)" }}>
-                      {/* Date */}
                       <td style={{ ...td, fontSize: 11, color: "var(--text-muted)" }}>
                         {fmtDate(e.purchase_date)}
                       </td>
 
-                      {/* Order ID */}
                       <td style={td}>
                         <span style={{ fontFamily: "monospace", fontSize: 11 }}>
                           {e.amazon_order_id?.slice(-8)}
                         </span>
                       </td>
 
-                      {/* SKU */}
                       <td style={td}>
                         <span style={{ maxWidth: 100, display: "inline-block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {e.sku}
                         </span>
                       </td>
 
-                      {/* Destination */}
                       <td style={td}>
-                        <div style={{ fontSize: 12 }}>{e.destination_city || "—"}</div>
+                        <div style={{ fontSize: 12 }}>{e.destination_city || "\u2014"}</div>
                         <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                          {e.destination_state ? `${e.destination_state} · ` : ""}{e.destination_pincode}
+                          {e.destination_state ? `${e.destination_state} \u00B7 ` : ""}{e.destination_pincode}
                         </div>
                       </td>
 
-                      {/* Weights — clickable to expand */}
                       <td
                         style={{ ...td, textAlign: "center", cursor: "pointer", position: "relative" }}
                         onClick={() => setExpandedRow(isExpanded ? null : rowKey)}
@@ -353,7 +407,7 @@ export default function ShipmentPage() {
                           <span style={{ fontSize: 9, color: "var(--text-muted)", marginLeft: 2 }}>kg</span>
                         </div>
                         <div style={{ fontSize: 9, color: "var(--text-muted)" }}>
-                          {e.actual_weight_kg != null || e.volumetric_weight_kg != null ? "▾ details" : "default"}
+                          {e.actual_weight_kg != null || e.volumetric_weight_kg != null ? "\u25BE details" : "default"}
                         </div>
                         {isExpanded && (
                           <div style={{
@@ -367,24 +421,20 @@ export default function ShipmentPage() {
                             </div>
                             <div style={{ fontSize: 11, lineHeight: 1.8 }}>
                               <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                <span style={{ color: "var(--text-muted)" }}>Actual Weight:</span>
+                                <span style={{ color: "var(--text-muted)" }}>Actual:</span>
                                 <span style={{ fontWeight: 600 }}>{fmtWeight(e.actual_weight_kg)}</span>
                               </div>
                               {(e.length_cm != null && e.width_cm != null && e.height_cm != null) && (
                                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                  <span style={{ color: "var(--text-muted)" }}>Dimensions:</span>
+                                  <span style={{ color: "var(--text-muted)" }}>Dims:</span>
                                   <span style={{ fontWeight: 600 }}>
-                                    {Number(e.length_cm).toFixed(1)}×{Number(e.width_cm).toFixed(1)}×{Number(e.height_cm).toFixed(1)} cm
+                                    {Number(e.length_cm).toFixed(1)}\u00D7{Number(e.width_cm).toFixed(1)}\u00D7{Number(e.height_cm).toFixed(1)} cm
                                   </span>
                                 </div>
                               )}
                               <div style={{ display: "flex", justifyContent: "space-between" }}>
                                 <span style={{ color: "var(--text-muted)" }}>Volumetric:</span>
                                 <span style={{ fontWeight: 600 }}>{fmtWeight(e.volumetric_weight_kg)}</span>
-                              </div>
-                              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                <span style={{ color: "var(--text-muted)" }}>Formula:</span>
-                                <span style={{ fontWeight: 600, fontSize: 10 }}>L×W×H ÷ 5000</span>
                               </div>
                               <div style={{
                                 borderTop: "1px solid var(--border)", marginTop: 4, paddingTop: 4,
@@ -395,15 +445,11 @@ export default function ShipmentPage() {
                                   {fmtWeight(e.chargeable_weight_kg)}
                                 </span>
                               </div>
-                              <div style={{ fontSize: 9, color: "var(--text-muted)", marginTop: 2 }}>
-                                = max(actual, volumetric)
-                              </div>
                             </div>
                           </div>
                         )}
                       </td>
 
-                      {/* Rate Source Badge */}
                       <td style={{ ...td, textAlign: "center" }}>
                         {e.rate_source ? (
                           <span style={{
@@ -416,45 +462,29 @@ export default function ShipmentPage() {
                             {e.rate_source === "shiprocket" ? "LIVE" : "EST"}
                           </span>
                         ) : (
-                          <span style={{ fontSize: 9, color: "var(--text-muted)" }}>—</span>
+                          <span style={{ fontSize: 9, color: "var(--text-muted)" }}>\u2014</span>
                         )}
                       </td>
 
-                      {/* Amazon cost */}
                       {e.fulfillment_channel && !e.fulfillment_channel.toLowerCase().includes('amazon') && !e.fulfillment_channel.toLowerCase().includes('afn') ? (
                         <td style={{ ...td, textAlign: "center", color: "var(--text-muted)", fontWeight: 800 }}>---</td>
                       ) : (
-                        <CostCell cost={e.amazon_shipping_cost} isMin={false} etd="" />
+                        <CostCell
+                          cost={e.amazon_shipping_cost}
+                          isMin={false}
+                          etd={e.amazon_cost_source === "estimated" ? "est." : ""}
+                        />
                       )}
 
-                      {/* Carrier costs or Calculate button */}
                       {!hasEstimates ? (
-                        <td colSpan={7} style={{ textAlign: "center", padding: "8px" }}>
+                        <td colSpan={6} style={{ textAlign: "center", padding: "8px" }}>
                           <button
                             className="btn btn-primary btn-sm"
                             style={{ padding: "4px 12px", fontSize: 11 }}
-                            onClick={async () => {
-                              setToast("Calculating rate...");
-                              try {
-                                const r = await fetch("/api/shipment/estimate-single", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ amazon_order_id: e.amazon_order_id, sku: e.sku })
-                                });
-                                const data = await r.json();
-                                if (r.ok) {
-                                  setToast(`Rate calculated (${data.rate_source || "done"})`);
-                                  fetchData();
-                                } else {
-                                  setToast("Failed to calculate rate");
-                                }
-                              } catch {
-                                setToast("Error calculating rate");
-                              }
-                              setTimeout(() => setToast(null), 4000);
-                            }}
+                            disabled={isRecalcing}
+                            onClick={() => recalculateOrder(e.amazon_order_id, e.sku)}
                           >
-                            ⚡ Calculate Cost
+                            {isRecalcing ? "Calculating..." : "Calculate Cost"}
                           </button>
                         </td>
                       ) : (
@@ -473,21 +503,61 @@ export default function ShipmentPage() {
                               <div style={{ fontSize: 11, fontWeight: 600 }}>{fmt(e.cheapest_cost)}</div>
                             </div>
                           </td>
-                          <td style={{ ...td, textAlign: "center" }}>
-                            <div style={{
-                              background: "rgba(100, 116, 139, 0.1)", color: "var(--text-muted)",
-                              borderRadius: 6, padding: "4px 8px", fontSize: 11, fontStyle: "italic",
-                            }}>
-                              Pending bill
-                            </div>
-                          </td>
                         </>
                       )}
+
+                      {/* Actions: Recalculate */}
+                      <td style={{ ...td, textAlign: "center" }}>
+                        {hasEstimates ? (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            style={{ padding: "3px 8px", fontSize: 10 }}
+                            disabled={isRecalcing}
+                            onClick={() => recalculateOrder(e.amazon_order_id, e.sku)}
+                            title="Recalculate shipment cost"
+                          >
+                            {isRecalcing ? "..." : "Recalc"}
+                          </button>
+                        ) : null}
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div style={{
+            padding: "12px 20px", borderTop: "1px solid var(--border)",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+          }}>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Showing {page * PAGE_SIZE + 1}\u2013{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+            </span>
+            <div style={{ display: "flex", gap: 4 }}>
+              <button className="btn btn-ghost btn-sm" disabled={page === 0}
+                onClick={() => { setPage(p => p - 1); fetchData(filter, page - 1); }}>
+                Prev
+              </button>
+              {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                const pageNum = totalPages <= 7 ? i : page <= 3 ? i : page >= totalPages - 4 ? totalPages - 7 + i : page - 3 + i;
+                if (pageNum < 0 || pageNum >= totalPages) return null;
+                return (
+                  <button key={pageNum} className="btn btn-ghost btn-sm"
+                    style={{ fontWeight: page === pageNum ? 700 : 400, color: page === pageNum ? "var(--accent)" : undefined }}
+                    onClick={() => { setPage(pageNum); fetchData(filter, pageNum); }}>
+                    {pageNum + 1}
+                  </button>
+                );
+              })}
+              <button className="btn btn-ghost btn-sm" disabled={page >= totalPages - 1}
+                onClick={() => { setPage(p => p + 1); fetchData(filter, page + 1); }}>
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -498,18 +568,18 @@ export default function ShipmentPage() {
         background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)",
         fontSize: 12, color: "var(--text-muted)",
       }}>
-        💡 Rates marked <strong style={{ color: "#22c55e" }}>LIVE</strong> come from Shiprocket API.
-        Rates marked <strong style={{ color: "#f59e0b" }}>EST</strong> use zone-based Indian carrier rate cards as fallback.
-        Click on the weight column to see the full weight breakdown (actual, volumetric, chargeable).
+        Rates marked <strong style={{ color: "#22c55e" }}>LIVE</strong> come from Shiprocket API.
+        Rates marked <strong style={{ color: "#f59e0b" }}>EST</strong> use zone-based carrier rate cards as fallback.
+        Amazon cost uses the actual order shipping charge when Amazon provides one; otherwise Amazon-fulfilled orders use an estimated Amazon cost.
+        Shipment estimation runs automatically when the main sync runs. Use <strong>Recalc</strong> to refresh rates for a specific order.
       </div>
 
-      {/* Toast */}
       {toast && <div className="toast toast-success">{toast}</div>}
     </div>
   );
 }
 
-/* ─── Sub-components ─── */
+/* --- Sub-components --- */
 
 const th: React.CSSProperties = {
   padding: "10px 12px", textAlign: "left", fontSize: 12,
@@ -520,20 +590,17 @@ const td: React.CSSProperties = {
   padding: "10px 12px", whiteSpace: "nowrap",
 };
 
-function KPICard({ title, value, icon, color, subtitle }: {
-  title: string; value: string; icon: string; color: string; subtitle?: string;
+function KPICard({ title, value, color, subtitle }: {
+  title: string; value: string; color: string; subtitle?: string;
 }) {
   return (
     <div className="card" style={{ padding: "16px 20px", borderLeft: `3px solid ${color}` }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", letterSpacing: 0.5, marginBottom: 4 }}>
-            {title}
-          </div>
-          <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
-          {subtitle && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{subtitle}</div>}
+      <div>
+        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-muted)", letterSpacing: 0.5, marginBottom: 4 }}>
+          {title}
         </div>
-        <span style={{ fontSize: 28, opacity: 0.6 }}>{icon}</span>
+        <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
+        {subtitle && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{subtitle}</div>}
       </div>
     </div>
   );
@@ -549,13 +616,13 @@ function SortTh({ field, label, sortField, sortDir, onClick, color }: {
       style={{ ...th, cursor: "pointer", color: active ? color : "var(--text-muted)", textAlign: "center" }}
       onClick={() => onClick(field)}
     >
-      {label} {active ? (sortDir === "asc" ? "↑" : "↓") : ""}
+      {label} {active ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
     </th>
   );
 }
 
 function CostCell({ cost, isMin, etd }: { cost: number | null; isMin: boolean; etd: string }) {
-  if (cost == null) return <td style={{ ...td, textAlign: "center", color: "var(--text-muted)" }}>—</td>;
+  if (cost == null) return <td style={{ ...td, textAlign: "center", color: "var(--text-muted)" }}>\u2014</td>;
   return (
     <td style={{
       ...td, textAlign: "center",

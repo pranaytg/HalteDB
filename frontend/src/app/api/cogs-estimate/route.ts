@@ -6,13 +6,16 @@ import pool from "@/lib/db";
    ────────────────────────────────────────────────────────── */
 function recalc(row: Record<string, number | string | null>) {
   const importPrice    = Number(row.import_price) || 0;
-  const convRate       = Number(row.conversion_rate) || 83;
+  const currency       = String(row.import_currency || "USD").toUpperCase();
+  // INR items need no conversion — enforce rate = 1
+  const convRate       = currency === "INR" ? 1 : (Number(row.conversion_rate) || 83);
   const customDuty     = Number(row.custom_duty) || 0;
-  const gstPercent     = Number(row.gst_percent) || 18;
+  const gstPercent     = row.gst_percent != null ? Number(row.gst_percent) : 18;
   const shippingCost   = Number(row.shipping_cost) || 0;
   const margin1Pct     = Number(row.margin1_percent) || 0;
   const marketingCost  = Number(row.marketing_cost) || 0;
   const margin2Pct     = Number(row.margin2_percent) || 0;
+  const amazonFeePct   = Number(row.amazon_fee_percent) || 15;
 
   const importPriceInr = importPrice * convRate;
   const baseBeforeGst  = importPriceInr + customDuty;
@@ -25,7 +28,10 @@ function recalc(row: Record<string, number | string | null>) {
   const mspWithGst     = sellingPrice * (1 + gstPercent / 100);
   const halteSP        = mspWithGst * 1.05;
   const amazonSP       = mspWithGst * 1.20;
-  const profitability  = margin1Amount + margin2Amount;
+
+  // Profitability = Amazon Selling Price - COGS - Amazon Fee - Shipping - Marketing
+  const amazonFee      = amazonSP * (amazonFeePct / 100);
+  const profitability  = amazonSP - finalPrice - amazonFee - shippingCost - marketingCost;
 
   return {
     import_price_inr:      round2(importPriceInr),
@@ -76,9 +82,9 @@ export async function POST(req: NextRequest) {
         margin1_percent, margin1_amount, cost_price_halte,
         marketing_cost, margin2_percent, margin2_amount, selling_price,
         msp_with_gst, halte_selling_price, amazon_selling_price, profitability,
-        last_updated
+        amazon_fee_percent, last_updated
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,NOW()
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,NOW()
       )
       ON CONFLICT (sku) DO UPDATE SET
         article_number=$2, brand=$3, category=$4,
@@ -87,9 +93,12 @@ export async function POST(req: NextRequest) {
         margin1_percent=$14, margin1_amount=$15, cost_price_halte=$16,
         marketing_cost=$17, margin2_percent=$18, margin2_amount=$19, selling_price=$20,
         msp_with_gst=$21, halte_selling_price=$22, amazon_selling_price=$23, profitability=$24,
-        last_updated=NOW()
+        amazon_fee_percent=$25, last_updated=NOW()
       RETURNING *
     `;
+
+    const currency = (body.import_currency || "USD").toUpperCase();
+    const conversionRate = currency === "INR" ? 1 : (Number(body.conversion_rate) || 83);
 
     const params = [
       sku,
@@ -97,11 +106,11 @@ export async function POST(req: NextRequest) {
       body.brand || null,
       body.category || null,
       Number(body.import_price) || 0,
-      body.import_currency || "USD",
+      currency,
       Number(body.custom_duty) || 0,
-      Number(body.conversion_rate) || 83,
+      conversionRate,
       calcs.import_price_inr,
-      Number(body.gst_percent) || 18,
+      body.gst_percent != null ? Number(body.gst_percent) : 18,
       calcs.gst_amount,
       Number(body.shipping_cost) || 0,
       calcs.final_price,
@@ -116,6 +125,7 @@ export async function POST(req: NextRequest) {
       calcs.halte_selling_price,
       calcs.amazon_selling_price,
       calcs.profitability,
+      Number(body.amazon_fee_percent) || 15,
     ];
 
     const result = await pool.query(query, params);
@@ -180,41 +190,92 @@ export async function PUT(req: NextRequest) {
 
     /* ── Sync to COGS table ── */
     if (action === "sync_cogs") {
-      // For each estimated_cogs row, upsert into cogs table with cogs_price = cost_price_halte
-      const allRows = await pool.query(`SELECT sku, cost_price_halte FROM estimated_cogs`);
+      // For each estimated_cogs row, upsert into cogs table with cogs_price = final_price (actual COGS)
+      const allRows = await pool.query(`SELECT sku, final_price, amazon_fee_percent, marketing_cost FROM estimated_cogs`);
       let synced = 0;
-      let ordersRecalc = 0;
+      const shippingExpr = `
+        CASE
+          WHEN LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+            OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
+          THEN COALESCE(
+            NULLIF(o.shipping_price, 0),
+            NULLIF((
+              SELECT se.amazon_shipping_cost
+              FROM shipment_estimates se
+              WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+              LIMIT 1
+            ), 0),
+            0
+          )
+          ELSE COALESCE(o.shipping_price, 0)
+        END
+      `;
 
       for (const row of allRows.rows) {
-        const cogsPrice = Number(row.cost_price_halte) || 0;
-
-        // Upsert into cogs
+        const cogsPrice = Number(row.final_price) || 0;
         await pool.query(`
           INSERT INTO cogs (sku, cogs_price, last_updated)
           VALUES ($1, $2, NOW())
           ON CONFLICT (sku) DO UPDATE SET cogs_price=$2, last_updated=NOW()
         `, [row.sku, cogsPrice]);
-
-        // Recalculate profit: item_price - cogs - shipping
-        // FBA (Amazon fulfilled): uses shipping_price from report
-        // Self-fulfilled: uses Rs 100 flat
-        const ordResult = await pool.query(`
-          UPDATE orders SET cogs_price=$1,
-            profit = item_price - $1 - CASE
-              WHEN fulfillment_channel = 'Amazon' AND COALESCE(shipping_price, 0) > 0
-                THEN shipping_price
-              ELSE 100
-            END
-          WHERE sku=$2
-        `, [cogsPrice, row.sku]);
-        ordersRecalc += ordResult.rowCount || 0;
         synced++;
       }
 
+      // Recalculate profit on all orders using estimated_cogs data:
+      // profit = item_price - COGS - Amazon fee - shipping - marketing
+      // For returns: profit = -2 × shipping
+      const ordResult = await pool.query(`
+        UPDATE orders o SET
+          cogs_price = ec.final_price,
+          profit = CASE
+            WHEN o.order_status IN ('Cancelled', 'Returned') THEN
+              -2 * (${shippingExpr})
+            ELSE
+              o.item_price
+              - ec.final_price
+              - (o.item_price * COALESCE(ec.amazon_fee_percent, 15) / 100)
+              - (${shippingExpr})
+              - COALESCE(ec.marketing_cost, 0)
+          END
+        FROM estimated_cogs ec
+        WHERE o.sku = ec.sku
+      `);
+
       return NextResponse.json({
-        message: `Synced ${synced} SKUs to COGS table. ${ordersRecalc} orders recalculated (profit = invoice - COGS - shipping).`,
+        message: `Synced ${synced} SKUs to COGS table. ${ordResult.rowCount} orders recalculated (profit = selling - COGS - Amazon fee - shipping - marketing).`,
         synced,
-        ordersRecalculated: ordersRecalc,
+        ordersRecalculated: ordResult.rowCount,
+      });
+    }
+
+    /* ── Recalculate All Rows ── */
+    if (action === "recalc_all") {
+      const allRows = await pool.query(`SELECT * FROM estimated_cogs`);
+      let updated = 0;
+
+      for (const row of allRows.rows) {
+        const calcs = recalc(row);
+        await pool.query(`
+          UPDATE estimated_cogs SET
+            import_price_inr=$1, gst_amount=$2, final_price=$3,
+            margin1_amount=$4, cost_price_halte=$5,
+            margin2_amount=$6, selling_price=$7,
+            msp_with_gst=$8, halte_selling_price=$9, amazon_selling_price=$10,
+            profitability=$11, last_updated=NOW()
+          WHERE id=$12
+        `, [
+          calcs.import_price_inr, calcs.gst_amount, calcs.final_price,
+          calcs.margin1_amount, calcs.cost_price_halte,
+          calcs.margin2_amount, calcs.selling_price,
+          calcs.msp_with_gst, calcs.halte_selling_price, calcs.amazon_selling_price,
+          calcs.profitability, row.id,
+        ]);
+        updated++;
+      }
+
+      return NextResponse.json({
+        message: `Recalculated ${updated} SKUs with corrected formulas`,
+        updated,
       });
     }
 

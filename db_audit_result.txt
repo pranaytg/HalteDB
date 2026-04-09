@@ -1,0 +1,454 @@
+﻿{
+  "table_counts": {
+    "orders": 20412,
+    "inventory": 779,
+    "cogs": 676,
+    "estimated_cogs": 484,
+    "sync_meta": 1,
+    "product_specifications": 530,
+    "shipment_estimates": 497,
+    "customers": 30,
+    "PowerBISales": 27955
+  },
+  "duplicate_orders": {
+    "count": 0,
+    "samples": []
+  },
+  "duplicate_inventory": {
+    "count": 0,
+    "samples": []
+  },
+  "duplicate_cogs": {
+    "count": 0,
+    "samples": []
+  },
+  "duplicate_estimated_cogs": {
+    "count": 0,
+    "samples": []
+  },
+  "duplicate_product_specs": {
+    "count": 0,
+    "samples": []
+  },
+  "duplicate_shipment_estimates": {
+    "count": 0,
+    "samples": []
+  },
+  "orders_null_sku": 0,
+  "orders_null_purchase_date": 0,
+  "orders_zero_price": 3571,
+  "orders_missing_cogs": 2,
+  "orders_missing_profit": 0,
+  "order_status_distribution": [
+    {
+      "order_status": "Shipped",
+      "cnt": 16240
+    },
+    {
+      "order_status": "Cancelled",
+      "cnt": 3015
+    },
+    {
+      "order_status": "Shipped - Delivered to Buyer",
+      "cnt": 877
+    },
+    {
+      "order_status": "Pending",
+      "cnt": 164
+    },
+    {
+      "order_status": "Shipped - Returned to Seller",
+      "cnt": 83
+    },
+    {
+      "order_status": "Shipped - Picked Up",
+      "cnt": 18
+    },
+    {
+      "order_status": "Shipping",
+      "cnt": 9
+    },
+    {
+      "order_status": "Shipped - Returning to Seller",
+      "cnt": 5
+    },
+    {
+      "order_status": "Pending - Waiting for Pick Up",
+      "cnt": 1
+    }
+  ],
+  "ship_state_distribution": [
+    {
+      "ship_state": "Karnataka",
+      "cnt": 2724
+    },
+    {
+      "ship_state": "Maharashtra",
+      "cnt": 2370
+    },
+    {
+      "ship_state": "Tamil Nadu",
+      "cnt": 1658
+    },
+    {
+      "ship_state": "Kerala",
+      "cnt": 1279
+    },
+    {
+      "ship_state": "Uttar Pradesh",
+      "cnt": 1265
+    },
+    {
+      "ship_state": "Telangana",
+      "cnt": 1124
+    },
+    {
+      "ship_state": "Haryana",
+      "cnt": 1096
+    },
+    {
+      "ship_state": "Delhi",
+      "cnt": 1005
+    },
+    {
+      "ship_state": "Gujarat",
+      "cnt": 813
+    },
+    {
+      "ship_state": "West Bengal",
+      "cnt": 737
+    },
+    {
+      "ship_state": "Punjab",
+      "cnt": 698
+    },
+    {
+      "ship_state": "Rajasthan",
+      "cnt": 619
+    },
+    {
+      "ship_state": "Chandigarh",
+      "cnt": 525
+    },
+    {
+      "ship_state": "Andhra Pradesh",
+      "cnt": 472
+    },
+    {
+      "ship_state": "Himachal Pradesh",
+      "cnt": 412
+    },
+    {
+      "ship_state": "Uttarakhand",
+      "cnt": 407
+    },
+    {
+      "ship_state": "Jammu & Kashmir",
+      "cnt": 391
+    },
+    {
+      "ship_state": "Goa",
+      "cnt": 371
+    },
+    {
+      "ship_state": "Bihar",
+      "cnt": 339
+    },
+    {
+      "ship_state": "Madhya Pradesh",
+      "cnt": 330
+    },
+    {
+      "ship_state": "Assam",
+      "cnt": 281
+    },
+    {
+      "ship_state": "Odisha",
+      "cnt": 277
+    },
+    {
+      "ship_state": "Jharkhand",
+      "cnt": 183
+    },
+    {
+      "ship_state": "Arunachal Pradesh",
+      "cnt": 142
+    },
+    {
+      "ship_state": "Mizoram",
+      "cnt": 136
+    },
+    {
+      "ship_state": "Meghalaya",
+      "cnt": 127
+    },
+    {
+      "ship_state": "Nagaland",
+      "cnt": 124
+    },
+    {
+      "ship_state": "Chhattisgarh",
+      "cnt": 121
+    },
+    {
+      "ship_state": "Manipur",
+      "cnt": 98
+    },
+    {
+      "ship_state": "Sikkim",
+      "cnt": 48
+    },
+    {
+      "ship_state": "Andaman & Nicobar Islands",
+      "cnt": 43
+    },
+    {
+      "ship_state": "Puducherry",
+      "cnt": 40
+    },
+    {
+      "ship_state": "Ladakh",
+      "cnt": 30
+    },
+    {
+      "ship_state": "Tripura",
+      "cnt": 17
+    },
+    {
+      "ship_state": "Dadra And Nagar Haveli And Daman And Diu",
+      "cnt": 14
+    },
+    {
+      "ship_state": "District Nainital",
+      "cnt": 8
+    },
+    {
+      "ship_state": "Daman & Diu",
+      "cnt": 3
+    },
+    {
+      "ship_state": "Telengana",
+      "cnt": 2
+    },
+    {
+      "ship_state": "Jammu& Kashmir",
+      "cnt": 2
+    },
+    {
+      "ship_state": "Ut",
+      "cnt": 2
+    }
+  ],
+  "skus_without_any_cogs": [
+    "HM1168",
+    "LG0680"
+  ],
+  "unique_constraints": [
+    {
+      "constraint_name": "cogs_sku_key",
+      "table_name": "cogs"
+    },
+    {
+      "constraint_name": "customer_email_key",
+      "table_name": "customer"
+    },
+    {
+      "constraint_name": "customers_customer_id_key",
+      "table_name": "customers"
+    },
+    {
+      "constraint_name": "uq_sku_fc_condition",
+      "table_name": "inventory"
+    },
+    {
+      "constraint_name": "uq_order_sku",
+      "table_name": "orders"
+    },
+    {
+      "constraint_name": "product_specifications_sku_key",
+      "table_name": "product_specifications"
+    },
+    {
+      "constraint_name": "uq_replenish_sku_fc",
+      "table_name": "replenishment_plans"
+    },
+    {
+      "constraint_name": "shipment_estimates_amazon_order_id_sku_key",
+      "table_name": "shipment_estimates"
+    }
+  ],
+  "indexes": [
+    {
+      "indexname": "ix_PowerBISales_InvoiceDate",
+      "tablename": "PowerBISales"
+    },
+    {
+      "indexname": "ix_PowerBISales_OrderId",
+      "tablename": "PowerBISales"
+    },
+    {
+      "indexname": "ix_PowerBISales_Sku",
+      "tablename": "PowerBISales"
+    },
+    {
+      "indexname": "alembic_version_pkc",
+      "tablename": "alembic_version"
+    },
+    {
+      "indexname": "cogs_pkey",
+      "tablename": "cogs"
+    },
+    {
+      "indexname": "cogs_sku_key",
+      "tablename": "cogs"
+    },
+    {
+      "indexname": "ix_cogs_id",
+      "tablename": "cogs"
+    },
+    {
+      "indexname": "ix_cogs_sku",
+      "tablename": "cogs"
+    },
+    {
+      "indexname": "customer_email_key",
+      "tablename": "customer"
+    },
+    {
+      "indexname": "customer_pkey",
+      "tablename": "customer"
+    },
+    {
+      "indexname": "customers_customer_id_key",
+      "tablename": "customers"
+    },
+    {
+      "indexname": "customers_pkey",
+      "tablename": "customers"
+    },
+    {
+      "indexname": "idx_customers_city",
+      "tablename": "customers"
+    },
+    {
+      "indexname": "idx_customers_pincode",
+      "tablename": "customers"
+    },
+    {
+      "indexname": "idx_customers_state",
+      "tablename": "customers"
+    },
+    {
+      "indexname": "estimated_cogs_pkey",
+      "tablename": "estimated_cogs"
+    },
+    {
+      "indexname": "ix_estimated_cogs_sku",
+      "tablename": "estimated_cogs"
+    },
+    {
+      "indexname": "inventory_pkey",
+      "tablename": "inventory"
+    },
+    {
+      "indexname": "ix_inventory_asin",
+      "tablename": "inventory"
+    },
+    {
+      "indexname": "ix_inventory_fnsku",
+      "tablename": "inventory"
+    },
+    {
+      "indexname": "ix_inventory_fulfillment_center_id",
+      "tablename": "inventory"
+    },
+    {
+      "indexname": "ix_inventory_id",
+      "tablename": "inventory"
+    },
+    {
+      "indexname": "ix_inventory_sku",
+      "tablename": "inventory"
+    },
+    {
+      "indexname": "uq_sku_fc_condition",
+      "tablename": "inventory"
+    },
+    {
+      "indexname": "order_items_pkey",
+      "tablename": "order_items"
+    },
+    {
+      "indexname": "ix_orders_amazon_order_id",
+      "tablename": "orders"
+    },
+    {
+      "indexname": "ix_orders_purchase_date",
+      "tablename": "orders"
+    },
+    {
+      "indexname": "ix_orders_ship_city",
+      "tablename": "orders"
+    },
+    {
+      "indexname": "ix_orders_ship_postal_code",
+      "tablename": "orders"
+    },
+    {
+      "indexname": "ix_orders_ship_state",
+      "tablename": "orders"
+    },
+    {
+      "indexname": "ix_orders_sku",
+      "tablename": "orders"
+    },
+    {
+      "indexname": "orders_pkey",
+      "tablename": "orders"
+    },
+    {
+      "indexname": "uq_order_sku",
+      "tablename": "orders"
+    },
+    {
+      "indexname": "orders_halte_pkey",
+      "tablename": "orders_halte"
+    },
+    {
+      "indexname": "product_pkey",
+      "tablename": "product"
+    },
+    {
+      "indexname": "product_specifications_pkey",
+      "tablename": "product_specifications"
+    },
+    {
+      "indexname": "product_specifications_sku_key",
+      "tablename": "product_specifications"
+    },
+    {
+      "indexname": "replenishment_plans_pkey",
+      "tablename": "replenishment_plans"
+    },
+    {
+      "indexname": "uq_replenish_sku_fc",
+      "tablename": "replenishment_plans"
+    },
+    {
+      "indexname": "shipment_estimates_amazon_order_id_sku_key",
+      "tablename": "shipment_estimates"
+    },
+    {
+      "indexname": "shipment_estimates_pkey",
+      "tablename": "shipment_estimates"
+    },
+    {
+      "indexname": "sync_meta_pkey",
+      "tablename": "sync_meta"
+    }
+  ],
+  "duplicate_customers": {
+    "count": 0,
+    "samples": []
+  }
+}

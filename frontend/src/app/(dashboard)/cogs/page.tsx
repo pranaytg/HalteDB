@@ -6,8 +6,14 @@ interface CogsEntry {
   id: number;
   sku: string;
   cogs_price: number;
+  amazon_price: number | null;
   last_updated: string;
+  halte_selling_price: number | null;
+  amazon_selling_price: number | null;
 }
+
+const fmtCur = (v: number) =>
+  `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
 
 export default function CogsPage() {
   const [cogs, setCogs] = useState<CogsEntry[]>([]);
@@ -17,12 +23,18 @@ export default function CogsPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [refreshingPrices, setRefreshingPrices] = useState(false);
 
   // Add COGS form state
   const [showAddForm, setShowAddForm] = useState(false);
   const [newSku, setNewSku] = useState("");
   const [newPrice, setNewPrice] = useState("");
   const [adding, setAdding] = useState(false);
+
+  const showToast = (msg: string, type: "success" | "error") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const fetchCogs = async () => {
     try {
@@ -36,15 +48,28 @@ export default function CogsPage() {
     }
   };
 
+  const handleRefreshAmazonPrices = async () => {
+    setRefreshingPrices(true);
+    try {
+      const res = await fetch("/api/cogs/amazon-price", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || "Amazon prices updated", "success");
+        await fetchCogs();
+      } else {
+        showToast(data.error || "Failed to refresh Amazon prices", "error");
+      }
+    } catch {
+      showToast("Network error", "error");
+    } finally {
+      setRefreshingPrices(false);
+    }
+  };
+
   useEffect(() => {
     fetchCogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const showToast = (msg: string, type: "success" | "error") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 4000);
-  };
 
   const handleEdit = (sku: string, currentPrice: number) => {
     setEditingSku(sku);
@@ -235,6 +260,14 @@ export default function CogsPage() {
                 ➕ Add New
               </button>
             )}
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleRefreshAmazonPrices}
+              disabled={refreshingPrices}
+              title="Fetch latest Amazon prices from SP-API and save to database"
+            >
+              {refreshingPrices ? "Fetching..." : "↻ Refresh Amazon Prices"}
+            </button>
           </div>
           <input
             className="filter-input search-input"
@@ -251,6 +284,10 @@ export default function CogsPage() {
                 <th>#</th>
                 <th>SKU</th>
                 <th>COGS Price (₹)</th>
+                <th style={{ color: "#8b5cf6" }}>Halte SP</th>
+                <th style={{ color: "#8b5cf6" }}>Halte Price</th>
+                <th style={{ color: "#f59e0b" }}>Amazon SP</th>
+                <th style={{ color: "#10b981" }}>Amazon Price</th>
                 <th>Last Updated</th>
                 <th>Actions</th>
               </tr>
@@ -283,6 +320,24 @@ export default function CogsPage() {
                         ₹{entry.cogs_price.toFixed(2)}
                       </span>
                     )}
+                  </td>
+                  <td style={{ color: "#8b5cf6", fontWeight: 600 }}>
+                    {entry.halte_selling_price != null ? fmtCur(entry.halte_selling_price) : "—"}
+                  </td>
+                  <td style={{ color: "var(--text-muted)" }}>—</td>
+                  <td style={{ fontWeight: 600, color: (() => {
+                    if (entry.amazon_selling_price == null || entry.amazon_price == null) return "#f59e0b";
+                    if (entry.amazon_selling_price > entry.amazon_price) return "#10b981";
+                    if (entry.amazon_selling_price === entry.amazon_price) return "#eab308";
+                    return "#ef4444";
+                  })() }}>
+                    {entry.amazon_selling_price != null ? fmtCur(entry.amazon_selling_price) : "—"}
+                  </td>
+                  <td style={{ color: "#10b981", fontWeight: 600 }}>
+                    {entry.amazon_price != null
+                      ? fmtCur(entry.amazon_price)
+                      : <span style={{ color: "var(--text-muted)" }}>—</span>
+                    }
                   </td>
                   <td style={{ color: "var(--text-muted)", fontSize: 12 }}>
                     {new Date(entry.last_updated).toLocaleDateString("en-IN")}

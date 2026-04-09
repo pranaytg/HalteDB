@@ -2,9 +2,13 @@ import os
 import logging
 import httpx
 import asyncio
+import csv
+import io
+from collections import defaultdict
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta, timezone
 import zlib
+from sqlalchemy import text as sa_text
 
 from crud import (
     upsert_orders_batch,
@@ -13,8 +17,35 @@ from crud import (
     update_orders_sync_time,
     update_inventory_sync_time,
 )
+from shiprocket import (
+    find_cheapest,
+    get_shipping_rates_with_source,
+    is_amazon_fulfilled,
+    normalize_pincode,
+    normalize_provider_name,
+    resolve_amazon_shipping_cost,
+)
 
 logger = logging.getLogger("haltedb")
+
+SHIPMENT_SYNC_BATCH_SIZE = int(os.getenv("SHIPMENT_SYNC_BATCH_SIZE", "150"))
+AMAZON_FINANCE_LOOKUP_LIMIT = int(os.getenv("AMAZON_FINANCE_LOOKUP_LIMIT", "25"))
+AMAZON_FINANCE_LOOKUP_DELAY_SECONDS = float(os.getenv("AMAZON_FINANCE_LOOKUP_DELAY_SECONDS", "2.1"))
+ORIGIN_PINCODE = os.getenv("ORIGIN_PINCODE", "160012")
+AMAZON_FEE_INCLUDE_KEYWORDS = (
+    "fba", "fulfillment", "shipping", "shipment", "weight",
+    "perorder", "perunit", "pick", "pack", "transport", "delivery",
+)
+AMAZON_FEE_EXCLUDE_KEYWORDS = (
+    "commission", "referral", "closing", "gift", "wrap", "tax",
+    "withheld", "storage", "advertising", "promotion", "adjustment",
+    "reimbursement", "servicefee", "subscription",
+)
+GST_INVOICE_LOOKBACK_DAYS = int(os.getenv("GST_INVOICE_LOOKBACK_DAYS", "45"))
+GST_INVOICE_REPORT_TYPES = (
+    ("GET_GST_MTR_B2B_CUSTOM", "B2B"),
+    ("GET_GST_MTR_B2C_CUSTOM", "B2C"),
+)
 
 
 # ============================================
@@ -625,6 +656,1106 @@ async def run_product_specs_sync(session: AsyncSession):
     logger.info("Product specifications sync complete.")
 
 
+def _extract_money_amount(value) -> float:
+    if value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        return abs(float(value))
+    if isinstance(value, dict):
+        for key in ("CurrencyAmount", "currencyAmount", "Amount", "amount", "value"):
+            if key in value and value[key] is not None:
+                try:
+                    return abs(float(value[key]))
+                except (TypeError, ValueError):
+                    continue
+    try:
+        return abs(float(value))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _is_shipping_fee_type(fee_type: str | None) -> bool:
+    normalized = (fee_type or "").replace(" ", "").replace("_", "").lower()
+    if not normalized:
+        return False
+    if any(keyword in normalized for keyword in AMAZON_FEE_EXCLUDE_KEYWORDS):
+        return False
+    return any(keyword in normalized for keyword in AMAZON_FEE_INCLUDE_KEYWORDS)
+
+
+def _extract_shipping_fee_total(fees) -> float:
+    total = 0.0
+    for fee in fees or []:
+        if not isinstance(fee, dict):
+            continue
+        fee_type = (
+            fee.get("FeeType")
+            or fee.get("feeType")
+            or fee.get("Type")
+            or fee.get("type")
+        )
+        if not _is_shipping_fee_type(str(fee_type or "")):
+            continue
+        amount = (
+            fee.get("FeeAmount")
+            or fee.get("feeAmount")
+            or fee.get("Amount")
+            or fee.get("amount")
+        )
+        total += _extract_money_amount(amount)
+    return round(total, 2)
+
+
+def _extract_amazon_shipping_costs(financial_events: dict) -> dict[str, float]:
+    payload = financial_events.get("payload") if isinstance(financial_events, dict) else None
+    events = payload.get("FinancialEvents") if isinstance(payload, dict) else None
+    if not isinstance(events, dict):
+        events = financial_events.get("FinancialEvents") if isinstance(financial_events, dict) else {}
+    if not isinstance(events, dict):
+        return {}
+
+    sku_costs: defaultdict[str, float] = defaultdict(float)
+    event_lists = []
+    for key in ("ShipmentEventList", "ShipmentSettleEventList"):
+        values = events.get(key)
+        if isinstance(values, list):
+            event_lists.extend(values)
+
+    for event in event_lists:
+        if not isinstance(event, dict):
+            continue
+
+        event_fee_total = _extract_shipping_fee_total(
+            event.get("FeeList") or event.get("feeList") or []
+        )
+        event_item_skus: set[str] = set()
+
+        for item_key in ("ShipmentItemList", "ShipmentItemAdjustmentList"):
+            items = event.get(item_key)
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                sku = (
+                    item.get("SellerSKU")
+                    or item.get("sellerSKU")
+                    or item.get("Sku")
+                    or item.get("sku")
+                )
+                if not sku:
+                    continue
+                event_item_skus.add(str(sku))
+                item_fee_total = _extract_shipping_fee_total(
+                    item.get("ItemFeeList") or item.get("itemFeeList") or []
+                )
+                if item_fee_total > 0:
+                    sku_costs[str(sku)] += item_fee_total
+
+        if event_fee_total > 0 and len(event_item_skus) == 1:
+            event_sku = next(iter(event_item_skus))
+            sku_costs[event_sku] += event_fee_total
+
+    return {
+        sku: round(cost, 2)
+        for sku, cost in sku_costs.items()
+        if cost > 0
+    }
+
+
+async def fetch_amazon_order_financial_shipping_costs(
+    client: httpx.AsyncClient,
+    access_token: str,
+    order_id: str,
+) -> dict[str, float]:
+    endpoint = os.getenv("SP_API_ENDPOINT", "https://sellingpartnerapi-eu.amazon.com").strip('"').strip("'")
+    try:
+        response = await client.get(
+            f"{endpoint}/finances/v0/orders/{order_id}/financialEvents",
+            headers={"x-amz-access-token": access_token},
+        )
+        if response.status_code == 404:
+            return {}
+        if response.status_code == 429:
+            logger.warning(f"Finance lookup throttled for {order_id}; retrying once after delay")
+            await asyncio.sleep(AMAZON_FINANCE_LOOKUP_DELAY_SECONDS)
+            response = await client.get(
+                f"{endpoint}/finances/v0/orders/{order_id}/financialEvents",
+                headers={"x-amz-access-token": access_token},
+            )
+        if response.status_code >= 400:
+            logger.warning(f"Finance lookup failed for {order_id}: {response.status_code} {response.text[:200]}")
+            return {}
+        return _extract_amazon_shipping_costs(response.json())
+    except Exception as exc:
+        logger.warning(f"Finance lookup error for {order_id}: {exc}")
+        return {}
+
+
+async def recalculate_profitability_for_orders(session: AsyncSession, order_ids: list[str]):
+    if not order_ids:
+        return
+
+    shipping_expr = """
+      CASE
+        WHEN LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+          OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
+        THEN COALESCE(
+          NULLIF(o.shipping_price, 0),
+          NULLIF((
+            SELECT se.amazon_shipping_cost
+            FROM shipment_estimates se
+            WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+            LIMIT 1
+          ), 0),
+          0
+        )
+        ELSE COALESCE(o.shipping_price, 0)
+      END
+    """
+    cogs_expr = """
+      COALESCE(
+        o.cogs_price,
+        (
+          SELECT ec.final_price
+          FROM estimated_cogs ec
+          WHERE ec.sku = o.sku
+          LIMIT 1
+        ),
+        0
+      )
+    """
+    fee_expr = """
+      COALESCE(
+        (
+          SELECT ec.amazon_fee_percent
+          FROM estimated_cogs ec
+          WHERE ec.sku = o.sku
+          LIMIT 1
+        ),
+        15
+      )
+    """
+    marketing_expr = """
+      COALESCE(
+        (
+          SELECT ec.marketing_cost
+          FROM estimated_cogs ec
+          WHERE ec.sku = o.sku
+          LIMIT 1
+        ),
+        0
+      )
+    """
+
+    result = await session.execute(sa_text(f"""
+      UPDATE orders o
+      SET
+        cogs_price = COALESCE(
+          o.cogs_price,
+          (
+            SELECT ec.final_price
+            FROM estimated_cogs ec
+            WHERE ec.sku = o.sku
+            LIMIT 1
+          )
+        ),
+        profit = CASE
+          WHEN o.order_status IN ('Cancelled', 'Returned') THEN
+            -2 * ({shipping_expr})
+          ELSE
+            o.item_price
+            - ({cogs_expr})
+            - (o.item_price * ({fee_expr}) / 100)
+            - ({shipping_expr})
+            - ({marketing_expr})
+        END
+      WHERE o.amazon_order_id = ANY(:order_ids)
+    """), {"order_ids": order_ids})
+    await session.commit()
+    if result.rowcount:
+        logger.info(f"Recalculated profitability for {result.rowcount} order row(s)")
+
+
+async def run_shipment_sync(session: AsyncSession):
+    orders_result = await session.execute(sa_text("""
+      SELECT
+        o.amazon_order_id,
+        o.sku,
+        o.purchase_date,
+        o.fulfillment_channel,
+        o.ship_postal_code,
+        o.ship_city,
+        o.ship_state,
+        o.shipping_price AS recorded_amazon_shipping_cost,
+        se.id AS shipment_estimate_id,
+        se.amazon_shipping_cost AS existing_estimated_amazon_cost,
+        ps.weight_kg,
+        ps.volumetric_weight_kg,
+        ps.chargeable_weight_kg
+      FROM orders o
+      LEFT JOIN shipment_estimates se
+        ON se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+      LEFT JOIN product_specifications ps
+        ON ps.sku = o.sku
+      WHERE o.ship_postal_code IS NOT NULL
+        AND o.ship_postal_code != ''
+        AND (
+          se.id IS NULL
+          OR (
+            (
+              LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+              OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
+            )
+            AND (
+              COALESCE(o.shipping_price, 0) <= 0
+              OR COALESCE(se.amazon_shipping_cost, 0) <= 0
+            )
+          )
+        )
+      ORDER BY o.purchase_date DESC NULLS LAST, o.amazon_order_id DESC, o.sku
+      LIMIT :limit
+    """), {"limit": SHIPMENT_SYNC_BATCH_SIZE})
+    orders = [dict(row) for row in orders_result.mappings().all()]
+
+    if not orders:
+        logger.info("Shipment sync skipped: no eligible orders need shipment refresh.")
+        return
+
+    amazon_order_ids = []
+    for row in orders:
+        if (
+            is_amazon_fulfilled(row.get("fulfillment_channel"))
+            and float(row.get("recorded_amazon_shipping_cost") or 0) <= 0
+            and row.get("amazon_order_id") not in amazon_order_ids
+        ):
+            amazon_order_ids.append(row["amazon_order_id"])
+        if len(amazon_order_ids) >= AMAZON_FINANCE_LOOKUP_LIMIT:
+            break
+
+    finance_costs: dict[str, dict[str, float]] = {}
+    if amazon_order_ids:
+        access_token = await get_amazon_access_token()
+        async with httpx.AsyncClient(timeout=30) as client:
+            for index, order_id in enumerate(amazon_order_ids):
+                finance_costs[order_id] = await fetch_amazon_order_financial_shipping_costs(
+                    client,
+                    access_token,
+                    order_id,
+                )
+                if index < len(amazon_order_ids) - 1:
+                    await asyncio.sleep(AMAZON_FINANCE_LOOKUP_DELAY_SECONDS)
+
+    estimated = 0
+    shiprocket_count = 0
+    fallback_count = 0
+    actual_amazon_count = 0
+    touched_order_ids: set[str] = set()
+
+    for order in orders:
+        dest_pin = normalize_pincode(order.get("ship_postal_code"))
+        if len(dest_pin) != 6:
+            continue
+
+        actual_weight = float(order.get("weight_kg") or 0.5)
+        volumetric_weight = order.get("volumetric_weight_kg")
+        chargeable_weight = float(order.get("chargeable_weight_kg") or actual_weight or 0.5)
+        rates, source = await get_shipping_rates_with_source(ORIGIN_PINCODE, dest_pin, chargeable_weight)
+        if source == "shiprocket":
+            shiprocket_count += 1
+        else:
+            fallback_count += 1
+
+        finance_cost = finance_costs.get(order["amazon_order_id"], {}).get(order["sku"], 0.0)
+        recorded_cost = float(order.get("recorded_amazon_shipping_cost") or 0)
+        actual_amazon_cost = finance_cost or recorded_cost
+        amazon_cost = resolve_amazon_shipping_cost(
+            actual_amazon_cost,
+            order.get("fulfillment_channel"),
+            rates,
+        )
+        if finance_cost > 0:
+            actual_amazon_count += 1
+            if abs(finance_cost - recorded_cost) > 0.01:
+                await session.execute(sa_text("""
+                  UPDATE orders
+                  SET shipping_price = :shipping_price
+                  WHERE amazon_order_id = :amazon_order_id AND sku = :sku
+                """), {
+                    "shipping_price": finance_cost,
+                    "amazon_order_id": order["amazon_order_id"],
+                    "sku": order["sku"],
+                })
+
+        cheapest_provider, cheapest_cost = find_cheapest(rates, amazon_cost)
+
+        await session.execute(sa_text("""
+          INSERT INTO shipment_estimates (
+            amazon_order_id, sku, origin_pincode,
+            destination_pincode, destination_city, destination_state,
+            package_weight_kg, volumetric_weight_kg, chargeable_weight_kg,
+            amazon_shipping_cost,
+            delhivery_cost, bluedart_cost, dtdc_cost, xpressbees_cost, ekart_cost,
+            delhivery_etd, bluedart_etd, dtdc_etd, xpressbees_etd, ekart_etd,
+            cheapest_provider, cheapest_cost, rate_source, estimated_at
+          ) VALUES (
+            :amazon_order_id, :sku, :origin_pincode,
+            :destination_pincode, :destination_city, :destination_state,
+            :package_weight_kg, :volumetric_weight_kg, :chargeable_weight_kg,
+            :amazon_shipping_cost,
+            :delhivery_cost, :bluedart_cost, :dtdc_cost, :xpressbees_cost, :ekart_cost,
+            :delhivery_etd, :bluedart_etd, :dtdc_etd, :xpressbees_etd, :ekart_etd,
+            :cheapest_provider, :cheapest_cost, :rate_source, NOW()
+          )
+          ON CONFLICT (amazon_order_id, sku) DO UPDATE SET
+            destination_pincode = EXCLUDED.destination_pincode,
+            destination_city = EXCLUDED.destination_city,
+            destination_state = EXCLUDED.destination_state,
+            package_weight_kg = EXCLUDED.package_weight_kg,
+            volumetric_weight_kg = EXCLUDED.volumetric_weight_kg,
+            chargeable_weight_kg = EXCLUDED.chargeable_weight_kg,
+            amazon_shipping_cost = EXCLUDED.amazon_shipping_cost,
+            delhivery_cost = EXCLUDED.delhivery_cost,
+            bluedart_cost = EXCLUDED.bluedart_cost,
+            dtdc_cost = EXCLUDED.dtdc_cost,
+            xpressbees_cost = EXCLUDED.xpressbees_cost,
+            ekart_cost = EXCLUDED.ekart_cost,
+            delhivery_etd = EXCLUDED.delhivery_etd,
+            bluedart_etd = EXCLUDED.bluedart_etd,
+            dtdc_etd = EXCLUDED.dtdc_etd,
+            xpressbees_etd = EXCLUDED.xpressbees_etd,
+            ekart_etd = EXCLUDED.ekart_etd,
+            cheapest_provider = EXCLUDED.cheapest_provider,
+            cheapest_cost = EXCLUDED.cheapest_cost,
+            rate_source = EXCLUDED.rate_source,
+            estimated_at = NOW()
+        """), {
+            "amazon_order_id": order["amazon_order_id"],
+            "sku": order["sku"],
+            "origin_pincode": normalize_pincode(ORIGIN_PINCODE) or ORIGIN_PINCODE,
+            "destination_pincode": dest_pin,
+            "destination_city": order.get("ship_city"),
+            "destination_state": order.get("ship_state"),
+            "package_weight_kg": actual_weight,
+            "volumetric_weight_kg": volumetric_weight,
+            "chargeable_weight_kg": chargeable_weight,
+            "amazon_shipping_cost": amazon_cost or 0,
+            "delhivery_cost": (rates.get("delhivery") or {}).get("cost"),
+            "bluedart_cost": (rates.get("bluedart") or {}).get("cost"),
+            "dtdc_cost": (rates.get("dtdc") or {}).get("cost"),
+            "xpressbees_cost": (rates.get("xpressbees") or {}).get("cost"),
+            "ekart_cost": (rates.get("ekart") or {}).get("cost"),
+            "delhivery_etd": (rates.get("delhivery") or {}).get("etd"),
+            "bluedart_etd": (rates.get("bluedart") or {}).get("etd"),
+            "dtdc_etd": (rates.get("dtdc") or {}).get("etd"),
+            "xpressbees_etd": (rates.get("xpressbees") or {}).get("etd"),
+            "ekart_etd": (rates.get("ekart") or {}).get("etd"),
+            "cheapest_provider": normalize_provider_name(cheapest_provider),
+            "cheapest_cost": None if cheapest_cost == float("inf") else cheapest_cost,
+            "rate_source": source,
+        })
+
+        touched_order_ids.add(order["amazon_order_id"])
+        estimated += 1
+
+    await session.commit()
+
+    if touched_order_ids:
+        await recalculate_profitability_for_orders(session, sorted(touched_order_ids))
+
+    logger.info(
+        "Shipment sync complete: %s rows refreshed (%s Shiprocket, %s fallback, %s Amazon actual)",
+        estimated,
+        shiprocket_count,
+        fallback_count,
+        actual_amazon_count,
+    )
+
+
+POWERBI_SALES_INSERT_PAIRS = [
+    ("Date", "date"),
+    ("Year", "year"),
+    ("Month_Num", "month_num"),
+    ("Month_Name", "month_name"),
+    ("Month_Year", "month_year"),
+    ("Quarter", "quarter"),
+    ("Quarter_Name", "quarter_name"),
+    ("Business", "business"),
+    ("Invoice Number", "invoice_number"),
+    ("Invoice Date", "invoice_date"),
+    ("Transaction Type", "transaction_type"),
+    ("Order Id", "order_id"),
+    ("Quantity", "quantity"),
+    ("BRAND", "brand"),
+    ("Item Description", "item_description"),
+    ("Asin", "asin"),
+    ("Sku", "sku"),
+    ("Category", "category"),
+    ("Segment", "segment"),
+    ("Ship To City", "ship_to_city"),
+    ("Ship To State", "ship_to_state"),
+    ("Ship To Country", "ship_to_country"),
+    ("Ship To Postal Code", "ship_to_postal_code"),
+    ("Invoice Amount", "invoice_amount"),
+    ("Principal Amount", "principal_amount"),
+    ("Warehouse Id", "warehouse_id"),
+    ("Customer Bill To Gstid", "customer_bill_to_gstid"),
+    ("Buyer Name", "buyer_name"),
+    ("Source", "source"),
+    ("Channel", "channel"),
+]
+
+POWERBI_SALES_CREATE_SQL = """
+  CREATE TABLE IF NOT EXISTS "PowerBISales" (
+    "Date" DATE,
+    "Year" INTEGER,
+    "Month_Num" INTEGER,
+    "Month_Name" TEXT,
+    "Month_Year" TEXT,
+    "Quarter" INTEGER,
+    "Quarter_Name" TEXT,
+    "Business" TEXT,
+    "Invoice Number" TEXT,
+    "Invoice Date" TIMESTAMP,
+    "Transaction Type" TEXT,
+    "Order Id" TEXT,
+    "Quantity" NUMERIC(18, 2),
+    "BRAND" TEXT,
+    "Item Description" TEXT,
+    "Asin" TEXT,
+    "Sku" TEXT,
+    "Category" TEXT,
+    "Segment" TEXT,
+    "Ship To City" TEXT,
+    "Ship To State" TEXT,
+    "Ship To Country" TEXT,
+    "Ship To Postal Code" TEXT,
+    "Invoice Amount" NUMERIC(18, 2),
+    "Principal Amount" NUMERIC(18, 2),
+    "Warehouse Id" TEXT,
+    "Customer Bill To Gstid" TEXT,
+    "Buyer Name" TEXT,
+    "Source" TEXT,
+    "Channel" TEXT
+  )
+"""
+
+POWERBI_SALES_INSERT_SQL = f"""
+  INSERT INTO "PowerBISales" (
+    {", ".join(f'"{column}"' for column, _ in POWERBI_SALES_INSERT_PAIRS)}
+  ) VALUES (
+    {", ".join(f":{param}" for _, param in POWERBI_SALES_INSERT_PAIRS)}
+  )
+"""
+
+
+def _invoice_text(value) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _invoice_number(value) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return round(float(value), 2)
+    cleaned = str(value).replace(",", "").strip()
+    if not cleaned:
+        return None
+    try:
+        return round(float(cleaned), 2)
+    except ValueError:
+        return None
+
+
+def _invoice_integer(value) -> int | None:
+    number = _invoice_number(value)
+    return int(number) if number is not None else None
+
+
+def _invoice_datetime(value) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    normalized = text.replace("T", " ").replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo:
+            return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+        return parsed
+    except ValueError:
+        pass
+
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d",
+        "%d-%m-%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M:%S",
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+    ):
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            continue
+
+    return None
+
+
+def _normalize_invoice_header(header: str | None) -> str:
+    return "".join(ch.lower() for ch in str(header or "") if ch.isalnum())
+
+
+def _normalized_invoice_row(row: dict) -> dict[str, str | None]:
+    normalized = {}
+    for key, value in row.items():
+        normalized[_normalize_invoice_header(key)] = _invoice_text(value)
+    return normalized
+
+
+def _get_invoice_value(row: dict[str, str | None], *candidates: str) -> str | None:
+    for candidate in candidates:
+        value = row.get(_normalize_invoice_header(candidate))
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _first_day_of_month(value: datetime):
+    return value.date().replace(day=1)
+
+
+def _fy_label(value: datetime) -> str:
+    fy_start = value.year if value.month >= 4 else value.year - 1
+    return f"FY{fy_start}"
+
+
+def _quarter(value: datetime) -> int:
+    return ((value.month - 1) // 3) + 1
+
+
+async def _ensure_powerbi_sales_table(session: AsyncSession):
+    await session.execute(sa_text(POWERBI_SALES_CREATE_SQL))
+    await session.execute(sa_text("""
+      CREATE INDEX IF NOT EXISTS "ix_PowerBISales_InvoiceDate"
+      ON "PowerBISales" ("Invoice Date")
+    """))
+    await session.execute(sa_text("""
+      CREATE INDEX IF NOT EXISTS "ix_PowerBISales_OrderId"
+      ON "PowerBISales" ("Order Id")
+    """))
+    await session.execute(sa_text("""
+      CREATE INDEX IF NOT EXISTS "ix_PowerBISales_Sku"
+      ON "PowerBISales" ("Sku")
+    """))
+    await session.commit()
+
+
+async def _get_restricted_data_token(
+    client: httpx.AsyncClient,
+    access_token: str,
+    path: str,
+) -> str:
+    endpoint = os.getenv("SP_API_ENDPOINT", "https://sellingpartnerapi-eu.amazon.com").strip('"').strip("'")
+    response = await client.post(
+        f"{endpoint}/tokens/2021-03-01/restrictedDataToken",
+        headers={
+            "x-amz-access-token": access_token,
+            "Content-Type": "application/json",
+        },
+        json={
+            "restrictedResources": [
+                {
+                    "method": "GET",
+                    "path": path,
+                }
+            ]
+        },
+    )
+    if response.status_code >= 400:
+        raise ValueError(f"Failed to get restricted data token: {response.status_code} {response.text[:250]}")
+    return response.json()["restrictedDataToken"]
+
+
+async def _request_report_rows(
+    report_type: str,
+    start_time: datetime,
+    end_time: datetime,
+) -> list[dict[str, str | None]]:
+    endpoint = os.getenv("SP_API_ENDPOINT")
+    if not endpoint:
+        raise ValueError("Missing SP_API_ENDPOINT in environment")
+    endpoint = endpoint.strip('"').strip("'")
+
+    access_token = await get_amazon_access_token()
+    headers = {"x-amz-access-token": access_token, "Content-Type": "application/json"}
+
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        create_payload = {
+            "reportType": report_type,
+            "marketplaceIds": [os.getenv("SP_API_MARKETPLACE_ID")],
+            "dataStartTime": start_time.isoformat(),
+            "dataEndTime": end_time.isoformat(),
+        }
+
+        response = await client.post(
+            f"{endpoint}/reports/2021-06-30/reports",
+            headers=headers,
+            json=create_payload,
+        )
+        if response.status_code >= 400:
+            raise ValueError(
+                f"{report_type} request failed: {response.status_code} {response.text[:250]}"
+            )
+
+        report_id = response.json()["reportId"]
+        logger.info("Requested %s report %s", report_type, report_id)
+
+        status_data = None
+        while True:
+            await asyncio.sleep(15)
+            poll_res = await client.get(
+                f"{endpoint}/reports/2021-06-30/reports/{report_id}",
+                headers={"x-amz-access-token": access_token},
+            )
+            if poll_res.status_code >= 400:
+                raise ValueError(
+                    f"{report_type} polling failed: {poll_res.status_code} {poll_res.text[:250]}"
+                )
+            status_data = poll_res.json()
+            status = status_data.get("processingStatus")
+            logger.info("Polling %s report %s: %s", report_type, report_id, status)
+
+            if status == "DONE":
+                break
+            if status == "DONE_NO_DATA":
+                return []
+            if status in {"CANCELLED", "FATAL"}:
+                raise ValueError(f"{report_type} failed with status {status}")
+
+        report_document_id = status_data.get("reportDocumentId")
+        if not report_document_id:
+            return []
+
+        document_path = f"/reports/2021-06-30/documents/{report_document_id}"
+        restricted_token = await _get_restricted_data_token(client, access_token, document_path)
+        doc_res = await client.get(
+            f"{endpoint}{document_path}",
+            headers={"x-amz-access-token": restricted_token},
+        )
+        if doc_res.status_code >= 400:
+            raise ValueError(
+                f"{report_type} document fetch failed: {doc_res.status_code} {doc_res.text[:250]}"
+            )
+        doc_data = doc_res.json()
+        download_url = doc_data["url"]
+        compression_algorithm = doc_data.get("compressionAlgorithm")
+
+        file_res = await client.get(download_url, timeout=120.0)
+        if file_res.status_code >= 400:
+            raise ValueError(
+                f"{report_type} download failed: {file_res.status_code} {file_res.text[:250]}"
+            )
+
+        content = file_res.content
+        if compression_algorithm == "GZIP":
+            content = zlib.decompress(content, zlib.MAX_WBITS | 32)
+
+        text_data = content.decode("utf-8-sig", errors="replace")
+        sample = "\n".join(text_data.splitlines()[:5])
+        delimiter = "\t" if "\t" in sample else ","
+        try:
+            dialect = csv.Sniffer().sniff(sample or text_data[:1024], delimiters="\t,;|")
+            delimiter = dialect.delimiter
+        except csv.Error:
+            pass
+
+        reader = csv.DictReader(io.StringIO(text_data), delimiter=delimiter)
+        return [{key: value for key, value in row.items()} for row in reader]
+
+
+async def _load_invoice_sku_meta(session: AsyncSession) -> dict[str, dict[str, str | None]]:
+    result = await session.execute(sa_text("""
+      SELECT sku, brand, category
+      FROM estimated_cogs
+    """))
+    return {
+        row.sku: {
+            "brand": row.brand,
+            "category": row.category,
+        }
+        for row in result.mappings().all()
+        if row.sku
+    }
+
+
+def _build_powerbi_sales_row(
+    raw_row: dict[str, str | None],
+    business_hint: str,
+    sku_meta: dict[str, dict[str, str | None]],
+) -> dict[str, object]:
+    row = _normalized_invoice_row(raw_row)
+
+    invoice_date = _invoice_datetime(
+        _get_invoice_value(row, "Invoice Date", "Shipment Date", "Order Date")
+    ) or datetime.utcnow()
+    date_value = _first_day_of_month(invoice_date)
+    sku = _get_invoice_value(row, "Sku", "SKU", "MsKU", "Seller SKU")
+    meta = sku_meta.get(sku or "", {})
+
+    invoice_amount = _invoice_number(
+        _get_invoice_value(
+            row,
+            "Invoice Amount",
+            "Invoice Value",
+            "Total Invoice Amount",
+            "Invoice Total",
+            "Total Amount",
+        )
+    )
+    principal_amount = _invoice_number(
+        _get_invoice_value(
+            row,
+            "Principal Amount",
+            "Principal",
+            "Taxable Amount",
+            "Item Amount",
+            "Product Sales",
+        )
+    )
+    if principal_amount is None and invoice_amount is not None:
+        tax_amount = _invoice_number(
+            _get_invoice_value(row, "Tax Amount", "Item Tax", "Tax")
+        )
+        if tax_amount is not None:
+            principal_amount = round(invoice_amount - tax_amount, 2)
+
+    quarter = _quarter(invoice_date)
+    business = _get_invoice_value(row, "Business") or business_hint
+
+    return {
+        "date": date_value,
+        "year": invoice_date.year,
+        "month_num": invoice_date.month,
+        "month_name": invoice_date.strftime("%B"),
+        "month_year": invoice_date.strftime("%b %Y"),
+        "quarter": quarter,
+        "quarter_name": f"Q{quarter}",
+        "business": business,
+        "invoice_number": _get_invoice_value(row, "Invoice Number"),
+        "invoice_date": invoice_date,
+        "transaction_type": _get_invoice_value(row, "Transaction Type") or "Shipment",
+        "order_id": _get_invoice_value(row, "Order Id", "Amazon Order Id", "Order ID"),
+        "quantity": _invoice_number(_get_invoice_value(row, "Quantity")) or 0,
+        "brand": _get_invoice_value(row, "Brand", "BRAND") or meta.get("brand"),
+        "item_description": _get_invoice_value(row, "Item Description", "Product Description"),
+        "asin": _get_invoice_value(row, "Asin", "ASIN"),
+        "sku": sku,
+        "category": _get_invoice_value(row, "Category") or meta.get("category"),
+        "segment": _get_invoice_value(row, "Segment"),
+        "ship_to_city": _get_invoice_value(row, "Ship To City"),
+        "ship_to_state": _get_invoice_value(row, "Ship To State"),
+        "ship_to_country": _get_invoice_value(row, "Ship To Country"),
+        "ship_to_postal_code": _get_invoice_value(row, "Ship To Postal Code"),
+        "invoice_amount": invoice_amount,
+        "principal_amount": principal_amount,
+        "warehouse_id": _get_invoice_value(row, "Warehouse Id", "Warehouse ID"),
+        "customer_bill_to_gstid": _get_invoice_value(
+            row,
+            "Customer Bill To Gstid",
+            "Buyer Gstin",
+            "Customer GSTIN",
+            "Customer Bill To GSTID",
+        ),
+        "buyer_name": _get_invoice_value(row, "Buyer Name", "Customer Name"),
+        "source": _fy_label(invoice_date),
+        "channel": _get_invoice_value(row, "Channel") or "Amazon",
+    }
+
+
+async def _replace_powerbi_sales_window(
+    session: AsyncSession,
+    rows: list[dict[str, object]],
+    start_time: datetime,
+    end_time: datetime,
+):
+    await _ensure_powerbi_sales_table(session)
+    await session.execute(sa_text("""
+      DELETE FROM "PowerBISales"
+      WHERE COALESCE(CAST("Invoice Date" AS DATE), "Date")
+        BETWEEN :start_date AND :end_date
+        AND COALESCE("Channel", 'Amazon') = 'Amazon'
+    """), {
+        "start_date": start_time.date(),
+        "end_date": end_time.date(),
+    })
+
+    if rows:
+        batch_size = 500
+        for index in range(0, len(rows), batch_size):
+            await session.execute(sa_text(POWERBI_SALES_INSERT_SQL), rows[index:index + batch_size])
+
+    await session.commit()
+
+
+async def get_powerbi_sales_sync_status(session: AsyncSession):
+    await _ensure_powerbi_sales_table(session)
+    result = await session.execute(sa_text("""
+      SELECT
+        COUNT(*) AS row_count,
+        MAX("Invoice Date") AS latest_invoice_date
+      FROM "PowerBISales"
+    """))
+    row = result.mappings().first() or {}
+    latest_invoice_date = row.get("latest_invoice_date")
+    return {
+        "tableExists": True,
+        "rowCount": int(row.get("row_count") or 0),
+        "sourceLabel": "Amazon GST reports (SP-API)",
+        "latestInvoiceDate": latest_invoice_date.isoformat() if latest_invoice_date else None,
+        "syncWindowDays": GST_INVOICE_LOOKBACK_DAYS,
+    }
+
+
+async def run_invoice_sync(session: AsyncSession):
+    end_time = datetime.now(timezone.utc).replace(microsecond=0)
+    start_time = (end_time - timedelta(days=max(1, GST_INVOICE_LOOKBACK_DAYS - 1))).replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+
+    sku_meta = await _load_invoice_sku_meta(session)
+    cleaned_rows: list[dict[str, object]] = []
+    report_summaries: list[dict[str, object]] = []
+    warnings: list[str] = []
+    seen_keys: set[tuple[str, str, str, str, str]] = set()
+
+    for report_type, business_hint in GST_INVOICE_REPORT_TYPES:
+        try:
+            report_rows = await _request_report_rows(report_type, start_time, end_time)
+            report_summaries.append({
+                "reportType": report_type,
+                "business": business_hint,
+                "rows": len(report_rows),
+            })
+            for raw_row in report_rows:
+                row = _build_powerbi_sales_row(raw_row, business_hint, sku_meta)
+                dedupe_key = (
+                    str(row.get("invoice_number") or ""),
+                    str(row.get("order_id") or ""),
+                    str(row.get("sku") or ""),
+                    str(row.get("transaction_type") or ""),
+                    str(row.get("business") or ""),
+                )
+                if dedupe_key in seen_keys:
+                    continue
+                seen_keys.add(dedupe_key)
+                cleaned_rows.append(row)
+        except Exception as exc:
+            warning = f"{report_type}: {exc}"
+            logger.warning("Invoice sync warning: %s", warning)
+            warnings.append(warning)
+
+    if not cleaned_rows and warnings:
+        raise ValueError("; ".join(warnings))
+
+    await _replace_powerbi_sales_window(session, cleaned_rows, start_time, end_time)
+    status = await get_powerbi_sales_sync_status(session)
+    return {
+        **status,
+        "message": f"Synced {len(cleaned_rows):,} invoice row(s) from Amazon GST reports.",
+        "syncedRows": len(cleaned_rows),
+        "startDate": start_time.date().isoformat(),
+        "endDate": end_time.date().isoformat(),
+        "reports": report_summaries,
+        "warnings": warnings,
+    }
+
+
+async def get_amazon_current_prices(asins: list[str]) -> dict[str, float | None]:
+    """
+    Fetches current Amazon listing prices for a list of ASINs using the SP-API Pricing endpoint.
+    Returns a dict mapping ASIN → listing price (or None if unavailable).
+    Batches requests in groups of 20 (API limit).
+    """
+    return await _fetch_amazon_prices(asins, item_type="Asin", param_name="Asins")
+
+
+async def get_amazon_prices_by_sku(skus: list[str], sku_to_asin: dict[str, str]) -> dict[str, float | None]:
+    """
+    Fetches current Amazon listing prices for a list of Seller SKUs.
+    Uses ASIN-based batch pricing (which works reliably) and maps results back to SKUs.
+
+    Args:
+        skus: list of seller SKUs to fetch prices for
+        sku_to_asin: pre-built mapping of SKU → ASIN (from DB lookups)
+
+    Returns: dict mapping SKU → listing price (or None if unavailable).
+    """
+    # Build the list of ASINs we can look up, tracking ASIN→SKU(s) mapping
+    asin_to_skus: dict[str, list[str]] = {}
+    skus_without_asin: list[str] = []
+
+    for sku in skus:
+        asin = sku_to_asin.get(sku)
+        if asin:
+            asin_to_skus.setdefault(asin, []).append(sku)
+        else:
+            skus_without_asin.append(sku)
+
+    if skus_without_asin:
+        logger.warning(f"{len(skus_without_asin)} SKUs have no ASIN mapping, cannot fetch prices: {skus_without_asin[:10]}...")
+
+    # Fetch prices by ASIN (the reliable batch approach)
+    asins = list(asin_to_skus.keys())
+    asin_prices = await get_amazon_current_prices(asins) if asins else {}
+
+    # Map ASIN prices back to SKUs
+    results: dict[str, float | None] = {}
+    for asin, price in asin_prices.items():
+        for sku in asin_to_skus.get(asin, []):
+            results[sku] = price
+
+    # Fill in None for SKUs we couldn't look up
+    for sku in skus:
+        results.setdefault(sku, None)
+
+    return results
+
+
+def _extract_price_from_product(product: dict) -> float | None:
+    """Extract price from SP-API product pricing response."""
+    # Source 1: Offers[].BuyingPrice.ListingPrice
+    offers = product.get("Offers", [])
+    for offer in offers:
+        listing = offer.get("BuyingPrice", {}).get("ListingPrice", {})
+        amount = listing.get("Amount")
+        if amount is not None:
+            return float(amount)
+
+    # Source 2: CompetitivePricing.CompetitivePrices[].Price.ListingPrice
+    comp_prices = (
+        product.get("CompetitivePricing", {})
+        .get("CompetitivePrices", [])
+    )
+    for cp in comp_prices:
+        listing = cp.get("Price", {}).get("ListingPrice", {})
+        amount = listing.get("Amount")
+        if amount is not None:
+            return float(amount)
+
+    return None
+
+
+async def _fetch_amazon_prices(identifiers: list[str], item_type: str, param_name: str) -> dict[str, float | None]:
+    """
+    SP-API pricing fetcher using batch getItemOffers/getPricing endpoint.
+    Only ASIN-based lookups are reliable (ItemType=Asin, param_name=Asins).
+    SKU-based batch lookups (ItemType=Sku) return 400 errors from Amazon.
+    """
+    endpoint = os.getenv("SP_API_ENDPOINT", "https://sellingpartnerapi-eu.amazon.com").strip('"').strip("'")
+    marketplace_id = os.getenv("SP_API_MARKETPLACE_ID", "A21TJRUUN4KGV")
+    access_token = await get_amazon_access_token()
+
+    unique_ids = list(dict.fromkeys(i for i in identifiers if i))
+    if not unique_ids:
+        return {}
+
+    results: dict[str, float | None] = {}
+    batch_size = 20
+    max_retries = 2
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        headers = {"x-amz-access-token": access_token}
+
+        for i in range(0, len(unique_ids), batch_size):
+            batch = unique_ids[i:i + batch_size]
+
+            params = [("MarketplaceId", marketplace_id), ("ItemType", item_type)]
+            for identifier in batch:
+                params.append((param_name, identifier))
+            url = f"{endpoint}/products/pricing/v0/price"
+
+            for attempt in range(max_retries + 1):
+                try:
+                    resp = await client.get(url, params=params, headers=headers)
+
+                    if resp.status_code == 429:
+                        wait = min(5 * (attempt + 1), 15)
+                        logger.warning(f"Rate limit hit on pricing API (attempt {attempt+1}), sleeping {wait}s...")
+                        await asyncio.sleep(wait)
+                        if attempt == max_retries:
+                            logger.error(f"Pricing API rate-limited after {max_retries+1} attempts, skipping batch")
+                            for ident in batch:
+                                results.setdefault(ident, None)
+                            break
+                        continue
+
+                    if resp.status_code == 400:
+                        body = resp.text
+                        logger.warning(f"Pricing API 400 error (attempt {attempt+1}): {body[:500]}")
+                        if attempt == max_retries:
+                            for ident in batch:
+                                results.setdefault(ident, None)
+                        continue
+
+                    if resp.status_code == 403:
+                        logger.warning("Got 403 on pricing API, refreshing access token...")
+                        access_token = await get_amazon_access_token()
+                        headers = {"x-amz-access-token": access_token}
+                        continue
+
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                    for price_item in data.get("payload", []):
+                        # Response uses SellerSKU for SKU lookups, ASIN for ASIN lookups
+                        item_key = price_item.get("SellerSKU") if item_type == "Sku" else price_item.get("ASIN")
+                        if not item_key:
+                            continue
+                        status = price_item.get("status", "")
+                        if status != "Success":
+                            results[item_key] = None
+                            continue
+
+                        product = price_item.get("Product", {})
+                        results[item_key] = _extract_price_from_product(product)
+
+                    for ident in batch:
+                        results.setdefault(ident, None)
+
+                    break  # Success, move to next batch
+
+                except httpx.HTTPStatusError as exc:
+                    logger.warning(f"Pricing API HTTP error for batch (attempt {attempt+1}): {exc}")
+                    if attempt == max_retries:
+                        for ident in batch:
+                            results.setdefault(ident, None)
+                except Exception as exc:
+                    logger.warning(f"Pricing API error for batch (attempt {attempt+1}): {exc}")
+                    if attempt == max_retries:
+                        for ident in batch:
+                            results.setdefault(ident, None)
+
+            # Small delay between batches to respect rate limits
+            if i + batch_size < len(unique_ids):
+                await asyncio.sleep(0.5)
+
+    return results
+
+
 async def run_full_sync(session: AsyncSession):
     """
     Runs inventory sync, incremental orders sync, and product specs sync.
@@ -649,5 +1780,11 @@ async def run_full_sync(session: AsyncSession):
         await run_product_specs_sync(session)
     except Exception as e:
         logger.error(f"Product specs sync failed: {e}")
+
+    try:
+        logger.info("--- Phase 4: Shipment Cost Sync ---")
+        await run_shipment_sync(session)
+    except Exception as e:
+        logger.error(f"Shipment sync failed: {e}")
 
     logger.info("=== FULL SYNC COMPLETE ===")

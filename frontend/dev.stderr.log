@@ -1,0 +1,9 @@
+⚠ Port 3000 is in use by process 22540, using available port 3001 instead.
+⨯ Another next dev server is already running.
+
+- Local:        http://localhost:3000
+- PID:          22540
+- Dir:          C:\Users\prana\OneDrive\Desktop\HalteDB\frontend
+- Log:          .next\dev\logs\next-development.log
+
+Run taskkill /PID 22540 /F to stop it.

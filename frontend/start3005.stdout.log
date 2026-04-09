@@ -1,0 +1,9 @@
+
+> frontend@0.1.0 start
+> next start --port 3005
+
+▲ Next.js 16.2.0
+- Local:         http://localhost:3005
+- Network:       http://192.168.1.6:3005
+✓ Ready in 259ms
+[Shiprocket] Token acquired

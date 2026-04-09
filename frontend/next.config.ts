@@ -8,10 +8,6 @@ if (process.env.NODE_ENV !== "production") {
   config({ path: resolve(process.cwd(), "../.env") });
 }
 
-const nextConfig: NextConfig = {
-  turbopack: {
-    root: __dirname,
-  },
-};
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

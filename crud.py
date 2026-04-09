@@ -74,21 +74,53 @@ async def upsert_orders_batch(session: AsyncSession, batch: list[dict]):
 
 async def assign_cogs_to_orders(session: AsyncSession):
     """
-    Fills in cogs_price and profit for any orders missing them.
-    Profit = item_price - cogs - shipping_cost
-    For FBA (Amazon): uses shipping_price from report
-    For self-fulfilled: uses Rs 100 flat if no shipping_price
+    1. Auto-inserts any new base SKUs from orders into the cogs table (price 0).
+    2. Fills in cogs_price and profit for any orders missing them.
+    Profit = item_price - cogs - shipping_cost.
+    Amazon-fulfilled rows use the best available Amazon shipping cost:
+    actual order cost first, then shipment_estimates fallback.
     """
+    # Step 1: Insert missing base SKUs into cogs (strip variant suffixes)
+    insert_result = await session.execute(text("""
+        INSERT INTO cogs (sku, cogs_price)
+        SELECT DISTINCT base_sku, 0
+        FROM (
+            SELECT
+                CASE
+                    WHEN sku ~ E' \\d+$' THEN REGEXP_REPLACE(sku, E' \\d+$', '')
+                    WHEN sku ~ E'-[A-Za-z]$' THEN REGEXP_REPLACE(sku, E'-[A-Za-z]$', '')
+                    ELSE sku
+                END AS base_sku
+            FROM orders
+        ) sub
+        WHERE base_sku NOT IN (SELECT sku FROM cogs)
+        ON CONFLICT (sku) DO NOTHING
+    """))
+    if insert_result.rowcount and insert_result.rowcount > 0:
+        await session.commit()
+        logger.info(f"Auto-inserted {insert_result.rowcount} new SKUs into cogs table")
+
+    # Step 2: Assign COGS price and profit to orders
     result = await session.execute(text("""
         UPDATE orders o
         SET cogs_price = c.cogs_price,
             profit = o.item_price - c.cogs_price - CASE
-                WHEN o.fulfillment_channel = 'Amazon' AND COALESCE(o.shipping_price, 0) > 0
-                    THEN o.shipping_price
-                ELSE 100
+                WHEN LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+                  OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
+                THEN COALESCE(
+                    NULLIF(o.shipping_price, 0),
+                    NULLIF((
+                        SELECT se.amazon_shipping_cost
+                        FROM shipment_estimates se
+                        WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+                        LIMIT 1
+                    ), 0),
+                    0
+                )
+                ELSE COALESCE(o.shipping_price, 0)
             END
         FROM cogs c
-        WHERE o.sku = c.sku
+        WHERE (o.sku = c.sku OR o.sku LIKE c.sku || ' %' OR o.sku LIKE c.sku || '-%')
         AND (o.cogs_price IS NULL OR o.profit IS NULL)
     """))
     if result.rowcount and result.rowcount > 0:

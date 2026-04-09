@@ -80,6 +80,16 @@ body {
   bottom: 0;
   z-index: 100;
   backdrop-filter: blur(20px);
+  overflow: hidden;
+}
+
+.sidebar-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .sidebar-logo {
@@ -117,7 +127,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  flex: 1;
+  flex: 0 0 auto;
 }
 
 .sidebar-link {
@@ -150,15 +160,43 @@ body {
 }
 
 .sidebar-link-icon {
-  font-size: 18px;
   width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
+  flex: 0 0 24px;
+}
+
+.sidebar-icon-svg {
+  width: 18px;
+  height: 18px;
+}
+
+.sidebar-action-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+}
+
+.sidebar-status-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
 }
 
 .sidebar-footer {
   border-top: 1px solid var(--border);
   padding-top: 16px;
   margin-top: auto;
+}
+
+.sidebar-sync {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 16px;
+  margin-bottom: 16px;
 }
 
 .main-content {
@@ -831,4 +869,99 @@ input:focus {
 
 .search-input {
   max-width: 300px;
+}
+
+/* ============================================
+   Tabs Bar (inline tab strip)
+   ============================================ */
+
+.tabs-bar {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  width: fit-content;
+}
+
+.tab-btn {
+  padding: 8px 20px;
+  border-radius: var(--radius-xs);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.tab-btn.active {
+  background: var(--accent-glow);
+  color: var(--accent-hover);
+}
+
+.tab-btn:hover:not(.active) {
+  color: var(--text-primary);
+  background: var(--bg-glass);
+}
+
+/* ============================================
+   Badge accent
+   ============================================ */
+
+.badge-accent {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-hover);
+}
+
+/* ============================================
+   Textarea
+   ============================================ */
+
+textarea {
+  background: var(--bg-glass);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-size: 14px;
+  transition: var(--transition);
+  outline: none;
+}
+
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* ============================================
+   Mobile sidebar toggle & responsive tables
+   ============================================ */
+
+@media (max-width: 1200px) {
+  .main-content {
+    padding: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .page-title {
+    font-size: 22px;
+  }
+  .page-subtitle {
+    font-size: 12px;
+  }
+  .tabs-bar {
+    width: 100%;
+    overflow-x: auto;
+  }
+  table {
+    font-size: 11px;
+  }
+  thead th, tbody td {
+    padding: 8px 10px;
+  }
 }

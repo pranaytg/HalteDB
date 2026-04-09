@@ -45,6 +45,40 @@ function num(s) {
 
 function round2(n) { return Math.round(n * 100) / 100; }
 
+function normalizeArticleCode(v) {
+  const s = String(v || "").trim().toUpperCase();
+  const matches = s.match(/\d{4,6}/g);
+  return matches ? matches[matches.length - 1] : s;
+}
+
+function buildVelcroCpLookup() {
+  const rows = parseCSV(fs.readFileSync("GORILLA RS MASTER FILE.xlsx - CP.csv", "utf-8"));
+  const map = new Map();
+  for (const r of rows) {
+    const code = normalizeArticleCode(r[1]);
+    const usdPrice = num(r[4]);
+    const costInclGst = num(r[9]);
+    if (!code || (usdPrice <= 0 && costInclGst <= 0)) continue;
+    map.set(code, {
+      usdPrice,
+      costInclGst,
+      category: (r[6] || "").trim(),
+    });
+  }
+  return map;
+}
+
+function extractVelcroCostAndTax(row) {
+  const col11 = num(row[11]);
+  const col12 = num(row[12]);
+  const col13 = num(row[13]);
+  if (col12 > 0 && col12 <= 28 && col13 > 28) {
+    return { cost: col11, gstPct: col12 };
+  }
+  const gstPct = col13 > 0 && col13 <= 28 ? col13 : (col12 > 0 && col12 <= 28 ? col12 : 18);
+  return { cost: col12, gstPct };
+}
+
 async function main() {
   console.log("Updating brands from existing CSV files...");
   await pool.query('ALTER TABLE estimated_cogs ADD COLUMN IF NOT EXISTS brand VARCHAR(255);');
@@ -88,26 +122,37 @@ async function main() {
 
   // 4. Insert Velcro
   const velcroRows = parseCSV(fs.readFileSync("GORILLA RS MASTER FILE.xlsx - VELCRO.csv", "utf-8"));
+  const velcroCp = buildVelcroCpLookup();
+  const defaultUsdRate = 84;
   let velcroCount = 0;
   for (let i = 1; i < velcroRows.length; i++) {
     const r = velcroRows[i];
     const sku = (r[0] || "").trim();
     if (!sku || !sku.startsWith("HM")) continue;
 
-    const articleNumber = (r[1] || "").trim();
-    let category = (r[4] || "").trim();
+    const articleNumber = normalizeArticleCode(r[1]);
+    const cp = velcroCp.get(articleNumber);
+    let category = cp?.category || (r[4] || "").trim();
     if (!category) category = "Organisation";
-    const cost = num(r[12]);
-    if (cost === 0) continue;
+    const { cost, gstPct: parsedGstPct } = extractVelcroCostAndTax(r);
+    if (cost === 0 && !cp?.usdPrice) continue;
 
     const shipping = num(r[5]) || 80;
     const amzPrice = num(r[7]);
     const haltePrice = num(r[10]) || num(r[11]); 
-    const gstPct = num(r[13]) || 18;
+    const gstPct = parsedGstPct || 18;
+    const importPrice = cp?.usdPrice > 0 ? cp.usdPrice : cost;
+    const conversionRate = cp?.usdPrice > 0 ? defaultUsdRate : 1;
+    const baseBeforeGst = cp?.usdPrice > 0 && cp.costInclGst > shipping
+      ? (cp.costInclGst - shipping) / (1 + gstPct / 100)
+      : importPrice * conversionRate;
+    const customDuty = cp?.usdPrice > 0
+      ? Math.max(0, round2(baseBeforeGst - (cp.usdPrice * defaultUsdRate)))
+      : 0;
 
-    const importPriceInr = cost;
-    const gstAmount = round2(importPriceInr * (gstPct / 100));
-    const finalPrice = round2(importPriceInr + gstAmount + shipping);
+    const importPriceInr = round2(importPrice * conversionRate);
+    const gstAmount = round2((importPriceInr + customDuty) * (gstPct / 100));
+    const finalPrice = round2(importPriceInr + customDuty + gstAmount + shipping);
     const costPriceHalte = finalPrice;
     
     const sellingPrice = haltePrice || 0;
@@ -149,8 +194,8 @@ async function main() {
         amazon_selling_price=EXCLUDED.amazon_selling_price,
         profitability=EXCLUDED.profitability, competitor_price=EXCLUDED.competitor_price
     `, [
-      sku, articleNumber, 'Velcro', category, cost, 'INR',
-      0, 1, importPriceInr,
+      sku, articleNumber, 'Velcro', category, importPrice, 'USD',
+      customDuty, conversionRate, importPriceInr,
       gstPct, gstAmount, shipping, finalPrice,
       m1Pct, m1Amount, costPriceHalte,
       0, m2Pct, m2Amount,

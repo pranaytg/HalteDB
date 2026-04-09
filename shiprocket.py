@@ -8,6 +8,7 @@ import os
 import time
 import logging
 import httpx
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -57,6 +58,9 @@ async def _get_token() -> str | None:
 
 
 CARRIER_MAP = {
+    "amazon shipping": "amazon", "Amazon Shipping": "amazon",
+    "amazon prepaid": "amazon", "Amazon Prepaid": "amazon",
+    "amazon": "amazon", "Amazon": "amazon",
     "delhivery": "delhivery", "Delhivery": "delhivery",
     "Delhivery Surface": "delhivery", "Delhivery Air": "delhivery",
     "blue dart": "bluedart", "Blue Dart": "bluedart", "Bluedart": "bluedart",
@@ -67,6 +71,90 @@ CARRIER_MAP = {
     "Ecom Express": "ekart",
 }
 
+CARRIER_LABELS = {
+    "amazon": "Amazon",
+    "delhivery": "Delhivery",
+    "bluedart": "BlueDart",
+    "dtdc": "DTDC",
+    "xpressbees": "Xpressbees",
+    "ekart": "Ekart",
+}
+
+
+def normalize_pincode(pin: str | int | None) -> str:
+    return re.sub(r"\D", "", str(pin or ""))[:6]
+
+
+def is_amazon_fulfilled(fulfillment_channel: str | None) -> bool:
+    normalized = (fulfillment_channel or "").lower()
+    return "amazon" in normalized or "afn" in normalized
+
+
+def resolve_amazon_shipping_cost(
+    actual_amazon_cost: float | int | None,
+    fulfillment_channel: str | None,
+    rates: dict,
+) -> float:
+    actual_cost = round(float(actual_amazon_cost or 0), 2)
+    if actual_cost > 0:
+        return actual_cost
+    if not is_amazon_fulfilled(fulfillment_channel):
+        return 0.0
+
+    live_amazon = round(float((rates.get("amazon") or {}).get("cost") or 0), 2)
+    if live_amazon > 0:
+        return live_amazon
+
+    alternatives = sorted(
+        float(info["cost"])
+        for carrier, info in rates.items()
+        if carrier != "amazon" and info and info.get("cost")
+    )
+    if not alternatives:
+        return 0.0
+
+    middle = len(alternatives) // 2
+    if len(alternatives) % 2 == 0:
+        return round((alternatives[middle - 1] + alternatives[middle]) / 2, 2)
+    return round(alternatives[middle], 2)
+
+
+def normalize_provider_name(name: str | None) -> str | None:
+    if not name:
+        return name
+    lower = re.sub(r"[^a-z]", "", name.lower())
+    if "amazon" in lower:
+        return "Amazon"
+    if "delhivery" in lower:
+        return "Delhivery"
+    if "bluedart" in lower:
+        return "BlueDart"
+    if "dtdc" in lower:
+        return "DTDC"
+    if "xpressbees" in lower or "expressbees" in lower:
+        return "Xpressbees"
+    if "ekart" in lower:
+        return "Ekart"
+    return name
+
+
+def find_cheapest(rates: dict, amazon_cost: float) -> tuple[str, float]:
+    all_costs = {}
+    if amazon_cost and amazon_cost > 0:
+        all_costs["Amazon"] = round(float(amazon_cost), 2)
+    for carrier, info in rates.items():
+        if carrier == "amazon" or not info:
+            continue
+        cost = float(info.get("cost") or 0)
+        if cost > 0:
+            all_costs[CARRIER_LABELS.get(carrier, carrier)] = round(cost, 2)
+
+    if not all_costs:
+        return "", float("inf")
+
+    cheapest_provider = min(all_costs, key=lambda provider: all_costs[provider])
+    return cheapest_provider, all_costs[cheapest_provider]
+
 
 async def _shiprocket_rates(origin_pin: str, dest_pin: str, weight_kg: float) -> dict | None:
     """Try Shiprocket API. Returns None on any failure."""
@@ -74,14 +162,20 @@ async def _shiprocket_rates(origin_pin: str, dest_pin: str, weight_kg: float) ->
     if not token:
         return None
 
+    safe_origin_pin = normalize_pincode(origin_pin)
+    safe_dest_pin = normalize_pincode(dest_pin)
+    safe_weight = max(float(weight_kg or 0.5), 0.1)
+    if len(safe_origin_pin) != 6 or len(safe_dest_pin) != 6:
+        return None
+
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
                 f"{SHIPROCKET_BASE}/courier/serviceability/",
                 params={
-                    "pickup_postcode": origin_pin,
-                    "delivery_postcode": dest_pin,
-                    "weight": weight_kg,
+                    "pickup_postcode": safe_origin_pin,
+                    "delivery_postcode": safe_dest_pin,
+                    "weight": safe_weight,
                     "cod": 0,
                 },
                 headers={"Authorization": f"Bearer {token}"},
@@ -251,13 +345,23 @@ def estimate_all_carriers(origin_pin: str, dest_pin: str, weight_kg: float) -> d
 
 async def get_shipping_rates(origin_pin: str, dest_pin: str, weight_kg: float) -> dict:
     """Fetch shipping rates. Tries Shiprocket API first, falls back to rate cards."""
+    rates, _ = await get_shipping_rates_with_source(origin_pin, dest_pin, weight_kg)
+    return rates
+
+
+async def get_shipping_rates_with_source(origin_pin: str, dest_pin: str, weight_kg: float) -> tuple[dict, str]:
+    """Fetch shipping rates along with their source."""
+    safe_origin_pin = normalize_pincode(origin_pin)
+    safe_dest_pin = normalize_pincode(dest_pin)
+    safe_weight = max(float(weight_kg or 0.5), 0.1)
+
     # Try Shiprocket live rates first
-    live_rates = await _shiprocket_rates(origin_pin, dest_pin, weight_kg)
+    live_rates = await _shiprocket_rates(safe_origin_pin, safe_dest_pin, safe_weight)
     if live_rates:
-        return live_rates
+        return live_rates, "shiprocket"
 
     # Fallback to rate card estimation
-    return estimate_all_carriers(origin_pin, dest_pin, weight_kg)
+    return estimate_all_carriers(safe_origin_pin, safe_dest_pin, safe_weight), "fallback"
 
 
 async def get_bulk_rates(origin_pin: str, orders: list[dict], default_weight: float = 0.5) -> list[dict]:
@@ -276,7 +380,7 @@ async def get_bulk_rates(origin_pin: str, orders: list[dict], default_weight: fl
                 return {**order, "rates_error": "No destination pincode"}
 
             try:
-                rates = await get_shipping_rates(origin_pin, dest_pin, weight)
+                rates, _ = await get_shipping_rates_with_source(origin_pin, dest_pin, weight)
 
                 result = {
                     **order,
@@ -306,7 +410,7 @@ async def get_bulk_rates(origin_pin: str, orders: list[dict], default_weight: fl
 
                 if carrier_costs:
                     cheapest = min(carrier_costs, key=lambda k: carrier_costs[k])
-                    result["cheapest_provider"] = cheapest
+                    result["cheapest_provider"] = normalize_provider_name(cheapest)
                     result["cheapest_cost"] = carrier_costs[cheapest]
 
                 return result
