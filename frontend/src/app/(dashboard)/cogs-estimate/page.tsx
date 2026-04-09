@@ -58,6 +58,7 @@ export default function CogsEstimatePage() {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
+  const [brandFilter, setBrandFilter] = useState("");
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   // Security
@@ -212,12 +213,13 @@ export default function CogsEstimatePage() {
     finally { setSaving(false); }
   };
 
-  const filtered = items.filter(i =>
-    i.sku.toLowerCase().includes(search.toLowerCase()) ||
-    (i.article_number || "").toLowerCase().includes(search.toLowerCase()) ||
-    (i.brand || "").toLowerCase().includes(search.toLowerCase()) ||
-    (i.category || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const uniqueBrands = Array.from(new Set(items.map(i => i.brand).filter(Boolean) as string[])).sort();
+
+  const filtered = items.filter(i => {
+    const matchesBrand = !brandFilter || i.brand === brandFilter;
+    const matchesSearch = !search || i.sku.toLowerCase().includes(search.toLowerCase());
+    return matchesBrand && matchesSearch;
+  });
 
   if (!isAuthorized) {
     return (
@@ -362,12 +364,18 @@ export default function CogsEstimatePage() {
 
       {/* Table */}
       <div className="card">
-        <div className="card-header">
+        <div className="card-header" style={{ flexWrap: "wrap", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <div className="card-title">Estimated COGS ({filtered.length})</div>
           </div>
-          <input className="filter-input search-input" type="text" placeholder="Search SKU / Article / Brand / Category..."
-            value={search} onChange={e => setSearch(e.target.value)} />
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <select className="filter-select" value={brandFilter} onChange={e => setBrandFilter(e.target.value)} style={{ minWidth: 160 }}>
+              <option value="">All Brands</option>
+              {uniqueBrands.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <input className="filter-input search-input" type="text" placeholder="Search by SKU..."
+              value={search} onChange={e => setSearch(e.target.value)} style={{ minWidth: 200 }} />
+          </div>
         </div>
         <div className="table-container" style={{ maxHeight: 600, overflowY: "auto", overflowX: "auto" }}>
           <table style={{ minWidth: 1800, fontSize: 12 }}>
