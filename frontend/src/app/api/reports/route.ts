@@ -81,14 +81,14 @@ async function appendSalesReport(
   }
 
   if (brand) {
-    conditions.push(`ec.brand = $${params.length + 1}`);
+    conditions.push(`LOWER(ec.brand) = LOWER($${params.length + 1})`);
     params.push(brand);
   }
 
   const where = `WHERE ${conditions.join(" AND ")}`;
   const fromClause = `
     FROM orders o
-    LEFT JOIN estimated_cogs ec ON o.sku = ec.sku
+    LEFT JOIN estimated_cogs ec ON LOWER(o.sku) = LOWER(ec.sku)
   `;
   const groupFormat =
     period === "weekly" ? "IYYY-IW" : period === "yearly" ? "YYYY" : "YYYY-MM";
@@ -459,31 +459,19 @@ async function appendInventoryReport(workbook: XLSX.WorkBook) {
 
 async function appendCogsReport(workbook: XLSX.WorkBook) {
   const cogsRes = await pool.query(`
-    SELECT
-      COALESCE(c.sku, ec.sku) AS sku,
-      ec.article_number,
-      ec.brand,
-      ec.category,
-      c.cogs_price,
-      ec.final_price,
-      ec.cost_price_halte,
-      ec.amazon_fee_percent,
-      ec.marketing_cost,
-      ps.weight_kg,
-      ps.length_cm,
-      ps.width_cm,
-      ps.height_cm,
-      ps.volumetric_weight_kg,
-      ps.chargeable_weight_kg,
-      GREATEST(
-        COALESCE(c.last_updated, TIMESTAMP 'epoch'),
-        COALESCE(ec.last_updated, TIMESTAMP 'epoch'),
-        COALESCE(ps.last_updated, TIMESTAMP 'epoch')
-      ) AS last_updated
+    SELECT c.id, c.sku, c.cogs_price, c.amazon_price, c.last_updated,
+           ec.halte_selling_price, ec.amazon_selling_price
     FROM cogs c
-    FULL OUTER JOIN estimated_cogs ec ON c.sku = ec.sku
-    LEFT JOIN product_specifications ps ON ps.sku = COALESCE(c.sku, ec.sku)
-    ORDER BY COALESCE(ec.brand, ''), COALESCE(c.sku, ec.sku)
+    LEFT JOIN LATERAL (
+      SELECT halte_selling_price, amazon_selling_price
+      FROM estimated_cogs
+      WHERE estimated_cogs.sku = c.sku
+         OR estimated_cogs.sku LIKE c.sku || ' %'
+         OR estimated_cogs.sku LIKE c.sku || '-%'
+      ORDER BY last_updated DESC
+      LIMIT 1
+    ) ec ON true
+    ORDER BY c.sku ASC
   `);
 
   XLSX.utils.book_append_sheet(
@@ -491,28 +479,16 @@ async function appendCogsReport(workbook: XLSX.WorkBook) {
     jsonSheet(
       cogsRes.rows.map((row) => ({
         SKU: row.sku,
-        "Article Number": row.article_number || "-",
-        Brand: row.brand || "-",
-        Category: row.category || "-",
         "COGS Price (INR)": row.cogs_price == null ? null : Number(row.cogs_price),
-        "Estimated Final Price (INR)": row.final_price == null ? null : Number(row.final_price),
-        "Cost Price Halte (INR)": row.cost_price_halte == null ? null : Number(row.cost_price_halte),
-        "Amazon Fee (%)": row.amazon_fee_percent == null ? null : Number(row.amazon_fee_percent),
-        "Marketing Cost (INR)": row.marketing_cost == null ? null : Number(row.marketing_cost),
-        "Weight (kg)": row.weight_kg == null ? null : Number(row.weight_kg),
-        "Length (cm)": row.length_cm == null ? null : Number(row.length_cm),
-        "Width (cm)": row.width_cm == null ? null : Number(row.width_cm),
-        "Height (cm)": row.height_cm == null ? null : Number(row.height_cm),
-        "Volumetric Weight (kg)":
-          row.volumetric_weight_kg == null ? null : Number(row.volumetric_weight_kg),
-        "Chargeable Weight (kg)":
-          row.chargeable_weight_kg == null ? null : Number(row.chargeable_weight_kg),
+        "Halte Selling Price (INR)": row.halte_selling_price == null ? null : Number(row.halte_selling_price),
+        "Amazon Selling Price (INR)": row.amazon_selling_price == null ? null : Number(row.amazon_selling_price),
+        "Amazon Price (INR)": row.amazon_price == null ? null : Number(row.amazon_price),
         "Last Updated": row.last_updated
           ? new Date(row.last_updated).toISOString().replace("T", " ").slice(0, 19)
           : null,
       })),
     ),
-    "COGS & Product Specs",
+    "COGS",
   );
 }
 
@@ -528,7 +504,7 @@ async function appendProfitReport(
   const where = `WHERE ${conditions.join(" AND ")}`;
   const fromClause = `
     FROM orders o
-    LEFT JOIN estimated_cogs ec ON o.sku = ec.sku
+    LEFT JOIN estimated_cogs ec ON LOWER(o.sku) = LOWER(ec.sku)
     LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
   `;
 

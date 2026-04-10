@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
 
     const FROM_CLAUSE = `
       FROM orders o
-      LEFT JOIN estimated_cogs ec ON o.sku = ec.sku
+      LEFT JOIN estimated_cogs ec ON LOWER(o.sku) = LOWER(ec.sku)
       LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
     `;
 

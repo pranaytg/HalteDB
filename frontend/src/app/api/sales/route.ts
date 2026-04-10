@@ -42,15 +42,22 @@ export async function GET(req: NextRequest) {
       params.push(parseInt(year));
     }
     if (city) {
-      conditions.push(`LOWER(o.ship_city) = LOWER($${paramIdx++})`);
-      params.push(city);
+      const cities = city.split(",").map(c => c.trim()).filter(Boolean);
+      if (cities.length === 1) {
+        conditions.push(`LOWER(o.ship_city) = LOWER($${paramIdx++})`);
+        params.push(cities[0]);
+      } else if (cities.length > 1) {
+        const placeholders = cities.map(() => `LOWER($${paramIdx++})`).join(",");
+        conditions.push(`LOWER(o.ship_city) IN (${placeholders})`);
+        params.push(...cities);
+      }
     }
     if (state) {
       conditions.push(`LOWER(o.ship_state) = LOWER($${paramIdx++})`);
       params.push(state);
     }
     if (brand) {
-      conditions.push(`ec.brand = $${paramIdx++}`);
+      conditions.push(`LOWER(ec.brand) = LOWER($${paramIdx++})`);
       params.push(brand);
     }
 
@@ -77,7 +84,7 @@ export async function GET(req: NextRequest) {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const fromClause = `FROM orders o LEFT JOIN estimated_cogs ec ON o.sku = ec.sku`;
+    const fromClause = `FROM orders o LEFT JOIN estimated_cogs ec ON LOWER(o.sku) = LOWER(ec.sku)`;
 
     let query = `
       SELECT o.id, o.amazon_order_id, o.purchase_date, o.order_status,

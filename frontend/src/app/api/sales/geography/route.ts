@@ -24,8 +24,15 @@ export async function GET(req: NextRequest) {
       params.push(state);
     }
     if (city) {
-      where += ` AND LOWER(ship_city) = LOWER($${idx++})`;
-      params.push(city);
+      const cities = city.split(",").map(c => c.trim()).filter(Boolean);
+      if (cities.length === 1) {
+        where += ` AND LOWER(ship_city) = LOWER($${idx++})`;
+        params.push(cities[0]);
+      } else if (cities.length > 1) {
+        const placeholders = cities.map(() => `LOWER($${idx++})`).join(",");
+        where += ` AND LOWER(ship_city) IN (${placeholders})`;
+        params.push(...cities);
+      }
     }
     if (sku) {
       where += ` AND sku = $${idx++}`;

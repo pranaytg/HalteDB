@@ -38,7 +38,7 @@ const fmtK = (v: number) => v >= 100000 ? `₹${(v/100000).toFixed(1)}L` : v >= 
    ────────────────────────────────────────────────────────── */
 interface Filters {
   sku: string; brand: string; year: string; month: string; startDate: string; endDate: string;
-  city: string; state: string; tier: string;
+  city: string[]; state: string; tier: string;
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -46,8 +46,10 @@ interface Filters {
    ────────────────────────────────────────────────────────── */
 export default function SalesPage() {
   const [filters, setFilters] = useState<Filters>({
-    sku: "", brand: "", year: "", month: "", startDate: "", endDate: "", city: "", state: "", tier: "",
+    sku: "", brand: "", year: "", month: "", startDate: "", endDate: "", city: [], state: "", tier: "",
   });
+  const [citySearch, setCitySearch] = useState("");
+  const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
   const [summary, setSummary] = useState<any>(null);
   const [geo, setGeo] = useState<any>(null);
   const [orders, setOrders] = useState<any>(null);
@@ -65,7 +67,7 @@ export default function SalesPage() {
     if (filters.month) p.set("month", filters.month);
     if (filters.startDate) p.set("startDate", filters.startDate);
     if (filters.endDate) p.set("endDate", filters.endDate);
-    if (filters.city) p.set("city", filters.city);
+    if (filters.city.length) p.set("city", filters.city.join(","));
     if (filters.state) p.set("state", filters.state);
     if (filters.tier) p.set("tier", filters.tier);
     return p;
@@ -145,14 +147,22 @@ export default function SalesPage() {
 
   /* ── Filter helpers ── */
   const setFilter = (key: keyof Filters, val: string) => {
-    setFilters(f => ({ ...f, [key]: f[key] === val ? "" : val }));
+    if (key === "city") {
+      setFilters(f => ({
+        ...f,
+        city: f.city.includes(val) ? f.city.filter(c => c !== val) : [...f.city, val],
+      }));
+    } else {
+      setFilters(f => ({ ...f, [key]: f[key] === val ? "" : val }));
+    }
     setPage(0);
   };
   const resetFilters = () => {
-    setFilters({ sku: "", brand: "", year: "", month: "", startDate: "", endDate: "", city: "", state: "", tier: "" });
+    setFilters({ sku: "", brand: "", year: "", month: "", startDate: "", endDate: "", city: [], state: "", tier: "" });
+    setCitySearch("");
     setPage(0);
   };
-  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const activeFilterCount = Object.entries(filters).reduce((n, [, v]) => n + (Array.isArray(v) ? (v.length > 0 ? 1 : 0) : v ? 1 : 0), 0);
 
   const tabs = [
     { key: "overview", label: "📊 Overview" },
@@ -205,15 +215,43 @@ export default function SalesPage() {
           <div style={{ position: "relative" }}>
             <input
               className="filter-input"
-              list="city-list"
-              placeholder="🏙️ Search City..."
-              value={filters.city}
-              onChange={e => { setFilters(f => ({ ...f, city: e.target.value })); setPage(0); }}
-              style={{ width: 160, fontSize: 12 }}
+              placeholder={filters.city.length ? `🏙️ ${filters.city.length} selected` : "🏙️ Search City..."}
+              value={citySearch}
+              onChange={e => { setCitySearch(e.target.value); setCityDropdownOpen(true); }}
+              onFocus={() => setCityDropdownOpen(true)}
+              style={{ width: 180, fontSize: 12 }}
             />
-            <datalist id="city-list">
-              {(geo?.filters?.cities || []).map((c: string) => <option key={c} value={c} />)}
-            </datalist>
+            {cityDropdownOpen && (
+              <div style={{
+                position: "absolute", top: "100%", left: 0, zIndex: 50, width: 220,
+                maxHeight: 220, overflowY: "auto", background: "var(--card-bg, #1e293b)",
+                border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8,
+                boxShadow: "0 8px 24px rgba(0,0,0,0.4)", marginTop: 4,
+              }}>
+                {(geo?.filters?.cities || [])
+                  .filter((c: string) => c.toLowerCase().includes(citySearch.toLowerCase()))
+                  .slice(0, 40)
+                  .map((c: string) => (
+                    <div key={c} style={{
+                      padding: "6px 12px", fontSize: 12, cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 8,
+                      background: filters.city.includes(c) ? "rgba(99,102,241,0.18)" : "transparent",
+                    }}
+                      onMouseDown={e => { e.preventDefault(); setFilter("city", c); }}
+                    >
+                      <span style={{ width: 14, height: 14, borderRadius: 3, border: "1.5px solid rgba(255,255,255,0.3)",
+                        display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10,
+                        background: filters.city.includes(c) ? "#6366f1" : "transparent", color: "#fff",
+                      }}>{filters.city.includes(c) ? "✓" : ""}</span>
+                      {c}
+                    </div>
+                  ))}
+                {(geo?.filters?.cities || []).filter((c: string) => c.toLowerCase().includes(citySearch.toLowerCase())).length === 0 && (
+                  <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-muted)" }}>No cities found</div>
+                )}
+              </div>
+            )}
+            {cityDropdownOpen && <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={() => { setCityDropdownOpen(false); setCitySearch(""); }} />}
           </div>
           <input className="filter-input" type="month" value={filters.month} onChange={e => { setFilters(f => ({ ...f, month: e.target.value })); setPage(0); }} style={{ width: 140 }} />
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -237,7 +275,7 @@ export default function SalesPage() {
             {filters.year && <span className="badge badge-accent" onClick={() => setFilter("year", filters.year)} style={{ cursor: "pointer" }}>Year: {filters.year} ✕</span>}
             {filters.tier && <span className="badge badge-accent" onClick={() => setFilter("tier", filters.tier)} style={{ cursor: "pointer" }}>Tier: {filters.tier} ✕</span>}
             {filters.state && <span className="badge badge-accent" onClick={() => setFilter("state", filters.state)} style={{ cursor: "pointer" }}>State: {filters.state} ✕</span>}
-            {filters.city && <span className="badge badge-accent" onClick={() => setFilter("city", filters.city)} style={{ cursor: "pointer" }}>City: {filters.city} ✕</span>}
+            {filters.city.map(c => <span key={c} className="badge badge-accent" onClick={() => setFilter("city", c)} style={{ cursor: "pointer" }}>City: {c} ✕</span>)}
             {filters.month && <span className="badge badge-accent" onClick={() => setFilter("month", filters.month)} style={{ cursor: "pointer" }}>Month: {filters.month} ✕</span>}
             {filters.startDate && <span className="badge badge-accent" onClick={() => { setFilters(f => ({ ...f, startDate: "" })); setPage(0); }} style={{ cursor: "pointer" }}>From: {filters.startDate} ✕</span>}
             {filters.endDate && <span className="badge badge-accent" onClick={() => { setFilters(f => ({ ...f, endDate: "" })); setPage(0); }} style={{ cursor: "pointer" }}>To: {filters.endDate} ✕</span>}
@@ -495,7 +533,7 @@ export default function SalesPage() {
                   <Bar dataKey="revenue" radius={[0, 4, 4, 0]} cursor="pointer"
                     onClick={(d: any) => setFilter("city", d.name)}>
                     {cityData.slice(0, 12).map((c: any, i: number) => (
-                      <Cell key={i} fill={TIER_COLORS[c.tier] || "#64748b"} opacity={filters.city && filters.city !== c.name ? 0.3 : 1} />
+                      <Cell key={i} fill={TIER_COLORS[c.tier] || "#64748b"} opacity={filters.city.length > 0 && !filters.city.includes(c.name) ? 0.3 : 1} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -533,7 +571,7 @@ export default function SalesPage() {
                 <tbody>
                   {cityData.slice(0, 30).map((c: any) => (
                     <tr key={`${c.name}-${c.state}`} style={{ cursor: "pointer" }} onClick={() => setFilter("city", c.name)}>
-                      <td style={{ fontWeight: 600, color: filters.city === c.name ? "var(--accent)" : undefined }}>{c.name}</td>
+                      <td style={{ fontWeight: 600, color: filters.city.includes(c.name) ? "var(--accent)" : undefined }}>{c.name}</td>
                       <td>{c.state}</td>
                       <td><span className="badge" style={{ background: TIER_COLORS[c.tier] || "#64748b", color: "#fff", fontSize: 10, padding: "2px 8px" }}>{c.tier}</span></td>
                       <td>{fmtCur(c.revenue)}</td>

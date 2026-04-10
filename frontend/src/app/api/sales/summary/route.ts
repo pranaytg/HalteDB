@@ -21,11 +21,21 @@ export async function GET(req: NextRequest) {
     let idx = 1;
 
     if (sku) { conditions.push(`orders.sku = $${idx++}`); params.push(sku); }
-    if (brand) { conditions.push(`ec.brand = $${idx++}`); params.push(brand); }
+    if (brand) { conditions.push(`LOWER(ec.brand) = LOWER($${idx++})`); params.push(brand); }
     if (year) { conditions.push(`EXTRACT(YEAR FROM orders.purchase_date) = $${idx++}`); params.push(parseInt(year)); }
     if (month) { conditions.push(`TO_CHAR(orders.purchase_date, 'YYYY-MM') = $${idx++}`); params.push(month); }
     if (state) { conditions.push(`LOWER(orders.ship_state) = LOWER($${idx++})`); params.push(state); }
-    if (city) { conditions.push(`LOWER(orders.ship_city) = LOWER($${idx++})`); params.push(city); }
+    if (city) {
+      const cities = city.split(",").map(c => c.trim()).filter(Boolean);
+      if (cities.length === 1) {
+        conditions.push(`LOWER(orders.ship_city) = LOWER($${idx++})`);
+        params.push(cities[0]);
+      } else if (cities.length > 1) {
+        const placeholders = cities.map(() => `LOWER($${idx++})`).join(",");
+        conditions.push(`LOWER(orders.ship_city) IN (${placeholders})`);
+        params.push(...cities);
+      }
+    }
     if (startDate) { conditions.push(`orders.purchase_date >= $${idx++}::timestamp`); params.push(startDate); }
     if (endDate) { conditions.push(`orders.purchase_date <= $${idx++}::timestamp`); params.push(endDate); }
 
@@ -51,7 +61,7 @@ export async function GET(req: NextRequest) {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const fromClause = `FROM orders LEFT JOIN estimated_cogs ec ON orders.sku = ec.sku`;
+    const fromClause = `FROM orders LEFT JOIN estimated_cogs ec ON LOWER(orders.sku) = LOWER(ec.sku)`;
 
     // Monthly aggregated
     const monthlyResult = await pool.query(`
@@ -94,7 +104,7 @@ export async function GET(req: NextRequest) {
     const [filtersResult, yearsResult, brandsResult] = await Promise.all([
       pool.query(`SELECT DISTINCT sku FROM orders WHERE sku IS NOT NULL ORDER BY sku`),
       pool.query(`SELECT DISTINCT EXTRACT(YEAR FROM purchase_date) as year FROM orders WHERE purchase_date IS NOT NULL ORDER BY year DESC`),
-      pool.query(`SELECT DISTINCT brand FROM estimated_cogs WHERE brand IS NOT NULL ORDER BY brand`),
+      pool.query(`SELECT DISTINCT UPPER(brand) as brand FROM estimated_cogs WHERE brand IS NOT NULL ORDER BY brand`),
     ]);
 
     return NextResponse.json({
