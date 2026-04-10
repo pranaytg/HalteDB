@@ -28,12 +28,10 @@ export async function GET(req: NextRequest) {
     if (city) {
       const cities = city.split(",").map(c => c.trim()).filter(Boolean);
       if (cities.length === 1) {
-        conditions.push(`LOWER(orders.ship_city) = LOWER($${idx++})`);
-        params.push(cities[0]);
+        conditions.push(`LOWER(orders.ship_city) = LOWER($${idx++})`); params.push(cities[0]);
       } else if (cities.length > 1) {
         const placeholders = cities.map(() => `LOWER($${idx++})`).join(",");
-        conditions.push(`LOWER(orders.ship_city) IN (${placeholders})`);
-        params.push(...cities);
+        conditions.push(`LOWER(orders.ship_city) IN (${placeholders})`); params.push(...cities);
       }
     }
     if (startDate) { conditions.push(`orders.purchase_date >= $${idx++}::timestamp`); params.push(startDate); }

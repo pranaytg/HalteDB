@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
@@ -38,7 +38,7 @@ const fmtK = (v: number) => v >= 100000 ? `₹${(v/100000).toFixed(1)}L` : v >= 
    ────────────────────────────────────────────────────────── */
 interface Filters {
   sku: string; brand: string; year: string; month: string; startDate: string; endDate: string;
-  city: string[]; state: string; tier: string;
+  city: string; state: string; tier: string;
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -46,10 +46,8 @@ interface Filters {
    ────────────────────────────────────────────────────────── */
 export default function SalesPage() {
   const [filters, setFilters] = useState<Filters>({
-    sku: "", brand: "", year: "", month: "", startDate: "", endDate: "", city: [], state: "", tier: "",
+    sku: "", brand: "", year: "", month: "", startDate: "", endDate: "", city: "", state: "", tier: "",
   });
-  const [citySearch, setCitySearch] = useState("");
-  const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
   const [summary, setSummary] = useState<any>(null);
   const [geo, setGeo] = useState<any>(null);
   const [orders, setOrders] = useState<any>(null);
@@ -57,6 +55,20 @@ export default function SalesPage() {
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview"|"geography"|"orders"|"predictions">("overview");
+  const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
+  const [citySearch, setCitySearch] = useState("");
+  const cityDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close city dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (cityDropdownRef.current && !cityDropdownRef.current.contains(e.target as Node)) {
+        setCityDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   /* ── Fetchers ── */
   const buildParams = useCallback(() => {
@@ -67,7 +79,7 @@ export default function SalesPage() {
     if (filters.month) p.set("month", filters.month);
     if (filters.startDate) p.set("startDate", filters.startDate);
     if (filters.endDate) p.set("endDate", filters.endDate);
-    if (filters.city.length) p.set("city", filters.city.join(","));
+    if (filters.city) p.set("city", filters.city);
     if (filters.state) p.set("state", filters.state);
     if (filters.tier) p.set("tier", filters.tier);
     return p;
@@ -147,22 +159,35 @@ export default function SalesPage() {
 
   /* ── Filter helpers ── */
   const setFilter = (key: keyof Filters, val: string) => {
-    if (key === "city") {
-      setFilters(f => ({
-        ...f,
-        city: f.city.includes(val) ? f.city.filter(c => c !== val) : [...f.city, val],
-      }));
-    } else {
-      setFilters(f => ({ ...f, [key]: f[key] === val ? "" : val }));
-    }
+    setFilters(f => ({ ...f, [key]: f[key] === val ? "" : val }));
     setPage(0);
   };
   const resetFilters = () => {
-    setFilters({ sku: "", brand: "", year: "", month: "", startDate: "", endDate: "", city: [], state: "", tier: "" });
-    setCitySearch("");
+    setFilters({ sku: "", brand: "", year: "", month: "", startDate: "", endDate: "", city: "", state: "", tier: "" });
     setPage(0);
   };
-  const activeFilterCount = Object.entries(filters).reduce((n, [, v]) => n + (Array.isArray(v) ? (v.length > 0 ? 1 : 0) : v ? 1 : 0), 0);
+
+  const selectedCities = useMemo(() => filters.city ? filters.city.split(",").filter(Boolean) : [], [filters.city]);
+
+  const toggleCity = (city: string) => {
+    setFilters(f => {
+      const current = f.city ? f.city.split(",").filter(Boolean) : [];
+      const idx = current.findIndex(c => c.toLowerCase() === city.toLowerCase());
+      const next = idx >= 0 ? current.filter((_, i) => i !== idx) : [...current, city];
+      return { ...f, city: next.join(",") };
+    });
+    setPage(0);
+  };
+
+  const removeCity = (city: string) => {
+    setFilters(f => {
+      const current = f.city ? f.city.split(",").filter(Boolean) : [];
+      return { ...f, city: current.filter(c => c.toLowerCase() !== city.toLowerCase()).join(",") };
+    });
+    setPage(0);
+  };
+
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
   const tabs = [
     { key: "overview", label: "📊 Overview" },
@@ -212,46 +237,72 @@ export default function SalesPage() {
             <option value="">All States</option>
             {(geo?.filters?.states || []).map((s: string) => <option key={s} value={s}>{s}</option>)}
           </select>
-          <div style={{ position: "relative" }}>
-            <input
+          <div style={{ position: "relative" }} ref={cityDropdownRef}>
+            <div
               className="filter-input"
-              placeholder={filters.city.length ? `🏙️ ${filters.city.length} selected` : "🏙️ Search City..."}
-              value={citySearch}
-              onChange={e => { setCitySearch(e.target.value); setCityDropdownOpen(true); }}
-              onFocus={() => setCityDropdownOpen(true)}
-              style={{ width: 180, fontSize: 12 }}
-            />
+              onClick={() => setCityDropdownOpen(o => !o)}
+              style={{ width: 160, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", userSelect: "none" }}
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {selectedCities.length === 0 ? "🏙️ Cities..." : `🏙️ ${selectedCities.length} selected`}
+              </span>
+              <span style={{ fontSize: 10, marginLeft: 4 }}>{cityDropdownOpen ? "▲" : "▼"}</span>
+            </div>
             {cityDropdownOpen && (
               <div style={{
                 position: "absolute", top: "100%", left: 0, zIndex: 50, width: 220,
-                maxHeight: 220, overflowY: "auto", background: "var(--card-bg, #1e293b)",
-                border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.4)", marginTop: 4,
+                background: "var(--card-bg, #1e293b)", border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 8, marginTop: 4, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", maxHeight: 260, display: "flex", flexDirection: "column",
               }}>
-                {(geo?.filters?.cities || [])
-                  .filter((c: string) => c.toLowerCase().includes(citySearch.toLowerCase()))
-                  .slice(0, 40)
-                  .map((c: string) => (
-                    <div key={c} style={{
-                      padding: "6px 12px", fontSize: 12, cursor: "pointer",
-                      display: "flex", alignItems: "center", gap: 8,
-                      background: filters.city.includes(c) ? "rgba(99,102,241,0.18)" : "transparent",
-                    }}
-                      onMouseDown={e => { e.preventDefault(); setFilter("city", c); }}
-                    >
-                      <span style={{ width: 14, height: 14, borderRadius: 3, border: "1.5px solid rgba(255,255,255,0.3)",
-                        display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10,
-                        background: filters.city.includes(c) ? "#6366f1" : "transparent", color: "#fff",
-                      }}>{filters.city.includes(c) ? "✓" : ""}</span>
-                      {c}
-                    </div>
-                  ))}
-                {(geo?.filters?.cities || []).filter((c: string) => c.toLowerCase().includes(citySearch.toLowerCase())).length === 0 && (
-                  <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--text-muted)" }}>No cities found</div>
-                )}
+                <div style={{ padding: "6px 8px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                  <input
+                    className="filter-input"
+                    placeholder="Search cities..."
+                    value={citySearch}
+                    onChange={e => setCitySearch(e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                    style={{ width: "100%", fontSize: 12 }}
+                    autoFocus
+                  />
+                </div>
+                <div style={{ overflowY: "auto", maxHeight: 210, padding: "4px 0" }}>
+                  {(() => {
+                    const allCities: string[] = geo?.filters?.cities || [];
+                    const search = citySearch.toLowerCase();
+                    const filtered = search ? allCities.filter(c => c.toLowerCase().includes(search)) : allCities;
+                    const selected = filtered.filter(c => selectedCities.some(s => s.toLowerCase() === c.toLowerCase()));
+                    const unselected = filtered.filter(c => !selectedCities.some(s => s.toLowerCase() === c.toLowerCase()));
+                    const sorted = [...selected, ...unselected];
+                    if (sorted.length === 0) return <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }}>No cities found</div>;
+                    return sorted.map(c => {
+                      const isSelected = selectedCities.some(s => s.toLowerCase() === c.toLowerCase());
+                      return (
+                        <div
+                          key={c}
+                          onClick={() => toggleCity(c)}
+                          style={{
+                            padding: "5px 12px", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
+                            background: isSelected ? "rgba(99,102,241,0.15)" : "transparent",
+                          }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = isSelected ? "rgba(99,102,241,0.25)" : "rgba(255,255,255,0.05)"; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = isSelected ? "rgba(99,102,241,0.15)" : "transparent"; }}
+                        >
+                          <span style={{
+                            width: 14, height: 14, borderRadius: 3, border: "1.5px solid",
+                            borderColor: isSelected ? "#6366f1" : "rgba(255,255,255,0.25)",
+                            background: isSelected ? "#6366f1" : "transparent",
+                            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff", flexShrink: 0,
+                          }}>
+                            {isSelected && "✓"}
+                          </span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c}</span>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
               </div>
             )}
-            {cityDropdownOpen && <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={() => { setCityDropdownOpen(false); setCitySearch(""); }} />}
           </div>
           <input className="filter-input" type="month" value={filters.month} onChange={e => { setFilters(f => ({ ...f, month: e.target.value })); setPage(0); }} style={{ width: 140 }} />
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -275,7 +326,7 @@ export default function SalesPage() {
             {filters.year && <span className="badge badge-accent" onClick={() => setFilter("year", filters.year)} style={{ cursor: "pointer" }}>Year: {filters.year} ✕</span>}
             {filters.tier && <span className="badge badge-accent" onClick={() => setFilter("tier", filters.tier)} style={{ cursor: "pointer" }}>Tier: {filters.tier} ✕</span>}
             {filters.state && <span className="badge badge-accent" onClick={() => setFilter("state", filters.state)} style={{ cursor: "pointer" }}>State: {filters.state} ✕</span>}
-            {filters.city.map(c => <span key={c} className="badge badge-accent" onClick={() => setFilter("city", c)} style={{ cursor: "pointer" }}>City: {c} ✕</span>)}
+            {selectedCities.map(c => <span key={c} className="badge badge-accent" onClick={() => removeCity(c)} style={{ cursor: "pointer" }}>City: {c} ✕</span>)}
             {filters.month && <span className="badge badge-accent" onClick={() => setFilter("month", filters.month)} style={{ cursor: "pointer" }}>Month: {filters.month} ✕</span>}
             {filters.startDate && <span className="badge badge-accent" onClick={() => { setFilters(f => ({ ...f, startDate: "" })); setPage(0); }} style={{ cursor: "pointer" }}>From: {filters.startDate} ✕</span>}
             {filters.endDate && <span className="badge badge-accent" onClick={() => { setFilters(f => ({ ...f, endDate: "" })); setPage(0); }} style={{ cursor: "pointer" }}>To: {filters.endDate} ✕</span>}
@@ -531,9 +582,9 @@ export default function SalesPage() {
                     labelFormatter={(l: any) => { const c = cityData.find((x: any) => x.name === l); return `${l} (${c?.tier || ""})`; }}
                   />
                   <Bar dataKey="revenue" radius={[0, 4, 4, 0]} cursor="pointer"
-                    onClick={(d: any) => setFilter("city", d.name)}>
+                    onClick={(d: any) => toggleCity(d.name)}>
                     {cityData.slice(0, 12).map((c: any, i: number) => (
-                      <Cell key={i} fill={TIER_COLORS[c.tier] || "#64748b"} opacity={filters.city.length > 0 && !filters.city.includes(c.name) ? 0.3 : 1} />
+                      <Cell key={i} fill={TIER_COLORS[c.tier] || "#64748b"} opacity={selectedCities.length > 0 && !selectedCities.some(s => s.toLowerCase() === c.name?.toLowerCase()) ? 0.3 : 1} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -570,8 +621,8 @@ export default function SalesPage() {
                 <thead><tr><th>City</th><th>State</th><th>Tier</th><th>Revenue</th><th>Orders</th></tr></thead>
                 <tbody>
                   {cityData.slice(0, 30).map((c: any) => (
-                    <tr key={`${c.name}-${c.state}`} style={{ cursor: "pointer" }} onClick={() => setFilter("city", c.name)}>
-                      <td style={{ fontWeight: 600, color: filters.city.includes(c.name) ? "var(--accent)" : undefined }}>{c.name}</td>
+                    <tr key={`${c.name}-${c.state}`} style={{ cursor: "pointer" }} onClick={() => toggleCity(c.name)}>
+                      <td style={{ fontWeight: 600, color: selectedCities.some(s => s.toLowerCase() === c.name?.toLowerCase()) ? "var(--accent)" : undefined }}>{c.name}</td>
                       <td>{c.state}</td>
                       <td><span className="badge" style={{ background: TIER_COLORS[c.tier] || "#64748b", color: "#fff", fontSize: 10, padding: "2px 8px" }}>{c.tier}</span></td>
                       <td>{fmtCur(c.revenue)}</td>
@@ -613,7 +664,7 @@ export default function SalesPage() {
                     <td style={{ color: Number(o.profit || 0) >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 600 }}>
                       {o.profit != null ? fmtCur(Number(o.profit)) : "—"}
                     </td>
-                    <td style={{ cursor: "pointer" }} onClick={() => o.ship_city && setFilter("city", o.ship_city)}>{o.ship_city || "—"}</td>
+                    <td style={{ cursor: "pointer" }} onClick={() => o.ship_city && toggleCity(o.ship_city)}>{o.ship_city || "—"}</td>
                     <td style={{ cursor: "pointer" }} onClick={() => o.ship_state && setFilter("state", o.ship_state)}>{o.ship_state || "—"}</td>
                     <td style={{ fontSize: 10 }}>{o.fulfillment_channel || "—"}</td>
                   </tr>
