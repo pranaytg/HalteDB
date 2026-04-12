@@ -99,7 +99,16 @@ export async function GET(req: NextRequest) {
 
     const FROM_CLAUSE = `
       FROM orders o
-      LEFT JOIN estimated_cogs ec ON LOWER(o.sku) = LOWER(ec.sku)
+      LEFT JOIN estimated_cogs ec ON LOWER(
+        CASE
+          WHEN o.sku ~ E' \\d+$' THEN REGEXP_REPLACE(o.sku, E' \\d+$', '')
+          WHEN o.sku ~ E'-[A-Za-z]$' THEN REGEXP_REPLACE(o.sku, E'-[A-Za-z]$', '')
+          WHEN o.sku ~ E'-\\d+$' THEN REGEXP_REPLACE(o.sku, E'-\\d+$', '')
+          WHEN o.sku ~ E'x\\d+$' THEN REGEXP_REPLACE(o.sku, E'x\\d+$', '')
+          WHEN o.sku ~ E'\\.\\d+x?$' THEN REGEXP_REPLACE(o.sku, E'\\.\\d+x?$', '')
+          ELSE o.sku
+        END
+      ) = LOWER(ec.sku)
       LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
     `;
 

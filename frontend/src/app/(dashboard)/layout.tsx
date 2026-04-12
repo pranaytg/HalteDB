@@ -8,6 +8,7 @@ type IconName =
   | "sales"
   | "profitability"
   | "customers"
+  | "insights"
   | "inventory"
   | "replenishment"
   | "cogs"
@@ -24,6 +25,7 @@ const navItems: { href: string; label: string; icon: IconName }[] = [
   { href: "/sales", label: "Sales", icon: "sales" },
   { href: "/profitability", label: "Profitability", icon: "profitability" },
   { href: "/customers", label: "Customers", icon: "customers" },
+  { href: "/customer-insights", label: "Customer Insights", icon: "insights" },
   { href: "/inventory", label: "Inventory", icon: "inventory" },
   { href: "/replenishment", label: "Replenishment", icon: "replenishment" },
   { href: "/cogs", label: "COGS", icon: "cogs" },
@@ -69,6 +71,15 @@ function SidebarIcon({ name, className = "" }: { name: IconName; className?: str
           <circle cx="12" cy="9" r="3" />
           <path d="M20 19a3 3 0 0 0-2-2.82" />
           <path d="M18 6.5A3 3 0 0 1 18 12" />
+        </svg>
+      );
+    case "insights":
+      return (
+        <svg {...common} className={className}>
+          <path d="M4 9h16" />
+          <path d="M4 15h16" />
+          <path d="M8 3v18" />
+          <path d="M16 5v14" />
         </svg>
       );
     case "inventory":

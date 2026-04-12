@@ -84,7 +84,16 @@ export async function GET(req: NextRequest) {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const fromClause = `FROM orders o LEFT JOIN estimated_cogs ec ON LOWER(o.sku) = LOWER(ec.sku)`;
+    const fromClause = `FROM orders o LEFT JOIN estimated_cogs ec ON LOWER(
+      CASE
+        WHEN o.sku ~ E' \\\\d+$' THEN REGEXP_REPLACE(o.sku, E' \\\\d+$', '')
+        WHEN o.sku ~ E'-[A-Za-z]$' THEN REGEXP_REPLACE(o.sku, E'-[A-Za-z]$', '')
+        WHEN o.sku ~ E'-\\\\d+$' THEN REGEXP_REPLACE(o.sku, E'-\\\\d+$', '')
+        WHEN o.sku ~ E'x\\\\d+$' THEN REGEXP_REPLACE(o.sku, E'x\\\\d+$', '')
+        WHEN o.sku ~ E'\\\\.\\\\d+x?$' THEN REGEXP_REPLACE(o.sku, E'\\\\.\\\\d+x?$', '')
+        ELSE o.sku
+      END
+    ) = LOWER(ec.sku)`;
 
     let query = `
       SELECT o.id, o.amazon_order_id, o.purchase_date, o.order_status,

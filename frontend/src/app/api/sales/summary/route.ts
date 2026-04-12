@@ -59,7 +59,16 @@ export async function GET(req: NextRequest) {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const fromClause = `FROM orders LEFT JOIN estimated_cogs ec ON LOWER(orders.sku) = LOWER(ec.sku)`;
+    const fromClause = `FROM orders LEFT JOIN estimated_cogs ec ON LOWER(
+      CASE
+        WHEN orders.sku ~ E' \\\\d+$' THEN REGEXP_REPLACE(orders.sku, E' \\\\d+$', '')
+        WHEN orders.sku ~ E'-[A-Za-z]$' THEN REGEXP_REPLACE(orders.sku, E'-[A-Za-z]$', '')
+        WHEN orders.sku ~ E'-\\\\d+$' THEN REGEXP_REPLACE(orders.sku, E'-\\\\d+$', '')
+        WHEN orders.sku ~ E'x\\\\d+$' THEN REGEXP_REPLACE(orders.sku, E'x\\\\d+$', '')
+        WHEN orders.sku ~ E'\\\\.\\\\d+x?$' THEN REGEXP_REPLACE(orders.sku, E'\\\\.\\\\d+x?$', '')
+        ELSE orders.sku
+      END
+    ) = LOWER(ec.sku)`;
 
     // Monthly aggregated
     const monthlyResult = await pool.query(`
