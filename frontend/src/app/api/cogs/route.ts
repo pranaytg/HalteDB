@@ -67,14 +67,23 @@ export async function POST(req: NextRequest) {
         THEN COALESCE(
           NULLIF(o.shipping_price, 0),
           NULLIF((
-            SELECT se.amazon_shipping_cost
+            SELECT COALESCE(NULLIF(se.amazon_shipping_cost, 0), NULLIF(se.cheapest_cost, 0))
             FROM shipment_estimates se
             WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
             LIMIT 1
           ), 0),
           0
         )
-        ELSE COALESCE(o.shipping_price, 0)
+        ELSE COALESCE(
+          NULLIF(o.shipping_price, 0),
+          NULLIF((
+            SELECT se.cheapest_cost
+            FROM shipment_estimates se
+            WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+            LIMIT 1
+          ), 0),
+          0
+        )
       END
     `;
     const recalcQuery = `
@@ -139,14 +148,23 @@ export async function PUT(req: NextRequest) {
         THEN COALESCE(
           NULLIF(o.shipping_price, 0),
           NULLIF((
-            SELECT se.amazon_shipping_cost
+            SELECT COALESCE(NULLIF(se.amazon_shipping_cost, 0), NULLIF(se.cheapest_cost, 0))
             FROM shipment_estimates se
             WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
             LIMIT 1
           ), 0),
           0
         )
-        ELSE COALESCE(o.shipping_price, 0)
+        ELSE COALESCE(
+          NULLIF(o.shipping_price, 0),
+          NULLIF((
+            SELECT se.cheapest_cost
+            FROM shipment_estimates se
+            WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+            LIMIT 1
+          ), 0),
+          0
+        )
       END
     `;
     const recalcQuery = `

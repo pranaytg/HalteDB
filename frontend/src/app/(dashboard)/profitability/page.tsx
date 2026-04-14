@@ -161,6 +161,11 @@ export default function ProfitabilityPage() {
   // ── Expanded row ──
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  // ── Security ──
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [authError, setAuthError] = useState("");
+
   const buildParams = useCallback(() => {
     const p = new URLSearchParams();
     if (skuFilter) p.set("sku", skuFilter);
@@ -217,7 +222,7 @@ export default function ProfitabilityPage() {
     }
   }, [fetchOverview, fetchOrders, fetchSku]);
 
-  useEffect(() => { fetchAll(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isAuthorized) fetchAll(); }, [isAuthorized]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyFilters = () => {
     setPage(0);
@@ -273,6 +278,38 @@ export default function ProfitabilityPage() {
   const recentOrderCalculations = orders.slice(0, 8);
 
   const totalPages = Math.ceil(total / LIMIT);
+
+  if (!isAuthorized) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div className="card" style={{ padding: 40, textAlign: 'center', maxWidth: 400, width: '100%' }}>
+          <h2 style={{ marginBottom: 20 }}>Security Check</h2>
+          <p style={{ marginBottom: 20, color: 'var(--text-muted)' }}>This page requires a password.</p>
+          <form onSubmit={e => {
+            e.preventDefault();
+            if (passwordInput === "OnlyForRamanSir") {
+              setIsAuthorized(true);
+              setAuthError("");
+            } else {
+              setAuthError("Incorrect password");
+            }
+          }}>
+            <input
+              type="password"
+              className="filter-input"
+              style={{ width: '100%', marginBottom: 16 }}
+              value={passwordInput}
+              onChange={e => setPasswordInput(e.target.value)}
+              placeholder="Enter password..."
+              autoFocus
+            />
+            <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Unlock Dashboard</button>
+            {authError && <div style={{ marginTop: 12, color: 'var(--danger)' }}>{authError}</div>}
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   if (loading && !summary) {
     return (

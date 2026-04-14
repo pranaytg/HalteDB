@@ -395,8 +395,13 @@ async def fetch_orders_date_range(session: AsyncSession, start_time: datetime, e
 
             def safe_datetime(val):
                 if not val: return None
-                try: return datetime.fromisoformat(val.replace('Z', '+00:00'))
+                try: dt = datetime.fromisoformat(val.replace('Z', '+00:00'))
                 except ValueError: return None
+                # Reject implausible future dates (bad source data, e.g. year 2205)
+                now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.utcnow()
+                if dt > now + timedelta(days=1):
+                    return None
+                return dt
 
             async for chunk in response.aiter_bytes():
                 if decompressor:
@@ -803,14 +808,23 @@ async def recalculate_profitability_for_orders(session: AsyncSession, order_ids:
         THEN COALESCE(
           NULLIF(o.shipping_price, 0),
           NULLIF((
-            SELECT se.amazon_shipping_cost
+            SELECT COALESCE(NULLIF(se.amazon_shipping_cost, 0), NULLIF(se.cheapest_cost, 0))
             FROM shipment_estimates se
             WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
             LIMIT 1
           ), 0),
           0
         )
-        ELSE COALESCE(o.shipping_price, 0)
+        ELSE COALESCE(
+          NULLIF(o.shipping_price, 0),
+          NULLIF((
+            SELECT se.cheapest_cost
+            FROM shipment_estimates se
+            WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+            LIMIT 1
+          ), 0),
+          0
+        )
       END
     """
     cogs_expr = """
@@ -877,8 +891,98 @@ async def recalculate_profitability_for_orders(session: AsyncSession, order_ids:
         logger.info(f"Recalculated profitability for {result.rowcount} order row(s)")
 
 
-async def run_shipment_sync(session: AsyncSession):
-    orders_result = await session.execute(sa_text("""
+async def recalculate_profitability_all(session: AsyncSession) -> int:
+    """Recomputes orders.cogs_price and orders.profit for every order row using the same
+    formula as the profitability dashboard (with rate-card shipping fallback)."""
+    shipping_expr = """
+      CASE
+        WHEN LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+          OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
+        THEN COALESCE(
+          NULLIF(o.shipping_price, 0),
+          NULLIF((
+            SELECT COALESCE(NULLIF(se.amazon_shipping_cost, 0), NULLIF(se.cheapest_cost, 0))
+            FROM shipment_estimates se
+            WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+            LIMIT 1
+          ), 0),
+          0
+        )
+        ELSE COALESCE(
+          NULLIF(o.shipping_price, 0),
+          NULLIF((
+            SELECT se.cheapest_cost
+            FROM shipment_estimates se
+            WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+            LIMIT 1
+          ), 0),
+          0
+        )
+      END
+    """
+    cogs_expr = """
+      COALESCE(
+        o.cogs_price,
+        (SELECT ec.final_price FROM estimated_cogs ec WHERE ec.sku = o.sku LIMIT 1),
+        0
+      )
+    """
+    fee_expr = """
+      COALESCE(
+        (SELECT ec.amazon_fee_percent FROM estimated_cogs ec WHERE ec.sku = o.sku LIMIT 1),
+        15
+      )
+    """
+    marketing_expr = """
+      COALESCE(
+        (SELECT ec.marketing_cost FROM estimated_cogs ec WHERE ec.sku = o.sku LIMIT 1),
+        0
+      )
+    """
+
+    result = await session.execute(sa_text(f"""
+      UPDATE orders o
+      SET
+        cogs_price = COALESCE(
+          o.cogs_price,
+          (SELECT ec.final_price FROM estimated_cogs ec WHERE ec.sku = o.sku LIMIT 1)
+        ),
+        profit = CASE
+          WHEN o.order_status IN ('Cancelled', 'Returned') THEN
+            -2 * ({shipping_expr})
+          ELSE
+            o.item_price
+            - ({cogs_expr})
+            - (o.item_price * ({fee_expr}) / 100)
+            - ({shipping_expr})
+            - ({marketing_expr})
+        END
+      WHERE o.item_price IS NOT NULL
+    """))
+    await session.commit()
+    logger.info(f"Recalculated profitability for {result.rowcount} order row(s) [full]")
+    return result.rowcount or 0
+
+
+async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
+    where_extra = (
+        "AND se.id IS NULL"
+        if missing_only
+        else """AND (
+          se.id IS NULL
+          OR (
+            (
+              LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+              OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
+            )
+            AND (
+              COALESCE(o.shipping_price, 0) <= 0
+              OR COALESCE(se.amazon_shipping_cost, 0) <= 0
+            )
+          )
+        )"""
+    )
+    orders_result = await session.execute(sa_text(f"""
       SELECT
         o.amazon_order_id,
         o.sku,
@@ -900,20 +1004,8 @@ async def run_shipment_sync(session: AsyncSession):
         ON ps.sku = o.sku
       WHERE o.ship_postal_code IS NOT NULL
         AND o.ship_postal_code != ''
-        AND (
-          se.id IS NULL
-          OR (
-            (
-              LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
-              OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
-            )
-            AND (
-              COALESCE(o.shipping_price, 0) <= 0
-              OR COALESCE(se.amazon_shipping_cost, 0) <= 0
-            )
-          )
-        )
-      ORDER BY o.purchase_date DESC NULLS LAST, o.amazon_order_id DESC, o.sku
+        {where_extra}
+      ORDER BY (se.id IS NULL) DESC, o.purchase_date DESC NULLS LAST, o.amazon_order_id DESC, o.sku
       LIMIT :limit
     """), {"limit": SHIPMENT_SYNC_BATCH_SIZE})
     orders = [dict(row) for row in orders_result.mappings().all()]
@@ -1788,3 +1880,24 @@ async def run_full_sync(session: AsyncSession):
         logger.error(f"Shipment sync failed: {e}")
 
     logger.info("=== FULL SYNC COMPLETE ===")
+
+
+async def run_shipment_sync_full(session: AsyncSession, max_batches: int = 500) -> int:
+    """Loops run_shipment_sync until no eligible orders remain (or max_batches hit).
+    Use this to backfill shipment_estimates for all historical orders so the rate-card
+    shipping fallback is available in profitability calculations."""
+    total = 0
+    for i in range(max_batches):
+        before = (await session.execute(sa_text(
+            "SELECT COUNT(*) FROM shipment_estimates"
+        ))).scalar() or 0
+        await run_shipment_sync(session, missing_only=True)
+        after = (await session.execute(sa_text(
+            "SELECT COUNT(*) FROM shipment_estimates"
+        ))).scalar() or 0
+        added = after - before
+        total += added
+        logger.info(f"Shipment full-sync batch {i+1}: +{added} rows (total shipment_estimates: {after})")
+        if added <= 0:
+            break
+    return total

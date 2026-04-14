@@ -5,13 +5,14 @@ Consolidates data from multiple sales channels and creates customer records.
 Run: python import_customer_data.py
 """
 
+import argparse
 import asyncio
 import os
 import csv
 import re
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import text
@@ -76,9 +77,13 @@ def parse_date(date_str):
     formats = ["%d-%b-%Y", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%d", "%m-%d-%Y"]
     for fmt in formats:
         try:
-            return datetime.strptime(date_str, fmt)
+            dt = datetime.strptime(date_str, fmt)
         except ValueError:
             continue
+        # Reject implausible future dates (bad source data, e.g. year 2205)
+        if dt > datetime.now() + timedelta(days=1):
+            return None
+        return dt
     return None
 
 
@@ -242,21 +247,39 @@ async def import_csv_file(session, csv_path):
         return [], {}
 
 
-async def import_all_customer_data():
-    """Main import function."""
+async def import_all_customer_data(wipe: bool = False):
+    """Main import function.
+
+    By default orders/customers/cogs are NOT wiped — rows are inserted with
+    ON CONFLICT DO NOTHING so this script is safe to re-run alongside the
+    SP-API sync. Pass --wipe (with a typed confirmation) only if you truly
+    want to drop existing rows first.
+    """
     print("\n" + "="*60)
     print("[*] CUSTOMER DATA IMPORT")
     print("="*60)
 
     async with SessionLocal() as session:
         try:
-            # 1. Clear existing data
-            print("\n[x] Clearing existing seed data...")
-            await session.execute(text("DELETE FROM orders"))
-            await session.execute(text("DELETE FROM customers"))
-            await session.execute(text("DELETE FROM cogs"))
-            await session.commit()
-            print("   [OK] Seed data cleared")
+            if wipe:
+                # Require interactive confirmation to prevent accidental data loss.
+                order_count = (await session.execute(text("SELECT COUNT(*) FROM orders"))).scalar() or 0
+                cust_count = (await session.execute(text("SELECT COUNT(*) FROM customers"))).scalar() or 0
+                print(f"\n[!] --wipe passed. About to DELETE {order_count:,} orders, "
+                      f"{cust_count:,} customers, and all cogs rows.")
+                confirm = input('Type "WIPE" to confirm, anything else to abort: ').strip()
+                if confirm != "WIPE":
+                    print("[x] Aborted — no rows deleted.")
+                    return
+                print("\n[x] Clearing existing data...")
+                await session.execute(text("DELETE FROM orders"))
+                await session.execute(text("DELETE FROM customers"))
+                await session.execute(text("DELETE FROM cogs"))
+                await session.commit()
+                print("   [OK] Data cleared")
+            else:
+                print("\n[i] Running in append/upsert mode (existing rows preserved). "
+                      "Pass --wipe to force a full reset.")
 
             # 2. Process all CSV files
             csv_files = list(CUSTOMER_DATA_DIR.glob("*.csv"))
@@ -406,4 +429,12 @@ async def import_all_customer_data():
 
 
 if __name__ == "__main__":
-    asyncio.run(import_all_customer_data())
+    parser = argparse.ArgumentParser(description="Import customer CSV data.")
+    parser.add_argument(
+        "--wipe",
+        action="store_true",
+        help="DANGEROUS: delete all orders/customers/cogs before import. "
+             "Requires interactive 'WIPE' confirmation.",
+    )
+    args = parser.parse_args()
+    asyncio.run(import_all_customer_data(wipe=args.wipe))

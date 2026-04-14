@@ -19,9 +19,14 @@ const SHIPPING_EXPR = `
     THEN COALESCE(
       NULLIF(o.shipping_price, 0),
       NULLIF(se.amazon_shipping_cost, 0),
+      NULLIF(se.cheapest_cost, 0),
       0
     )
-    ELSE COALESCE(o.shipping_price, 0)
+    ELSE COALESCE(
+      NULLIF(o.shipping_price, 0),
+      NULLIF(se.cheapest_cost, 0),
+      0
+    )
   END
 `;
 

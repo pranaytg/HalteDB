@@ -1,0 +1,395 @@
+2026-04-13 12:32:38 | INFO     | === HISTORICAL BACKFILL: 2024-04-03 \u2192 2026-04-13 ===
+2026-04-13 12:32:38 | INFO     | This will re-sync orders in 30-day chunks to backfill ship_city & ship_state.
+2026-04-13 12:32:38 | INFO     | 
+--- Chunk 1: 2024-04-03 \u2192 2024-05-03 ---
+2026-04-13 12:32:39 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:32:40 | INFO     | Requesting Orders from 2024-04-03 to 2024-05-03...
+2026-04-13 12:32:41 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:32:56 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109303020556 "HTTP/1.1 200 "
+2026-04-13 12:32:56 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:33:12 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109303020556 "HTTP/1.1 200 "
+2026-04-13 12:33:12 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:33:28 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109303020556 "HTTP/1.1 200 "
+2026-04-13 12:33:28 | INFO     |   Polling orders report: DONE
+2026-04-13 12:33:28 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.b9d27e31-500d-4f8f-bd4a-536eb99b1f17.T162RZ0FEXLD3R.2409 "HTTP/1.1 200 "
+2026-04-13 12:33:29 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/b9d27e31-500d-4f8f-bd4a-536eb99b1f17.amzn1.tortuga.4.eu.T162RZ0FEXLD3R?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T070327Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=a18b69a8be4b9baff8c9e884b236bbd73b0bf94b9c88a70c8df906f8cf834612 "HTTP/1.1 200 OK"
+2026-04-13 12:33:31 | ERROR    | Chunk 1 failed: MaxClientsInSessionMode: max clients reached - in Session mode max clients are limited to pool_size
+2026-04-13 12:33:31 | INFO     | Continuing to next chunk...
+2026-04-13 12:33:31 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:33:41 | INFO     | 
+--- Chunk 2: 2024-05-03 \u2192 2024-06-02 ---
+2026-04-13 12:33:43 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:33:43 | INFO     | Requesting Orders from 2024-05-03 to 2024-06-02...
+2026-04-13 12:33:44 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:34:00 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109306020556 "HTTP/1.1 200 "
+2026-04-13 12:34:00 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:34:15 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109306020556 "HTTP/1.1 200 "
+2026-04-13 12:34:15 | INFO     |   Polling orders report: DONE
+2026-04-13 12:34:16 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.b1f8a8fa-4363-43ef-985e-a696e8d6f5f5.TKLZ71ZG9RW3N.2409 "HTTP/1.1 200 "
+2026-04-13 12:34:16 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/b1f8a8fa-4363-43ef-985e-a696e8d6f5f5.amzn1.tortuga.4.eu.TKLZ71ZG9RW3N?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T070415Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=40f6fcbb3d2026ad0cf32b533f289c366b51b7e27f0364f29e116b4559e50ead "HTTP/1.1 200 OK"
+2026-04-13 12:34:18 | ERROR    | Chunk 2 failed: MaxClientsInSessionMode: max clients reached - in Session mode max clients are limited to pool_size
+2026-04-13 12:34:18 | INFO     | Continuing to next chunk...
+2026-04-13 12:34:18 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:34:28 | INFO     | 
+--- Chunk 3: 2024-06-02 \u2192 2024-07-02 ---
+2026-04-13 12:34:30 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:34:30 | INFO     | Requesting Orders from 2024-06-02 to 2024-07-02...
+2026-04-13 12:34:31 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:34:47 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109307020556 "HTTP/1.1 200 "
+2026-04-13 12:34:47 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:35:03 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109307020556 "HTTP/1.1 200 "
+2026-04-13 12:35:03 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:35:19 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109307020556 "HTTP/1.1 200 "
+2026-04-13 12:35:19 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:35:34 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109307020556 "HTTP/1.1 200 "
+2026-04-13 12:35:34 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:35:50 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109307020556 "HTTP/1.1 200 "
+2026-04-13 12:35:50 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:36:06 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109307020556 "HTTP/1.1 200 "
+2026-04-13 12:36:06 | INFO     |   Polling orders report: DONE
+2026-04-13 12:36:06 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.73c4f540-a1e6-4a6e-8e74-d172748ba83a.T11WI0YHJOJ39C.2409 "HTTP/1.1 200 "
+2026-04-13 12:36:07 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/73c4f540-a1e6-4a6e-8e74-d172748ba83a.amzn1.tortuga.4.eu.T11WI0YHJOJ39C?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T070606Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=7b44dd340ed58df211fbec04452cd7a75d8df017dd42e74abd4d35e7dc9aae08 "HTTP/1.1 200 OK"
+2026-04-13 12:36:09 | ERROR    | Chunk 3 failed: MaxClientsInSessionMode: max clients reached - in Session mode max clients are limited to pool_size
+2026-04-13 12:36:09 | INFO     | Continuing to next chunk...
+2026-04-13 12:36:09 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:36:19 | INFO     | 
+--- Chunk 4: 2024-07-02 \u2192 2024-08-01 ---
+2026-04-13 12:36:20 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:36:21 | INFO     | Requesting Orders from 2024-07-02 to 2024-08-01...
+2026-04-13 12:36:22 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:36:37 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109308020556 "HTTP/1.1 200 "
+2026-04-13 12:36:37 | INFO     |   Polling orders report: DONE
+2026-04-13 12:36:38 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.99b7e0b4-a686-4f0d-8ce0-4de260c8e6c5.T33I21NDACE92K.2409 "HTTP/1.1 200 "
+2026-04-13 12:36:38 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/99b7e0b4-a686-4f0d-8ce0-4de260c8e6c5.amzn1.tortuga.4.eu.T33I21NDACE92K?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T070637Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=dbc6a74675aea51e1f3b1166f06af6b137bd2644238547d32d10edd21c4df0da "HTTP/1.1 200 OK"
+2026-04-13 12:36:40 | ERROR    | Chunk 4 failed: MaxClientsInSessionMode: max clients reached - in Session mode max clients are limited to pool_size
+2026-04-13 12:36:40 | INFO     | Continuing to next chunk...
+2026-04-13 12:36:40 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:36:50 | INFO     | 
+--- Chunk 5: 2024-08-01 \u2192 2024-08-31 ---
+2026-04-13 12:36:51 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:36:52 | INFO     | Requesting Orders from 2024-08-01 to 2024-08-31...
+2026-04-13 12:36:53 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:37:09 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109309020556 "HTTP/1.1 200 "
+2026-04-13 12:37:09 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:37:24 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109309020556 "HTTP/1.1 200 "
+2026-04-13 12:37:24 | INFO     |   Polling orders report: DONE
+2026-04-13 12:37:25 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.fd912ffb-9031-4147-99d5-98e567a01cf1.T3OQK6PG88K9F4.2409 "HTTP/1.1 200 "
+2026-04-13 12:37:25 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/fd912ffb-9031-4147-99d5-98e567a01cf1.amzn1.tortuga.4.eu.T3OQK6PG88K9F4?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T070724Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=05299fe20851091dd972ea2cc9cd6861bb4e06b38c0ba789377ed85b4324be70 "HTTP/1.1 200 OK"
+2026-04-13 12:37:27 | ERROR    | Chunk 5 failed: MaxClientsInSessionMode: max clients reached - in Session mode max clients are limited to pool_size
+2026-04-13 12:37:27 | INFO     | Continuing to next chunk...
+2026-04-13 12:37:27 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:37:37 | INFO     | 
+--- Chunk 6: 2024-08-31 \u2192 2024-09-30 ---
+2026-04-13 12:37:39 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:37:39 | INFO     | Requesting Orders from 2024-08-31 to 2024-09-30...
+2026-04-13 12:37:41 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:37:57 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109310020556 "HTTP/1.1 200 "
+2026-04-13 12:37:57 | INFO     |   Polling orders report: DONE
+2026-04-13 12:37:57 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.190d248a-8a34-40a9-b12f-cf4fbfee6bd4.T1CKIFKWZG4W73.2409 "HTTP/1.1 200 "
+2026-04-13 12:37:57 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/190d248a-8a34-40a9-b12f-cf4fbfee6bd4.amzn1.tortuga.4.eu.T1CKIFKWZG4W73?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T070756Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=72cdb5696a672d7a23bb469ddf06d7e323bd3bd801ab7d054da88a007010284a "HTTP/1.1 200 OK"
+2026-04-13 12:38:08 | INFO     | Auto-inserted 39 new SKUs into cogs table
+2026-04-13 12:38:09 | INFO     | Auto-assigned COGS/profit to 825 orders
+2026-04-13 12:38:09 | INFO     | Orders synced up to 2024-09-30!
+2026-04-13 12:38:09 | INFO     | Chunk 6 complete!
+2026-04-13 12:38:09 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:38:19 | INFO     | 
+--- Chunk 7: 2024-09-30 \u2192 2024-10-30 ---
+2026-04-13 12:38:21 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:38:21 | INFO     | Requesting Orders from 2024-09-30 to 2024-10-30...
+2026-04-13 12:38:22 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:38:38 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109311020556 "HTTP/1.1 200 "
+2026-04-13 12:38:38 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:38:54 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109311020556 "HTTP/1.1 200 "
+2026-04-13 12:38:54 | INFO     |   Polling orders report: DONE
+2026-04-13 12:38:54 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.8f74feb8-7254-4f1f-8828-2d6e4d6455dd.T14YJQT7FN1HUQ.2409 "HTTP/1.1 200 "
+2026-04-13 12:38:55 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/8f74feb8-7254-4f1f-8828-2d6e4d6455dd.amzn1.tortuga.4.eu.T14YJQT7FN1HUQ?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T070854Z&X-Amz-SignedHeaders=host&X-Amz-Expires=299&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=72aac62b59cff33133adc5de7233ef3a37f92fd752451c6a21cefa1638d8d116 "HTTP/1.1 200 OK"
+2026-04-13 12:39:00 | INFO     | Auto-inserted 23 new SKUs into cogs table
+2026-04-13 12:39:01 | INFO     | Auto-assigned COGS/profit to 1000 orders
+2026-04-13 12:39:03 | INFO     | Auto-inserted 2 new SKUs into cogs table
+2026-04-13 12:39:04 | INFO     | Auto-assigned COGS/profit to 167 orders
+2026-04-13 12:39:04 | INFO     | Orders synced up to 2024-10-30!
+2026-04-13 12:39:04 | INFO     | Chunk 7 complete!
+2026-04-13 12:39:04 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:39:14 | INFO     | 
+--- Chunk 8: 2024-10-30 \u2192 2024-11-29 ---
+2026-04-13 12:39:15 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:39:15 | INFO     | Requesting Orders from 2024-10-30 to 2024-11-29...
+2026-04-13 12:39:16 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:39:32 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109312020556 "HTTP/1.1 200 "
+2026-04-13 12:39:32 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:39:48 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109312020556 "HTTP/1.1 200 "
+2026-04-13 12:39:48 | INFO     |   Polling orders report: DONE
+2026-04-13 12:39:48 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.5b32ddc0-db97-4fd6-91b8-8fcaea6cadc3.T29N65WS5MW9U1.2409 "HTTP/1.1 200 "
+2026-04-13 12:39:49 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/5b32ddc0-db97-4fd6-91b8-8fcaea6cadc3.amzn1.tortuga.4.eu.T29N65WS5MW9U1?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T070947Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=8ca84f87e07cfbc94327f5e559a5999dc6dbf6b489d3eb72f99efb553674e3d2 "HTTP/1.1 200 OK"
+2026-04-13 12:39:52 | INFO     | Auto-inserted 10 new SKUs into cogs table
+2026-04-13 12:39:52 | INFO     | Auto-assigned COGS/profit to 804 orders
+2026-04-13 12:39:52 | INFO     | Orders synced up to 2024-11-29!
+2026-04-13 12:39:52 | INFO     | Chunk 8 complete!
+2026-04-13 12:39:52 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:40:02 | INFO     | 
+--- Chunk 9: 2024-11-29 \u2192 2024-12-29 ---
+2026-04-13 12:40:04 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:40:05 | INFO     | Requesting Orders from 2024-11-29 to 2024-12-29...
+2026-04-13 12:40:06 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:40:22 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109313020556 "HTTP/1.1 200 "
+2026-04-13 12:40:22 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:40:38 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109313020556 "HTTP/1.1 200 "
+2026-04-13 12:40:38 | INFO     |   Polling orders report: DONE
+2026-04-13 12:40:38 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.024d5a72-5f68-4413-9dc2-ff72d376cac3.T229CPTC8NPURY.2409 "HTTP/1.1 200 "
+2026-04-13 12:40:39 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/024d5a72-5f68-4413-9dc2-ff72d376cac3.amzn1.tortuga.4.eu.T229CPTC8NPURY?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071037Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=f6be61bc10f1843fc1bb307d63cf30b3ecbb4e632eec796b72c3b3915f407cf2 "HTTP/1.1 200 OK"
+2026-04-13 12:40:41 | INFO     | Auto-inserted 14 new SKUs into cogs table
+2026-04-13 12:40:42 | INFO     | Auto-assigned COGS/profit to 805 orders
+2026-04-13 12:40:42 | INFO     | Orders synced up to 2024-12-29!
+2026-04-13 12:40:42 | INFO     | Chunk 9 complete!
+2026-04-13 12:40:42 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:40:52 | INFO     | 
+--- Chunk 10: 2024-12-29 \u2192 2025-01-28 ---
+2026-04-13 12:40:54 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:40:54 | INFO     | Requesting Orders from 2024-12-29 to 2025-01-28...
+2026-04-13 12:40:55 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:41:11 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109314020556 "HTTP/1.1 200 "
+2026-04-13 12:41:11 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:41:27 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109314020556 "HTTP/1.1 200 "
+2026-04-13 12:41:27 | INFO     |   Polling orders report: DONE
+2026-04-13 12:41:27 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.9875329a-3188-453c-990e-ffc73d3786f6.TNL39NUK4WHXW.2409 "HTTP/1.1 200 "
+2026-04-13 12:41:28 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/9875329a-3188-453c-990e-ffc73d3786f6.amzn1.tortuga.4.eu.TNL39NUK4WHXW?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071126Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=cfaa0ff72f3bbec8de94e4fa1b179677f14eced241f4647897a64cacd661aa16 "HTTP/1.1 200 OK"
+2026-04-13 12:41:30 | INFO     | Auto-inserted 6 new SKUs into cogs table
+2026-04-13 12:41:31 | INFO     | Auto-assigned COGS/profit to 857 orders
+2026-04-13 12:41:31 | INFO     | Orders synced up to 2025-01-28!
+2026-04-13 12:41:31 | INFO     | Chunk 10 complete!
+2026-04-13 12:41:31 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:41:41 | INFO     | 
+--- Chunk 11: 2025-01-28 \u2192 2025-02-27 ---
+2026-04-13 12:41:43 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:41:43 | INFO     | Requesting Orders from 2025-01-28 to 2025-02-27...
+2026-04-13 12:41:44 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:42:00 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109315020556 "HTTP/1.1 200 "
+2026-04-13 12:42:00 | INFO     |   Polling orders report: DONE
+2026-04-13 12:42:00 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.a3b6c38a-e53e-4667-b3da-a28eed8c84d5.T2K6QEVPSCU60X.2409 "HTTP/1.1 200 "
+2026-04-13 12:42:01 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/a3b6c38a-e53e-4667-b3da-a28eed8c84d5.amzn1.tortuga.4.eu.T2K6QEVPSCU60X?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071159Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=356fc3cee153b98b76d70c93d3f520807624310477ce6052f321357a5388b721 "HTTP/1.1 200 OK"
+2026-04-13 12:42:05 | INFO     | Auto-inserted 19 new SKUs into cogs table
+2026-04-13 12:42:06 | INFO     | Auto-assigned COGS/profit to 860 orders
+2026-04-13 12:42:06 | INFO     | Orders synced up to 2025-02-27!
+2026-04-13 12:42:06 | INFO     | Chunk 11 complete!
+2026-04-13 12:42:06 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:42:16 | INFO     | 
+--- Chunk 12: 2025-02-27 \u2192 2025-03-29 ---
+2026-04-13 12:42:17 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:42:17 | INFO     | Requesting Orders from 2025-02-27 to 2025-03-29...
+2026-04-13 12:42:18 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:42:34 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109316020556 "HTTP/1.1 200 "
+2026-04-13 12:42:34 | INFO     |   Polling orders report: DONE
+2026-04-13 12:42:34 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.cd734eea-0c87-4ffb-b2c8-167e12cb70b4.T792P33YGHURN.2409 "HTTP/1.1 200 "
+2026-04-13 12:42:35 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/cd734eea-0c87-4ffb-b2c8-167e12cb70b4.amzn1.tortuga.4.eu.T792P33YGHURN?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071234Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=1ff91b7e2aa82618bdebb63844186f87f85b34aae178a1934aab873489d73352 "HTTP/1.1 200 OK"
+2026-04-13 12:42:39 | INFO     | Auto-inserted 14 new SKUs into cogs table
+2026-04-13 12:42:40 | INFO     | Auto-assigned COGS/profit to 783 orders
+2026-04-13 12:42:40 | INFO     | Orders synced up to 2025-03-29!
+2026-04-13 12:42:40 | INFO     | Chunk 12 complete!
+2026-04-13 12:42:40 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:42:50 | INFO     | 
+--- Chunk 13: 2025-03-29 \u2192 2025-04-28 ---
+2026-04-13 12:42:51 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:42:51 | INFO     | Requesting Orders from 2025-03-29 to 2025-04-28...
+2026-04-13 12:42:52 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:43:08 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109317020556 "HTTP/1.1 200 "
+2026-04-13 12:43:08 | INFO     |   Polling orders report: IN_QUEUE
+2026-04-13 12:43:24 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109317020556 "HTTP/1.1 200 "
+2026-04-13 12:43:24 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:43:40 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109317020556 "HTTP/1.1 200 "
+2026-04-13 12:43:40 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:43:55 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109317020556 "HTTP/1.1 200 "
+2026-04-13 12:43:55 | INFO     |   Polling orders report: DONE
+2026-04-13 12:43:56 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.6ef0578a-0567-476f-9285-1daf32ca348e.TWZ3M0ICZ208E.2409 "HTTP/1.1 200 "
+2026-04-13 12:43:56 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/6ef0578a-0567-476f-9285-1daf32ca348e.amzn1.tortuga.4.eu.TWZ3M0ICZ208E?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071355Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=73b202b612339e7ba97e8859b1cc4c9d813450520d3bb56f8abff14a966ee2ec "HTTP/1.1 200 OK"
+2026-04-13 12:43:59 | INFO     | Auto-inserted 12 new SKUs into cogs table
+2026-04-13 12:44:00 | INFO     | Auto-assigned COGS/profit to 968 orders
+2026-04-13 12:44:00 | INFO     | Orders synced up to 2025-04-28!
+2026-04-13 12:44:00 | INFO     | Chunk 13 complete!
+2026-04-13 12:44:00 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:44:10 | INFO     | 
+--- Chunk 14: 2025-04-28 \u2192 2025-05-28 ---
+2026-04-13 12:44:12 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:44:12 | INFO     | Requesting Orders from 2025-04-28 to 2025-05-28...
+2026-04-13 12:44:13 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:44:29 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109318020556 "HTTP/1.1 200 "
+2026-04-13 12:44:29 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:44:44 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109318020556 "HTTP/1.1 200 "
+2026-04-13 12:44:44 | INFO     |   Polling orders report: DONE
+2026-04-13 12:44:45 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.99c680a1-1a1c-4bcd-912b-8cb8192e6459.TS7DL1TV9GXI5.2409 "HTTP/1.1 200 "
+2026-04-13 12:44:45 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/99c680a1-1a1c-4bcd-912b-8cb8192e6459.amzn1.tortuga.4.eu.TS7DL1TV9GXI5?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071444Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=911a2a581edbc7857754461941ac3e6566fc6ae51487060208194e5bd2f9c3cc "HTTP/1.1 200 OK"
+2026-04-13 12:44:49 | INFO     | Auto-inserted 10 new SKUs into cogs table
+2026-04-13 12:44:49 | INFO     | Auto-assigned COGS/profit to 995 orders
+2026-04-13 12:44:49 | INFO     | Orders synced up to 2025-05-28!
+2026-04-13 12:44:49 | INFO     | Chunk 14 complete!
+2026-04-13 12:44:49 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:44:59 | INFO     | 
+--- Chunk 15: 2025-05-28 \u2192 2025-06-27 ---
+2026-04-13 12:45:01 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:45:01 | INFO     | Requesting Orders from 2025-05-28 to 2025-06-27...
+2026-04-13 12:45:02 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:45:18 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109319020556 "HTTP/1.1 200 "
+2026-04-13 12:45:18 | INFO     |   Polling orders report: DONE
+2026-04-13 12:45:18 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.35fd776d-7946-4576-9f94-aa70ff45a770.TXVXIVPM5DPA8.2409 "HTTP/1.1 200 "
+2026-04-13 12:45:19 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/35fd776d-7946-4576-9f94-aa70ff45a770.amzn1.tortuga.4.eu.TXVXIVPM5DPA8?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071518Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=94113a16f126d93408bb93f9e3d2319018031ec71ab6f14738c1e425a480c552 "HTTP/1.1 200 OK"
+2026-04-13 12:45:23 | INFO     | Auto-inserted 6 new SKUs into cogs table
+2026-04-13 12:45:24 | INFO     | Auto-assigned COGS/profit to 965 orders
+2026-04-13 12:45:24 | INFO     | Orders synced up to 2025-06-27!
+2026-04-13 12:45:24 | INFO     | Chunk 15 complete!
+2026-04-13 12:45:24 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:45:34 | INFO     | 
+--- Chunk 16: 2025-06-27 \u2192 2025-07-27 ---
+2026-04-13 12:45:36 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:45:36 | INFO     | Requesting Orders from 2025-06-27 to 2025-07-27...
+2026-04-13 12:45:37 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:45:53 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109320020556 "HTTP/1.1 200 "
+2026-04-13 12:45:53 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:46:10 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109320020556 "HTTP/1.1 200 "
+2026-04-13 12:46:10 | INFO     |   Polling orders report: DONE
+2026-04-13 12:46:10 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.27614369-8a6b-4bf2-aead-180f10440892.T22T3M348PHG1S.2409 "HTTP/1.1 200 "
+2026-04-13 12:46:12 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/27614369-8a6b-4bf2-aead-180f10440892.amzn1.tortuga.4.eu.T22T3M348PHG1S?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071610Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=7666b439c0c3b82ee849b851035caf1eb6af24dc5dee365207032e09d75b449e "HTTP/1.1 200 OK"
+2026-04-13 12:46:17 | INFO     | Auto-inserted 8 new SKUs into cogs table
+2026-04-13 12:46:19 | INFO     | Auto-assigned COGS/profit to 997 orders
+2026-04-13 12:46:20 | INFO     | Auto-assigned COGS/profit to 6 orders
+2026-04-13 12:46:20 | INFO     | Orders synced up to 2025-07-27!
+2026-04-13 12:46:20 | INFO     | Chunk 16 complete!
+2026-04-13 12:46:20 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:46:30 | INFO     | 
+--- Chunk 17: 2025-07-27 \u2192 2025-08-26 ---
+2026-04-13 12:46:32 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:46:32 | INFO     | Requesting Orders from 2025-07-27 to 2025-08-26...
+2026-04-13 12:46:33 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:46:49 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109321020556 "HTTP/1.1 200 "
+2026-04-13 12:46:49 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:47:05 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109321020556 "HTTP/1.1 200 "
+2026-04-13 12:47:05 | INFO     |   Polling orders report: DONE
+2026-04-13 12:47:05 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.e46d1adb-3515-41d5-b3fe-a9e0a7812bef.T1EKRV3RYDKVNR.2409 "HTTP/1.1 200 "
+2026-04-13 12:47:06 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/e46d1adb-3515-41d5-b3fe-a9e0a7812bef.amzn1.tortuga.4.eu.T1EKRV3RYDKVNR?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071704Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=8c901d88b5e7381e29fd1a97f59b5191c25c0d62df457286cb0cdfbe42ff091f "HTTP/1.1 200 OK"
+2026-04-13 12:47:10 | INFO     | Auto-inserted 4 new SKUs into cogs table
+2026-04-13 12:47:11 | INFO     | Auto-assigned COGS/profit to 666 orders
+2026-04-13 12:47:11 | INFO     | Orders synced up to 2025-08-26!
+2026-04-13 12:47:11 | INFO     | Chunk 17 complete!
+2026-04-13 12:47:11 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:47:21 | INFO     | 
+--- Chunk 18: 2025-08-26 \u2192 2025-09-25 ---
+2026-04-13 12:47:22 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:47:22 | INFO     | Requesting Orders from 2025-08-26 to 2025-09-25...
+2026-04-13 12:47:23 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:47:39 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109322020556 "HTTP/1.1 200 "
+2026-04-13 12:47:39 | INFO     |   Polling orders report: DONE
+2026-04-13 12:47:39 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.8d7d9228-b986-426b-94e0-bbdcebf4ef50.TLQZQY661YLJL.2409 "HTTP/1.1 200 "
+2026-04-13 12:47:40 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/8d7d9228-b986-426b-94e0-bbdcebf4ef50.amzn1.tortuga.4.eu.TLQZQY661YLJL?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071739Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=88be213ce19ddee217d334d4b4f08e4c49198e4a3dec0e793de1955c49931090 "HTTP/1.1 200 OK"
+2026-04-13 12:47:44 | INFO     | Auto-inserted 4 new SKUs into cogs table
+2026-04-13 12:47:45 | INFO     | Auto-assigned COGS/profit to 666 orders
+2026-04-13 12:47:45 | INFO     | Orders synced up to 2025-09-25!
+2026-04-13 12:47:45 | INFO     | Chunk 18 complete!
+2026-04-13 12:47:45 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:47:55 | INFO     | 
+--- Chunk 19: 2025-09-25 \u2192 2025-10-25 ---
+2026-04-13 12:47:57 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:47:57 | INFO     | Requesting Orders from 2025-09-25 to 2025-10-25...
+2026-04-13 12:47:58 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:48:14 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109323020556 "HTTP/1.1 200 "
+2026-04-13 12:48:14 | INFO     |   Polling orders report: DONE
+2026-04-13 12:48:14 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.701c98a1-3af2-415b-80d1-12ea786fd7e9.T3LGR24FC6107T.2409 "HTTP/1.1 200 "
+2026-04-13 12:48:15 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/701c98a1-3af2-415b-80d1-12ea786fd7e9.amzn1.tortuga.4.eu.T3LGR24FC6107T?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071813Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=72d0ee145175795d20fae71a5c8f6e4da6a0f99ed4e42e0b0cc5a8c7818185e3 "HTTP/1.1 200 OK"
+2026-04-13 12:48:18 | INFO     | Auto-inserted 12 new SKUs into cogs table
+2026-04-13 12:48:19 | INFO     | Auto-assigned COGS/profit to 941 orders
+2026-04-13 12:48:20 | INFO     | Auto-inserted 2 new SKUs into cogs table
+2026-04-13 12:48:21 | INFO     | Auto-assigned COGS/profit to 63 orders
+2026-04-13 12:48:21 | INFO     | Orders synced up to 2025-10-25!
+2026-04-13 12:48:21 | INFO     | Chunk 19 complete!
+2026-04-13 12:48:21 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:48:31 | INFO     | 
+--- Chunk 20: 2025-10-25 \u2192 2025-11-24 ---
+2026-04-13 12:48:32 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:48:33 | INFO     | Requesting Orders from 2025-10-25 to 2025-11-24...
+2026-04-13 12:48:34 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:48:49 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109324020556 "HTTP/1.1 200 "
+2026-04-13 12:48:49 | INFO     |   Polling orders report: DONE
+2026-04-13 12:48:50 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.9c3306f8-4649-493b-9bef-65c45b5d50ae.T1FOZW51FUXL0T.2409 "HTTP/1.1 200 "
+2026-04-13 12:48:50 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/9c3306f8-4649-493b-9bef-65c45b5d50ae.amzn1.tortuga.4.eu.T1FOZW51FUXL0T?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071849Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=43d1b04550149bc58bbea7152b8ecef4b709054cdb642ac834458e9afff73957 "HTTP/1.1 200 OK"
+2026-04-13 12:48:53 | INFO     | Auto-inserted 11 new SKUs into cogs table
+2026-04-13 12:48:54 | INFO     | Auto-assigned COGS/profit to 805 orders
+2026-04-13 12:48:54 | INFO     | Orders synced up to 2025-11-24!
+2026-04-13 12:48:54 | INFO     | Chunk 20 complete!
+2026-04-13 12:48:54 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:49:04 | INFO     | 
+--- Chunk 21: 2025-11-24 \u2192 2025-12-24 ---
+2026-04-13 12:49:05 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:49:06 | INFO     | Requesting Orders from 2025-11-24 to 2025-12-24...
+2026-04-13 12:49:07 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:49:23 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109325020556 "HTTP/1.1 200 "
+2026-04-13 12:49:23 | INFO     |   Polling orders report: IN_QUEUE
+2026-04-13 12:49:39 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109325020556 "HTTP/1.1 200 "
+2026-04-13 12:49:39 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:49:54 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109325020556 "HTTP/1.1 200 "
+2026-04-13 12:49:54 | INFO     |   Polling orders report: DONE
+2026-04-13 12:49:55 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.3766c8bc-866e-47c9-950f-db87447db8e2.T1N70TS87I7XUH.2409 "HTTP/1.1 200 "
+2026-04-13 12:49:55 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/3766c8bc-866e-47c9-950f-db87447db8e2.amzn1.tortuga.4.eu.T1N70TS87I7XUH?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T071954Z&X-Amz-SignedHeaders=host&X-Amz-Expires=299&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=f83745c4767656d22b2a40156cee5be96624465ce0d2e85d92f6446cd8fd46af "HTTP/1.1 200 OK"
+2026-04-13 12:49:58 | INFO     | Auto-inserted 7 new SKUs into cogs table
+2026-04-13 12:49:59 | INFO     | Auto-assigned COGS/profit to 809 orders
+2026-04-13 12:49:59 | INFO     | Orders synced up to 2025-12-24!
+2026-04-13 12:49:59 | INFO     | Chunk 21 complete!
+2026-04-13 12:49:59 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:50:09 | INFO     | 
+--- Chunk 22: 2025-12-24 \u2192 2026-01-23 ---
+2026-04-13 12:50:10 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:50:11 | INFO     | Requesting Orders from 2025-12-24 to 2026-01-23...
+2026-04-13 12:50:12 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:50:27 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109326020556 "HTTP/1.1 200 "
+2026-04-13 12:50:27 | INFO     |   Polling orders report: DONE
+2026-04-13 12:50:28 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.22518db8-1f32-410e-93cc-0cf887fbecf9.T3FHKDG55D8M61.2409 "HTTP/1.1 200 "
+2026-04-13 12:50:28 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/22518db8-1f32-410e-93cc-0cf887fbecf9.amzn1.tortuga.4.eu.T3FHKDG55D8M61?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T072027Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=2e0df615a8a9285a4cb883746e9e169f9e0c112e11e5eb9879b64a4f47d20005 "HTTP/1.1 200 OK"
+2026-04-13 12:50:32 | INFO     | Auto-inserted 8 new SKUs into cogs table
+2026-04-13 12:50:33 | INFO     | Auto-assigned COGS/profit to 990 orders
+2026-04-13 12:50:34 | INFO     | Auto-assigned COGS/profit to 36 orders
+2026-04-13 12:50:34 | INFO     | Orders synced up to 2026-01-23!
+2026-04-13 12:50:34 | INFO     | Chunk 22 complete!
+2026-04-13 12:50:34 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:50:44 | INFO     | 
+--- Chunk 23: 2026-01-23 \u2192 2026-02-22 ---
+2026-04-13 12:50:46 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:50:46 | INFO     | Requesting Orders from 2026-01-23 to 2026-02-22...
+2026-04-13 12:50:47 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:51:03 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109327020556 "HTTP/1.1 200 "
+2026-04-13 12:51:03 | INFO     |   Polling orders report: DONE
+2026-04-13 12:51:03 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.bafe705c-3fcb-4a4b-a6d2-c508d3aa3055.TF1J41XCVKBX0.2409 "HTTP/1.1 200 "
+2026-04-13 12:51:04 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/bafe705c-3fcb-4a4b-a6d2-c508d3aa3055.amzn1.tortuga.4.eu.TF1J41XCVKBX0?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T072102Z&X-Amz-SignedHeaders=host&X-Amz-Expires=299&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=8db1871cab41b21df0ee468ec36a1c2ec548b8ed4915f5404566d6aed2f2e28f "HTTP/1.1 200 OK"
+2026-04-13 12:51:07 | INFO     | Auto-inserted 8 new SKUs into cogs table
+2026-04-13 12:51:08 | INFO     | Auto-assigned COGS/profit to 881 orders
+2026-04-13 12:51:08 | INFO     | Orders synced up to 2026-02-22!
+2026-04-13 12:51:08 | INFO     | Chunk 23 complete!
+2026-04-13 12:51:08 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:51:18 | INFO     | 
+--- Chunk 24: 2026-02-22 \u2192 2026-03-24 ---
+2026-04-13 12:51:20 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:51:20 | INFO     | Requesting Orders from 2026-02-22 to 2026-03-24...
+2026-04-13 12:51:21 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:51:37 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109328020556 "HTTP/1.1 200 "
+2026-04-13 12:51:37 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:51:53 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109328020556 "HTTP/1.1 200 "
+2026-04-13 12:51:53 | INFO     |   Polling orders report: DONE
+2026-04-13 12:51:53 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.29b28860-135c-449f-828f-9d44962e2858.T1P030IF2JFMQK.2409 "HTTP/1.1 200 "
+2026-04-13 12:51:54 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/29b28860-135c-449f-828f-9d44962e2858.amzn1.tortuga.4.eu.T1P030IF2JFMQK?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T072152Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=1d7332c3fb428d219ee58b506cd191b1f80f7f87ae10e68438168db169e8f1b6 "HTTP/1.1 200 OK"
+2026-04-13 12:51:57 | INFO     | Auto-inserted 2 new SKUs into cogs table
+2026-04-13 12:51:57 | INFO     | Auto-assigned COGS/profit to 733 orders
+2026-04-13 12:51:57 | INFO     | Orders synced up to 2026-03-24!
+2026-04-13 12:51:57 | INFO     | Chunk 24 complete!
+2026-04-13 12:51:57 | INFO     | Waiting 10s before next chunk (rate limiting)...
+2026-04-13 12:52:07 | INFO     | 
+--- Chunk 25: 2026-03-24 \u2192 2026-04-13 ---
+2026-04-13 12:52:09 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:52:10 | INFO     | Requesting Orders from 2026-03-24 to 2026-04-13...
+2026-04-13 12:52:11 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:52:26 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109329020556 "HTTP/1.1 200 "
+2026-04-13 12:52:26 | INFO     |   Polling orders report: IN_PROGRESS
+2026-04-13 12:52:42 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109329020556 "HTTP/1.1 200 "
+2026-04-13 12:52:42 | INFO     |   Polling orders report: DONE
+2026-04-13 12:52:42 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.671b0cdc-22e3-4563-b472-ac9f2593949d.T9D4LXEXVG43E.2409 "HTTP/1.1 200 "
+2026-04-13 12:52:43 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/671b0cdc-22e3-4563-b472-ac9f2593949d.amzn1.tortuga.4.eu.T9D4LXEXVG43E?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T072242Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=6f16c707647ee65137d411c46e3ba6015fc48e07a5b033aa6725eb09b9a2fc99 "HTTP/1.1 200 OK"
+2026-04-13 12:52:47 | INFO     | Auto-inserted 5 new SKUs into cogs table
+2026-04-13 12:52:47 | INFO     | Auto-assigned COGS/profit to 478 orders
+2026-04-13 12:52:47 | INFO     | Orders synced up to 2026-04-13!
+2026-04-13 12:52:47 | INFO     | Chunk 25 complete!
+2026-04-13 12:52:47 | INFO     | 
+=== HISTORICAL BACKFILL COMPLETE ===

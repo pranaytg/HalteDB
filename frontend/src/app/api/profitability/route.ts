@@ -61,12 +61,24 @@ export async function GET(req: NextRequest) {
 
     const WHERE = conditions.join(" AND ");
 
+    // Shipping cost resolution priority:
+    //   Amazon-fulfilled: actual Amazon fee → synced Amazon cost → rate-card cheapest → 0
+    //   Merchant-fulfilled: seller-paid → rate-card cheapest → 0
     const SHIPPING_EXPR = `
       CASE
         WHEN LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
           OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
-        THEN COALESCE(NULLIF(o.shipping_price, 0), NULLIF(se.amazon_shipping_cost, 0), 0)
-        ELSE COALESCE(o.shipping_price, 0)
+        THEN COALESCE(
+          NULLIF(o.shipping_price, 0),
+          NULLIF(se.amazon_shipping_cost, 0),
+          NULLIF(se.cheapest_cost, 0),
+          0
+        )
+        ELSE COALESCE(
+          NULLIF(o.shipping_price, 0),
+          NULLIF(se.cheapest_cost, 0),
+          0
+        )
       END
     `;
 

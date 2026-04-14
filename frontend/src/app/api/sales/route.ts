@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { getCityTier } from "@/lib/cityTiers";
+import { normalizedSkuExpr } from "@/lib/skuNormalize";
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
     let paramIdx = 1;
 
     if (sku) {
-      conditions.push(`o.sku = $${paramIdx++}`);
+      conditions.push(`${normalizedSkuExpr("o.sku")} = UPPER($${paramIdx++})`);
       params.push(sku);
     }
     if (startDate) {

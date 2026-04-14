@@ -28,6 +28,8 @@ from sp_api import (
     run_product_specs_sync,
     run_invoice_sync,
     get_powerbi_sales_sync_status,
+    run_shipment_sync_full,
+    recalculate_profitability_all,
 )
 from crud import get_sync_meta
 
@@ -228,6 +230,40 @@ async def trigger_orders_sync(
 
     background_tasks.add_task(_run)
     return {"status": "accepted", "message": "Incremental orders sync started."}
+
+
+@app.post("/recalculate-profitability")
+async def trigger_profitability_recalc(background_tasks: BackgroundTasks):
+    """Recomputes orders.profit for ALL orders using the current formula (includes
+    rate-card shipping fallback). Runs in background because it updates every row."""
+    async def _run():
+        try:
+            async with SessionLocal() as sync_session:
+                count = await recalculate_profitability_all(sync_session)
+                logger.info(f"Full profitability recalc done: {count} rows updated")
+        except Exception as e:
+            logger.error(f"Profitability recalc failed: {e}")
+
+    background_tasks.add_task(_run)
+    return {"status": "accepted", "message": "Profitability recalc started for all orders."}
+
+
+@app.post("/sync-shipments-full")
+async def trigger_shipment_full_sync(background_tasks: BackgroundTasks):
+    """Backfills shipment_estimates for every order lacking one by looping the
+    regular shipment sync until no eligible orders remain."""
+    async def _run():
+        try:
+            async with SessionLocal() as sync_session:
+                added = await run_shipment_sync_full(sync_session)
+                logger.info(f"Shipment full sync done: +{added} rows")
+                async with SessionLocal() as recalc_session:
+                    await recalculate_profitability_all(recalc_session)
+        except Exception as e:
+            logger.error(f"Shipment full sync failed: {e}")
+
+    background_tasks.add_task(_run)
+    return {"status": "accepted", "message": "Shipment full sync + profitability recalc started."}
 
 
 @app.post("/sync-product-specs")

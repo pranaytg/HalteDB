@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { getCityTier } from "@/lib/cityTiers";
+import { normalizedSkuExpr } from "@/lib/skuNormalize";
+
+const NORM_SKU = normalizedSkuExpr("orders.sku");
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,7 +23,7 @@ export async function GET(req: NextRequest) {
     const params: (string | number)[] = [];
     let idx = 1;
 
-    if (sku) { conditions.push(`orders.sku = $${idx++}`); params.push(sku); }
+    if (sku) { conditions.push(`${NORM_SKU} = UPPER($${idx++})`); params.push(sku); }
     if (brand) { conditions.push(`LOWER(ec.brand) = LOWER($${idx++})`); params.push(brand); }
     if (year) { conditions.push(`EXTRACT(YEAR FROM orders.purchase_date) = $${idx++}`); params.push(parseInt(year)); }
     if (month) { conditions.push(`TO_CHAR(orders.purchase_date, 'YYYY-MM') = $${idx++}`); params.push(month); }
@@ -82,15 +85,15 @@ export async function GET(req: NextRequest) {
       ORDER BY month ASC
     `, params);
 
-    // SKU-wise summary
+    // SKU-wise summary (variants collapsed to base SKU)
     const skuResult = await pool.query(`
-      SELECT orders.sku,
+      SELECT ${NORM_SKU} as sku,
              COUNT(*) as total_orders,
              COALESCE(SUM(orders.item_price), 0) as total_revenue,
              COALESCE(SUM(orders.profit), 0) as total_profit,
              COALESCE(SUM(orders.quantity), 0) as total_units
       ${fromClause} ${where}
-      GROUP BY orders.sku
+      GROUP BY ${NORM_SKU}
       ORDER BY total_revenue DESC
       LIMIT 20
     `, params);
@@ -109,7 +112,7 @@ export async function GET(req: NextRequest) {
 
     // Available filter options (unfiltered so user can always access all choices)
     const [filtersResult, yearsResult, brandsResult] = await Promise.all([
-      pool.query(`SELECT DISTINCT sku FROM orders WHERE sku IS NOT NULL ORDER BY sku`),
+      pool.query(`SELECT DISTINCT ${normalizedSkuExpr("sku")} as sku FROM orders WHERE sku IS NOT NULL AND TRIM(sku) <> '' AND sku !~ '[|,]' ORDER BY sku`),
       pool.query(`SELECT DISTINCT EXTRACT(YEAR FROM purchase_date) as year FROM orders WHERE purchase_date IS NOT NULL ORDER BY year DESC`),
       pool.query(`SELECT DISTINCT UPPER(brand) as brand FROM estimated_cogs WHERE brand IS NOT NULL ORDER BY brand`),
     ]);

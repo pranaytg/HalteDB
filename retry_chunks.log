@@ -1,0 +1,60 @@
+2026-04-13 12:55:41,640 | INFO     | --- Retry chunk 1/5: 2024-04-03 -> 2024-05-03 ---
+2026-04-13 12:55:43,122 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:55:43,341 | INFO     | Requesting Orders from 2024-04-03 to 2024-05-03...
+2026-04-13 12:55:44,653 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:56:00,305 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109330020556 "HTTP/1.1 200 "
+2026-04-13 12:56:00,305 | INFO     |   Polling orders report: DONE
+2026-04-13 12:56:00,546 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.0ad001a9-12c1-49a8-a10a-a445120eba2e.T2Y7XGGHR2JRFU.2409 "HTTP/1.1 200 "
+2026-04-13 12:56:01,300 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/0ad001a9-12c1-49a8-a10a-a445120eba2e.amzn1.tortuga.4.eu.T2Y7XGGHR2JRFU?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T072559Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=9ad0748e42b428ca8c2379db43ed451e78fa68e38b9e5bba7db7e83d1e94604c "HTTP/1.1 200 OK"
+2026-04-13 12:56:08,237 | INFO     | Auto-inserted 2 new SKUs into cogs table
+2026-04-13 12:56:09,654 | INFO     | Auto-assigned COGS/profit to 508 orders
+2026-04-13 12:56:09,654 | INFO     | Orders synced up to 2024-05-03!
+2026-04-13 12:56:09,654 | INFO     | Chunk 1 complete!
+2026-04-13 12:56:19,658 | INFO     | --- Retry chunk 2/5: 2024-05-03 -> 2024-06-02 ---
+2026-04-13 12:56:21,324 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:56:21,540 | INFO     | Requesting Orders from 2024-05-03 to 2024-06-02...
+2026-04-13 12:56:22,436 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:56:38,214 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109331020556 "HTTP/1.1 200 "
+2026-04-13 12:56:38,219 | INFO     |   Polling orders report: DONE
+2026-04-13 12:56:38,455 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.b63b0339-6a38-41ff-821a-71b3aabd158f.TP0I0Q2EXDY4U.2409 "HTTP/1.1 200 "
+2026-04-13 12:56:39,180 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/b63b0339-6a38-41ff-821a-71b3aabd158f.amzn1.tortuga.4.eu.TP0I0Q2EXDY4U?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T072637Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=f1f65c059d0aa381d470af3bc7da7cddc49fc7baf34de6ec68b0ab5af6a137b8 "HTTP/1.1 200 OK"
+2026-04-13 12:56:41,614 | INFO     | Auto-inserted 1 new SKUs into cogs table
+2026-04-13 12:56:42,388 | INFO     | Auto-assigned COGS/profit to 506 orders
+2026-04-13 12:56:42,388 | INFO     | Orders synced up to 2024-06-02!
+2026-04-13 12:56:42,396 | INFO     | Chunk 2 complete!
+2026-04-13 12:56:52,410 | INFO     | --- Retry chunk 3/5: 2024-06-02 -> 2024-07-02 ---
+2026-04-13 12:56:53,915 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:56:54,121 | INFO     | Requesting Orders from 2024-06-02 to 2024-07-02...
+2026-04-13 12:56:55,384 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:57:11,053 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109332020556 "HTTP/1.1 200 "
+2026-04-13 12:57:11,062 | INFO     |   Polling orders report: DONE
+2026-04-13 12:57:11,310 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.57bcdf54-68f8-4fcd-a079-9cca5cb8bbf6.T1QEWCY5U7I7KL.2409 "HTTP/1.1 200 "
+2026-04-13 12:57:12,144 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/57bcdf54-68f8-4fcd-a079-9cca5cb8bbf6.amzn1.tortuga.4.eu.T1QEWCY5U7I7KL?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T072710Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=b340291b9c57f3bffb04883190049a0ad6ca09a8b6e7305081a49b38935773a8 "HTTP/1.1 200 OK"
+2026-04-13 12:57:14,542 | INFO     | Auto-inserted 1 new SKUs into cogs table
+2026-04-13 12:57:15,295 | INFO     | Auto-assigned COGS/profit to 499 orders
+2026-04-13 12:57:15,295 | INFO     | Orders synced up to 2024-07-02!
+2026-04-13 12:57:15,308 | INFO     | Chunk 3 complete!
+2026-04-13 12:57:25,319 | INFO     | --- Retry chunk 4/5: 2024-07-02 -> 2024-08-01 ---
+2026-04-13 12:57:26,819 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:57:27,025 | INFO     | Requesting Orders from 2024-07-02 to 2024-08-01...
+2026-04-13 12:57:27,969 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:57:43,647 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109333020556 "HTTP/1.1 200 "
+2026-04-13 12:57:43,665 | INFO     |   Polling orders report: DONE
+2026-04-13 12:57:43,903 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.ce195222-f1da-4bcf-b9a2-3b3b2375b442.T2T8D67JXCYGMZ.2409 "HTTP/1.1 200 "
+2026-04-13 12:57:44,648 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/ce195222-f1da-4bcf-b9a2-3b3b2375b442.amzn1.tortuga.4.eu.T2T8D67JXCYGMZ?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T072743Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=b55f72fddbea3b90da43e2906b0e85df9a9d8fbc1bdb03e12cde0248760502c6 "HTTP/1.1 200 OK"
+2026-04-13 12:57:50,716 | INFO     | Auto-assigned COGS/profit to 673 orders
+2026-04-13 12:57:50,716 | INFO     | Orders synced up to 2024-08-01!
+2026-04-13 12:57:50,716 | INFO     | Chunk 4 complete!
+2026-04-13 12:58:00,731 | INFO     | --- Retry chunk 5/5: 2024-08-01 -> 2024-08-31 ---
+2026-04-13 12:58:02,321 | INFO     | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-13 12:58:02,541 | INFO     | Requesting Orders from 2024-08-01 to 2024-08-31...
+2026-04-13 12:58:03,877 | INFO     | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-13 12:58:20,066 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109334020556 "HTTP/1.1 200 "
+2026-04-13 12:58:20,066 | INFO     |   Polling orders report: DONE
+2026-04-13 12:58:20,451 | INFO     | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.5040dab2-118c-4166-8225-ae7d75d4c50e.TJMP2BKYYKTFX.2409 "HTTP/1.1 200 "
+2026-04-13 12:58:21,249 | INFO     | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/5040dab2-118c-4166-8225-ae7d75d4c50e.amzn1.tortuga.4.eu.TJMP2BKYYKTFX?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260413T072819Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260413%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=472527c07c2036e6034312b85bb7970a0a646fa147805992b96cdc4dbdaa2e4f "HTTP/1.1 200 OK"
+2026-04-13 12:58:24,298 | INFO     | Auto-inserted 1 new SKUs into cogs table
+2026-04-13 12:58:25,177 | INFO     | Auto-assigned COGS/profit to 758 orders
+2026-04-13 12:58:25,193 | INFO     | Orders synced up to 2024-08-31!
+2026-04-13 12:58:25,193 | INFO     | Chunk 5 complete!
+2026-04-13 12:58:25,385 | INFO     | === RETRY COMPLETE ===
