@@ -5,11 +5,12 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const metric = searchParams.get("metric") || "rfm";
+    const channel = searchParams.get("channel") || "all";
 
-    if (metric === "rfm") return await getRFM();
-    if (metric === "clv") return await getCLV();
-    if (metric === "churn") return await getChurn();
-    if (metric === "loyalty") return await getLoyalty();
+    if (metric === "rfm") return await getRFM(channel);
+    if (metric === "clv") return await getCLV(channel);
+    if (metric === "churn") return await getChurn(channel);
+    if (metric === "loyalty") return await getLoyalty(channel);
 
     return NextResponse.json({ error: "Unknown metric" }, { status: 400 });
   } catch (error) {
@@ -33,21 +34,28 @@ async function hasRecency(): Promise<boolean> {
   return Number(r.rows[0]?.n || 0) > 0;
 }
 
-async function getRFM() {
+// Returns [sqlClause, params] fragment to filter by channel. "all" → no filter.
+function channelFilter(channel: string, startIdx = 1): { clause: string; params: string[] } {
+  if (!channel || channel === "all") return { clause: "", params: [] };
+  return { clause: ` AND channel = $${startIdx}`, params: [channel] };
+}
+
+async function getRFM(channel: string) {
   const recencyAvailable = await hasRecency();
+  const f = channelFilter(channel);
 
   // Standard 11-segment RFM (Kumar / Putler model).
   // Scores are NTILE quintiles (1..5). With ~1500 customers this spreads well.
   const result = await pool.query(`
     WITH base AS (
       SELECT
-        customer_id, name, phone, email, state,
+        customer_id, name, phone, email, state, channel,
         total_orders, total_spent, last_order_date,
         CASE WHEN last_order_date IS NOT NULL
              THEN EXTRACT(DAY FROM NOW() - last_order_date)::int
              ELSE NULL END AS days_since_order
       FROM customers
-      WHERE total_orders > 0 AND total_spent > 0
+      WHERE total_orders > 0 AND total_spent > 0${f.clause}
     ),
     scored AS (
       SELECT
@@ -60,7 +68,7 @@ async function getRFM() {
       FROM base
     )
     SELECT
-      customer_id, name, phone, email, state,
+      customer_id, name, phone, email, state, channel,
       days_since_order,
       total_orders AS purchase_frequency,
       total_spent,
@@ -84,7 +92,7 @@ async function getRFM() {
       END AS segment
     FROM scored
     ORDER BY rfm_score DESC, total_spent DESC
-  `);
+  `, f.params);
 
   const customers = result.rows;
   const segmentCounts: Record<string, number> = {};
@@ -100,8 +108,9 @@ async function getRFM() {
   });
 }
 
-async function getCLV() {
+async function getCLV(channel: string) {
   const recencyAvailable = await hasRecency();
+  const f = channelFilter(channel);
 
   // CLV forecast using:
   //   AOV        = total_spent / total_orders
@@ -114,14 +123,14 @@ async function getCLV() {
   const result = await pool.query(`
     WITH base AS (
       SELECT
-        customer_id, name, phone, email, state,
+        customer_id, name, phone, email, state, channel,
         total_orders, total_spent, last_order_date,
         CASE WHEN total_orders > 0 THEN total_spent / total_orders ELSE 0 END AS avg_order_value,
         CASE WHEN last_order_date IS NOT NULL
              THEN EXTRACT(DAY FROM NOW() - last_order_date)::int
              ELSE NULL END AS days_since_last_order
       FROM customers
-      WHERE total_orders > 0 AND total_spent > 0
+      WHERE total_orders > 0 AND total_spent > 0${f.clause}
     ),
     modeled AS (
       SELECT
@@ -149,7 +158,7 @@ async function getCLV() {
       FROM modeled
     )
     SELECT
-      customer_id, name, phone, email, state,
+      customer_id, name, phone, email, state, channel,
       total_orders, total_spent, avg_order_value,
       last_order_date, days_since_last_order,
       retention_rate,
@@ -164,7 +173,7 @@ async function getCLV() {
     FROM scored
     ORDER BY predicted_clv DESC
     LIMIT 500
-  `);
+  `, f.params);
 
   const customers = result.rows;
   const avgCLV =
@@ -186,8 +195,9 @@ async function getCLV() {
   });
 }
 
-async function getChurn() {
+async function getChurn(channel: string) {
   const recencyAvailable = await hasRecency();
+  const f = channelFilter(channel);
 
   // Churn is meaningless without recency data. Return empty set + flag
   // so the UI can instruct the user to re-import.
@@ -203,11 +213,11 @@ async function getChurn() {
   const result = await pool.query(`
     WITH base AS (
       SELECT
-        customer_id, name, phone, email, state,
+        customer_id, name, phone, email, state, channel,
         total_orders, total_spent, last_order_date,
         EXTRACT(DAY FROM NOW() - last_order_date)::int AS days_since_order
       FROM customers
-      WHERE total_orders > 0 AND last_order_date IS NOT NULL
+      WHERE total_orders > 0 AND last_order_date IS NOT NULL${f.clause}
     )
     SELECT
       *,
@@ -229,7 +239,7 @@ async function getChurn() {
       END AS churn_category
     FROM base
     ORDER BY churn_risk_score DESC, total_spent DESC
-  `);
+  `, f.params);
 
   const customers = result.rows;
   const atRiskCount = customers.filter(
@@ -244,12 +254,11 @@ async function getChurn() {
   });
 }
 
-async function getLoyalty() {
-  // Simple, honest: every buying customer, sorted by order count.
-  // Tier = pure function of order count; spend used as secondary signal only.
+async function getLoyalty(channel: string) {
+  const f = channelFilter(channel);
   const result = await pool.query(`
     SELECT
-      customer_id, name, phone, email, state,
+      customer_id, name, phone, email, state, channel,
       total_orders, total_spent, last_order_date,
       CASE
         WHEN total_orders >= 10 THEN 'VIP Loyal'
@@ -259,9 +268,9 @@ async function getLoyalty() {
         ELSE 'One-Time'
       END AS loyalty_tier
     FROM customers
-    WHERE total_orders > 0
+    WHERE total_orders > 0${f.clause}
     ORDER BY total_orders DESC, total_spent DESC
-  `);
+  `, f.params);
 
   const customers = result.rows;
   const tierCounts: Record<string, number> = {

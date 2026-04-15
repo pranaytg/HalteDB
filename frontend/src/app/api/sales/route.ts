@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       params.push(startDate);
     }
     if (endDate) {
-      conditions.push(`o.purchase_date <= $${paramIdx++}::timestamptz`);
+      conditions.push(`o.purchase_date < ($${paramIdx++}::date + INTERVAL '1 day')`);
       params.push(endDate);
     }
     if (month) {

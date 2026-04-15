@@ -8,12 +8,33 @@ const fmtNum = (v: number) => Number(v).toLocaleString("en-IN");
 
 const COLORS = ["#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899"];
 
+const ChannelBadge = ({ channel }: { channel?: string }) => {
+  const c = (channel || "").toLowerCase();
+  const isAmazon = c === "amazon";
+  const label = c ? c.charAt(0).toUpperCase() + c.slice(1) : "—";
+  return (
+    <span
+      style={{
+        background: isAmazon ? "rgba(245,158,11,0.2)" : "rgba(99,102,241,0.2)",
+        color: isAmazon ? "#f59e0b" : "#6366f1",
+        padding: "2px 8px",
+        borderRadius: 4,
+        fontSize: 11,
+        fontWeight: 600,
+      }}
+    >
+      {label}
+    </span>
+  );
+};
+
 interface RFMCustomer {
   customer_id: string;
   name: string;
   phone?: string;
   email?: string;
   state?: string;
+  channel?: string;
   days_since_order?: number;
   purchase_frequency: number;
   total_spent: number;
@@ -26,6 +47,7 @@ interface CLVCustomer {
   name: string;
   phone?: string;
   email?: string;
+  channel?: string;
   total_orders: number;
   total_spent: number;
   avg_order_value: number;
@@ -40,6 +62,7 @@ interface ChurnCustomer {
   name: string;
   phone?: string;
   email?: string;
+  channel?: string;
   total_orders: number;
   total_spent: number;
   days_since_order: number;
@@ -52,6 +75,7 @@ interface LoyaltyCustomer {
   name: string;
   phone?: string;
   email?: string;
+  channel?: string;
   total_orders: number;
   total_spent: number;
   loyalty_tier: string;
@@ -59,6 +83,7 @@ interface LoyaltyCustomer {
 
 export default function CustomerInsightsPage() {
   const [activeTab, setActiveTab] = useState<"rfm" | "clv" | "churn" | "loyalty">("rfm");
+  const [channel, setChannel] = useState<"all" | "website" | "amazon">("all");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +93,7 @@ export default function CustomerInsightsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/customers/analytics?metric=${activeTab}`);
+      const res = await fetch(`/api/customers/analytics?metric=${activeTab}&channel=${channel}`);
       const d = await res.json();
       if (d.error) setError(d.error);
       else setData(d);
@@ -77,7 +102,7 @@ export default function CustomerInsightsPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab]);
+  }, [activeTab, channel]);
 
   useEffect(() => {
     fetchData();
@@ -118,9 +143,24 @@ export default function CustomerInsightsPage() {
   return (
     <div>
       {/* Header */}
-      <div className="page-header">
-        <h1 className="page-title">Customer Insights</h1>
-        <p className="page-subtitle">Advanced analytics: RFM, CLV, Churn Risk & Loyalty</p>
+      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16 }}>
+        <div>
+          <h1 className="page-title">Customer Insights</h1>
+          <p className="page-subtitle">Advanced analytics: RFM, CLV, Churn Risk & Loyalty</p>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <label style={{ fontSize: 12, color: "var(--text-muted)" }}>Channel</label>
+          <select
+            className="filter-input"
+            value={channel}
+            onChange={(e) => setChannel(e.target.value as "all" | "website" | "amazon")}
+            style={{ padding: "6px 10px", fontSize: 12 }}
+          >
+            <option value="all">All channels</option>
+            <option value="website">Website</option>
+            <option value="amazon">Amazon</option>
+          </select>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -170,6 +210,7 @@ export default function CustomerInsightsPage() {
                 <thead>
                   <tr>
                     <th>Name</th>
+                    <th>Channel</th>
                     <th>Segment</th>
                     <th>Recency (days)</th>
                     <th>Frequency</th>
@@ -183,6 +224,7 @@ export default function CustomerInsightsPage() {
                     .map((c: RFMCustomer) => (
                       <tr key={c.customer_id}>
                         <td style={{ fontWeight: 600 }}>{c.name}</td>
+                        <td><ChannelBadge channel={c.channel} /></td>
                         <td>
                           <span
                             style={{
@@ -244,6 +286,7 @@ export default function CustomerInsightsPage() {
                 <thead>
                   <tr>
                     <th>Name</th>
+                    <th>Channel</th>
                     <th>Tier</th>
                     <th>Orders</th>
                     <th>Total Spent</th>
@@ -256,6 +299,7 @@ export default function CustomerInsightsPage() {
                   {(data?.customers || []).slice(0, 50).map((c: CLVCustomer) => (
                     <tr key={c.customer_id}>
                       <td style={{ fontWeight: 600 }}>{c.name}</td>
+                      <td><ChannelBadge channel={c.channel} /></td>
                       <td>
                         <span
                           style={{
@@ -339,6 +383,7 @@ export default function CustomerInsightsPage() {
                 <thead>
                   <tr>
                     <th>Name</th>
+                    <th>Channel</th>
                     <th>Days Inactive</th>
                     <th>Category</th>
                     <th>Risk Score</th>
@@ -351,6 +396,7 @@ export default function CustomerInsightsPage() {
                     .map((c: ChurnCustomer) => (
                       <tr key={c.customer_id}>
                         <td style={{ fontWeight: 600 }}>{c.name}</td>
+                        <td><ChannelBadge channel={c.channel} /></td>
                         <td style={{ color: "var(--text-muted)" }}>{c.days_since_order} days</td>
                         <td>
                           <span
@@ -421,6 +467,7 @@ export default function CustomerInsightsPage() {
                 <thead>
                   <tr>
                     <th>Name</th>
+                    <th>Channel</th>
                     <th>Loyalty Tier</th>
                     <th>Orders</th>
                     <th>Total Spent</th>
@@ -432,6 +479,7 @@ export default function CustomerInsightsPage() {
                     .map((c: LoyaltyCustomer) => (
                       <tr key={c.customer_id}>
                         <td style={{ fontWeight: 600 }}>{c.name}</td>
+                        <td><ChannelBadge channel={c.channel} /></td>
                         <td>
                           <span
                             style={{

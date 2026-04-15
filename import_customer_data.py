@@ -334,8 +334,8 @@ async def import_all_customer_data(wipe: bool = False):
                     for insert in batch_inserts:
                         await session.execute(
                             text("""
-                                INSERT INTO customers (customer_id, name, phone, email, state, total_orders, total_spent, last_order_date)
-                                VALUES (:cid, :name, :phone, :email, :state, :orders, :spent, :last_order_date)
+                                INSERT INTO customers (customer_id, name, phone, email, state, total_orders, total_spent, last_order_date, channel)
+                                VALUES (:cid, :name, :phone, :email, :state, :orders, :spent, :last_order_date, 'website')
                                 ON CONFLICT (customer_id) DO NOTHING
                             """),
                             insert

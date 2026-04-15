@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
       params.push(startDate);
     }
     if (endDate) {
-      where += ` AND purchase_date <= $${idx++}::timestamp`;
+      where += ` AND purchase_date < ($${idx++}::date + INTERVAL '1 day')`;
       params.push(endDate);
     }
 

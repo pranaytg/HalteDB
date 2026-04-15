@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
       }
     }
     if (startDate) { conditions.push(`orders.purchase_date >= $${idx++}::timestamp`); params.push(startDate); }
-    if (endDate) { conditions.push(`orders.purchase_date <= $${idx++}::timestamp`); params.push(endDate); }
+    if (endDate) { conditions.push(`orders.purchase_date < ($${idx++}::date + INTERVAL '1 day')`); params.push(endDate); }
 
     /* ── Tier filter: resolve tier → city list ── */
     if (tier) {

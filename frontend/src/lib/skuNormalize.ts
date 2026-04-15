@@ -10,7 +10,10 @@ export function normalizedSkuExpr(col: string): string {
     REGEXP_REPLACE(
       REGEXP_REPLACE(
         REGEXP_REPLACE(
-          REGEXP_REPLACE(${col}, E'\\\\s+\\\\d+$', ''),
+          REGEXP_REPLACE(
+            REGEXP_REPLACE(${col}, E'\\\\s+[A-Za-z]$', ''),
+            E'\\\\s+\\\\d+$', ''
+          ),
           E'-[A-Za-z]$', ''
         ),
         E'-\\\\d+$', ''
