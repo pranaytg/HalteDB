@@ -11,6 +11,7 @@ interface CogsEntry {
   last_updated: string;
   halte_selling_price: number | null;
   amazon_selling_price: number | null;
+  selling_price: number | null;
 }
 
 const fmtCur = (v: number) =>
@@ -299,15 +300,29 @@ export default function CogsPage() {
                   <td style={{ fontWeight: 600, color: "var(--accent-hover)" }}>
                     {entry.sku}
                   </td>
-                  <td style={{ color: "#8b5cf6", fontWeight: 600 }}>
+                  <td style={{ fontWeight: 600, color: (() => {
+                    if (entry.halte_selling_price == null || entry.selling_price == null) return "#8b5cf6";
+                    const diff = Math.abs(entry.selling_price - entry.halte_selling_price);
+                    const threshold = entry.halte_selling_price * 0.05;
+                    if (entry.selling_price < entry.halte_selling_price && diff > threshold) return "#ef4444";
+                    if (diff <= threshold) return "#eab308";
+                    return "#10b981";
+                  })() }}>
                     {entry.halte_selling_price != null ? fmtCur(entry.halte_selling_price) : "—"}
                   </td>
-                  <td style={{ color: "var(--text-muted)" }}>—</td>
+                  <td style={{ color: "#8b5cf6", fontWeight: 600 }}>
+                    {entry.selling_price != null
+                      ? fmtCur(entry.selling_price)
+                      : <span style={{ color: "var(--text-muted)" }}>—</span>
+                    }
+                  </td>
                   <td style={{ fontWeight: 600, color: (() => {
                     if (entry.amazon_selling_price == null || entry.amazon_price == null) return "#f59e0b";
-                    if (entry.amazon_selling_price > entry.amazon_price) return "#10b981";
-                    if (entry.amazon_selling_price === entry.amazon_price) return "#eab308";
-                    return "#ef4444";
+                    const diff = Math.abs(entry.amazon_price - entry.amazon_selling_price);
+                    const threshold = entry.amazon_selling_price * 0.05;
+                    if (entry.amazon_price < entry.amazon_selling_price && diff > threshold) return "#ef4444";
+                    if (diff <= threshold) return "#eab308";
+                    return "#10b981";
                   })() }}>
                     {entry.amazon_selling_price != null ? fmtCur(entry.amazon_selling_price) : "—"}
                   </td>

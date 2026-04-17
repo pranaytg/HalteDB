@@ -181,7 +181,7 @@ export default function CogsEstimatePage() {
 
   /* ── Sync to COGS ── */
   const handleSyncCogs = async () => {
-    if (!confirm("This will update the COGS table (cost_price_halte → cogs_price) and recalculate profit on all orders. Continue?")) return;
+    if (!confirm("This will sync Halte SP & Amazon SP from COGS Estimate to the COGS table. Continue?")) return;
     setSyncing(true);
     try {
       const res = await fetch("/api/cogs-estimate", {

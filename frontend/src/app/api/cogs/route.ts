@@ -8,7 +8,7 @@ export async function GET() {
              ec.halte_selling_price, ec.amazon_selling_price
       FROM cogs c
       LEFT JOIN LATERAL (
-        SELECT halte_selling_price, amazon_selling_price
+        SELECT halte_selling_price, amazon_selling_price, selling_price
         FROM estimated_cogs
         WHERE estimated_cogs.sku = c.sku
            OR estimated_cogs.sku LIKE c.sku || ' %'
@@ -16,6 +16,10 @@ export async function GET() {
         ORDER BY last_updated DESC
         LIMIT 1
       ) ec ON true
+      WHERE c.sku NOT LIKE '%,%'
+        AND c.sku NOT LIKE '%|%'
+        AND c.sku NOT LIKE '% %'
+        AND LENGTH(c.sku) <= 30
       ORDER BY c.sku ASC
     `;
     const result = await pool.query(query);

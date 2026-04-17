@@ -190,61 +190,18 @@ export async function PUT(req: NextRequest) {
 
     /* ── Sync to COGS table ── */
     if (action === "sync_cogs") {
-      // For each estimated_cogs row, upsert into cogs table with cogs_price = final_price (actual COGS)
-      const allRows = await pool.query(`SELECT sku, final_price, amazon_fee_percent, marketing_cost FROM estimated_cogs`);
-      let synced = 0;
-      const shippingExpr = `
-        CASE
-          WHEN LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
-            OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
-          THEN COALESCE(
-            NULLIF(o.shipping_price, 0),
-            NULLIF((
-              SELECT se.amazon_shipping_cost
-              FROM shipment_estimates se
-              WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
-              LIMIT 1
-            ), 0),
-            0
-          )
-          ELSE COALESCE(o.shipping_price, 0)
-        END
-      `;
-
-      for (const row of allRows.rows) {
-        const cogsPrice = Number(row.final_price) || 0;
-        await pool.query(`
-          INSERT INTO cogs (sku, cogs_price, last_updated)
-          VALUES ($1, $2, NOW())
-          ON CONFLICT (sku) DO UPDATE SET cogs_price=$2, last_updated=NOW()
-        `, [row.sku, cogsPrice]);
-        synced++;
-      }
-
-      // Recalculate profit on all orders using estimated_cogs data:
-      // profit = item_price - COGS - Amazon fee - shipping - marketing
-      // For returns: profit = -2 × shipping
-      const ordResult = await pool.query(`
-        UPDATE orders o SET
-          cogs_price = ec.final_price,
-          profit = CASE
-            WHEN o.order_status IN ('Cancelled', 'Returned') THEN
-              -2 * (${shippingExpr})
-            ELSE
-              o.item_price
-              - ec.final_price
-              - (o.item_price * COALESCE(ec.amazon_fee_percent, 15) / 100)
-              - (${shippingExpr})
-              - COALESCE(ec.marketing_cost, 0)
-          END
-        FROM estimated_cogs ec
-        WHERE o.sku = ec.sku
+      const result = await pool.query(`
+        INSERT INTO cogs (sku, cogs_price, last_updated)
+        SELECT sku, COALESCE(final_price, 0), NOW()
+        FROM estimated_cogs
+        ON CONFLICT (sku) DO UPDATE SET
+          cogs_price = EXCLUDED.cogs_price,
+          last_updated = NOW()
       `);
 
       return NextResponse.json({
-        message: `Synced ${synced} SKUs to COGS table. ${ordResult.rowCount} orders recalculated (profit = selling - COGS - Amazon fee - shipping - marketing).`,
-        synced,
-        ordersRecalculated: ordResult.rowCount,
+        message: `Synced ${result.rowCount} SKUs to COGS table.`,
+        synced: result.rowCount,
       });
     }
 
