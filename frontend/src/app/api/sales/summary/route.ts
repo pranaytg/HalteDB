@@ -19,7 +19,11 @@ export async function GET(req: NextRequest) {
     const endDate = searchParams.get("endDate");
 
     /* ── Build dynamic WHERE ── */
-    const conditions: string[] = ["orders.purchase_date IS NOT NULL"];
+    const conditions: string[] = [
+      "orders.purchase_date IS NOT NULL",
+      "orders.order_status NOT IN ('Cancelled', 'Returned')",
+      "orders.amazon_order_id NOT LIKE 'ORD-%'",
+    ];
     const params: (string | number)[] = [];
     let idx = 1;
 

@@ -18,7 +18,10 @@ export async function GET(req: NextRequest) {
     const tier = searchParams.get("tier");
     const brand = searchParams.get("brand");
 
-    const conditions: string[] = [];
+    const conditions: string[] = [
+      "o.order_status NOT IN ('Cancelled', 'Returned')",
+      "o.amazon_order_id NOT LIKE 'ORD-%'",
+    ];
     const params: (string | number)[] = [];
     let paramIdx = 1;
 

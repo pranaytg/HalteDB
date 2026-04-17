@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const endDate = searchParams.get("endDate");
 
     /* ── Build WHERE clause ── */
-    let where = "WHERE ship_city IS NOT NULL AND ship_city != ''";
+    let where = "WHERE ship_city IS NOT NULL AND ship_city != '' AND order_status NOT IN ('Cancelled', 'Returned') AND amazon_order_id NOT LIKE 'ORD-%'";
     const params: (string | number)[] = [];
     let idx = 1;
 
