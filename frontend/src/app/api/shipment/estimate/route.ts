@@ -3,7 +3,7 @@ import pool from "@/lib/db";
 import {
   fetchShiprocketRates, getFallbackRates, findCheapest,
   normalizePincode, normalizeProviderName, ORIGIN_PIN,
-  resolveAmazonShippingCost, ShiprocketDimensions,
+  ShiprocketDimensions,
 } from "@/lib/shipment";
 
 // ═══════════════════════════════════════════════════
@@ -70,19 +70,35 @@ export async function POST() {
       if ((spec?.width_cm as number) > 0) dims.breadth = spec.width_cm as number;
       if ((spec?.height_cm as number) > 0) dims.height = spec.height_cm as number;
 
-      // Try Shiprocket live rates first, fall back to rate cards
-      const result = await fetchShiprocketRates(ORIGIN_PIN, destPin, chargeableWeight, dims)
-        || getFallbackRates(ORIGIN_PIN, destPin, chargeableWeight);
+      const isAmzFulfilled = (order.fulfillment_channel || "").toLowerCase().includes("amazon")
+        || (order.fulfillment_channel || "").toLowerCase().includes("afn");
+      const recordedAmazonCost = Number(order.recorded_amazon_shipping_cost) || 0;
 
-      const { rates, source } = result;
-      if (source === "shiprocket") shiprocketCount++;
-      else fallbackCount++;
+      let rates: Record<string, { cost: number; etd: string }>;
+      let source: string;
+      let amazonCost: number;
 
-      const amazonCost = resolveAmazonShippingCost(
-        order.recorded_amazon_shipping_cost,
-        order.fulfillment_channel,
-        rates,
-      );
+      if (isAmzFulfilled && recordedAmazonCost > 0) {
+        // Amazon-fulfilled with SP-API data: use it directly, skip Shiprocket
+        rates = {};
+        source = "sp_api_finance";
+        amazonCost = recordedAmazonCost;
+      } else if (isAmzFulfilled) {
+        // Amazon-fulfilled but no SP-API data yet: store 0, don't use Shiprocket
+        rates = {};
+        source = "sp_api_pending";
+        amazonCost = 0;
+      } else {
+        // Merchant-fulfilled: use Shiprocket live rates
+        const result = await fetchShiprocketRates(ORIGIN_PIN, destPin, chargeableWeight, dims)
+          || getFallbackRates(ORIGIN_PIN, destPin, chargeableWeight);
+        rates = result.rates;
+        source = result.source;
+        if (source === "shiprocket") shiprocketCount++;
+        else fallbackCount++;
+        amazonCost = 0;
+      }
+
       const { cheapestProvider, cheapestCost } = findCheapest(rates, amazonCost);
 
       await pool.query(`

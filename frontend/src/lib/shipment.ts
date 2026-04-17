@@ -270,19 +270,9 @@ export function resolveAmazonShippingCost(
   const liveAmazonCost = rates.amazon?.cost || 0;
   if (liveAmazonCost > 0) return roundCost(liveAmazonCost);
 
-  const alternativeCosts = Object.entries(rates)
-    .filter(([carrier, info]) => carrier !== "amazon" && info.cost > 0)
-    .map(([, info]) => info.cost)
-    .sort((a, b) => a - b);
-
-  if (alternativeCosts.length === 0) return 0;
-
-  const middle = Math.floor(alternativeCosts.length / 2);
-  const median = alternativeCosts.length % 2 === 0
-    ? (alternativeCosts[middle - 1] + alternativeCosts[middle]) / 2
-    : alternativeCosts[middle];
-
-  return roundCost(median);
+  // For Amazon-fulfilled orders, only use SP-API actual data.
+  // Do NOT fall back to Shiprocket/rate-card estimates.
+  return 0;
 }
 
 /**
