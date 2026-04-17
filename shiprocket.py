@@ -105,18 +105,9 @@ def resolve_amazon_shipping_cost(
     if live_amazon > 0:
         return live_amazon
 
-    alternatives = sorted(
-        float(info["cost"])
-        for carrier, info in rates.items()
-        if carrier != "amazon" and info and info.get("cost")
-    )
-    if not alternatives:
-        return 0.0
-
-    middle = len(alternatives) // 2
-    if len(alternatives) % 2 == 0:
-        return round((alternatives[middle - 1] + alternatives[middle]) / 2, 2)
-    return round(alternatives[middle], 2)
+    # For Amazon-fulfilled orders, only use SP-API actual data.
+    # Do NOT fall back to Shiprocket/rate-card estimates.
+    return 0.0
 
 
 def normalize_provider_name(name: str | None) -> str | None:

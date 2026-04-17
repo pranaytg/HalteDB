@@ -808,7 +808,7 @@ async def recalculate_profitability_for_orders(session: AsyncSession, order_ids:
         THEN COALESCE(
           NULLIF(o.shipping_price, 0),
           NULLIF((
-            SELECT COALESCE(NULLIF(se.amazon_shipping_cost, 0), NULLIF(se.cheapest_cost, 0))
+            SELECT NULLIF(se.amazon_shipping_cost, 0)
             FROM shipment_estimates se
             WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
             LIMIT 1
@@ -893,7 +893,7 @@ async def recalculate_profitability_for_orders(session: AsyncSession, order_ids:
 
 async def recalculate_profitability_all(session: AsyncSession) -> int:
     """Recomputes orders.cogs_price and orders.profit for every order row using the same
-    formula as the profitability dashboard (with rate-card shipping fallback)."""
+    formula as the profitability dashboard (SP-API only for Amazon-fulfilled)."""
     shipping_expr = """
       CASE
         WHEN LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
@@ -901,7 +901,7 @@ async def recalculate_profitability_all(session: AsyncSession) -> int:
         THEN COALESCE(
           NULLIF(o.shipping_price, 0),
           NULLIF((
-            SELECT COALESCE(NULLIF(se.amazon_shipping_cost, 0), NULLIF(se.cheapest_cost, 0))
+            SELECT NULLIF(se.amazon_shipping_cost, 0)
             FROM shipment_estimates se
             WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
             LIMIT 1
@@ -1052,23 +1052,19 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
         actual_weight = float(order.get("weight_kg") or 0.5)
         volumetric_weight = order.get("volumetric_weight_kg")
         chargeable_weight = float(order.get("chargeable_weight_kg") or actual_weight or 0.5)
-        rates, source = await get_shipping_rates_with_source(ORIGIN_PINCODE, dest_pin, chargeable_weight)
-        if source == "shiprocket":
-            shiprocket_count += 1
-        else:
-            fallback_count += 1
 
+        is_amz = is_amazon_fulfilled(order.get("fulfillment_channel"))
         finance_cost = finance_costs.get(order["amazon_order_id"], {}).get(order["sku"], 0.0)
         recorded_cost = float(order.get("recorded_amazon_shipping_cost") or 0)
-        actual_amazon_cost = finance_cost or recorded_cost
-        amazon_cost = resolve_amazon_shipping_cost(
-            actual_amazon_cost,
-            order.get("fulfillment_channel"),
-            rates,
-        )
-        if finance_cost > 0:
+
+        if is_amz and (finance_cost > 0 or recorded_cost > 0):
+            # Amazon-fulfilled with SP-API data: use it directly, skip Shiprocket
+            actual_amazon_cost = finance_cost or recorded_cost
+            amazon_cost = actual_amazon_cost
+            rates = {}
+            source = "sp_api_finance"
             actual_amazon_count += 1
-            if abs(finance_cost - recorded_cost) > 0.01:
+            if finance_cost > 0 and abs(finance_cost - recorded_cost) > 0.01:
                 await session.execute(sa_text("""
                   UPDATE orders
                   SET shipping_price = :shipping_price
@@ -1078,6 +1074,22 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
                     "amazon_order_id": order["amazon_order_id"],
                     "sku": order["sku"],
                 })
+        else:
+            # Merchant-fulfilled or Amazon-fulfilled without SP-API data yet:
+            # fetch Shiprocket live rates (no rate card for Amazon-fulfilled)
+            if is_amz:
+                # Amazon-fulfilled but no finance data yet — store 0, don't use Shiprocket
+                rates = {}
+                source = "sp_api_pending"
+                amazon_cost = 0.0
+            else:
+                # Merchant-fulfilled — use Shiprocket live rates
+                rates, source = await get_shipping_rates_with_source(ORIGIN_PINCODE, dest_pin, chargeable_weight)
+                if source == "shiprocket":
+                    shiprocket_count += 1
+                else:
+                    fallback_count += 1
+                amazon_cost = 0.0
 
         cheapest_provider, cheapest_cost = find_cheapest(rates, amazon_cost)
 
