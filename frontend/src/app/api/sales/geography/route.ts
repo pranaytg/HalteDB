@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { getCityTier } from "@/lib/cityTiers";
+import {
+  canonicalState,
+  stateMatchKeys,
+  stateNormalizeSqlExpr,
+} from "@/lib/stateNormalize";
+
+const NORM_STATE = stateNormalizeSqlExpr("ship_state");
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,8 +27,14 @@ export async function GET(req: NextRequest) {
     let idx = 1;
 
     if (state) {
-      where += ` AND LOWER(ship_state) = LOWER($${idx++})`;
-      params.push(state);
+      const keys = stateMatchKeys(state);
+      if (keys.length === 0) {
+        where += ` AND FALSE`;
+      } else {
+        const placeholders = keys.map(() => `$${idx++}`).join(",");
+        where += ` AND ${NORM_STATE} IN (${placeholders})`;
+        params.push(...keys);
+      }
     }
     if (city) {
       const cities = city.split(",").map(c => c.trim()).filter(Boolean);
@@ -112,11 +125,35 @@ export async function GET(req: NextRequest) {
     `;
     const byCityResult = await pool.query(byCityQuery, params);
 
-    /* ── Attach tier labels ── */
+    /* ── Attach tier labels + canonical state ── */
     const citiesWithTier = byCityResult.rows.map((r: Record<string, unknown>) => ({
       ...r,
+      state: canonicalState(r.state as string) ?? r.state,
       tier: getCityTier(r.city as string),
     }));
+
+    /* ── Collapse raw ship_state rows into canonical state buckets ── */
+    type StateAgg = { orders: number; revenue: number; profit: number; units: number };
+    const stateAgg = new Map<string, StateAgg>();
+    for (const row of byStateResult.rows) {
+      const canon = canonicalState(row.state as string);
+      if (!canon) continue;
+      const cur = stateAgg.get(canon) ?? { orders: 0, revenue: 0, profit: 0, units: 0 };
+      cur.orders += parseInt(row.total_orders) || 0;
+      cur.revenue += parseFloat(row.total_revenue) || 0;
+      cur.profit += parseFloat(row.total_profit) || 0;
+      cur.units += parseInt(row.total_units) || 0;
+      stateAgg.set(canon, cur);
+    }
+    const byState = Array.from(stateAgg.entries())
+      .map(([state, v]) => ({
+        state,
+        total_orders: v.orders,
+        total_revenue: v.revenue,
+        total_profit: v.profit,
+        total_units: v.units,
+      }))
+      .sort((a, b) => b.total_revenue - a.total_revenue);
 
     /* ── By Tier (aggregated from current filtered results) ── */
     const allCitiesQuery = `
@@ -170,12 +207,20 @@ export async function GET(req: NextRequest) {
       pool.query(citiesListQuery),
     ]);
 
+    const canonicalStates = Array.from(
+      new Set(
+        statesList.rows
+          .map((r: { state: string }) => canonicalState(r.state))
+          .filter((s: string | null): s is string => !!s),
+      ),
+    ).sort((a: string, b: string) => a.localeCompare(b));
+
     return NextResponse.json({
-      byState: byStateResult.rows,
+      byState,
       byCity: citiesWithTier,
       byTier,
       filters: {
-        states: statesList.rows.map((r: { state: string }) => r.state),
+        states: canonicalStates,
         cities: citiesList.rows.map((r: { city: string }) => r.city),
       },
     });

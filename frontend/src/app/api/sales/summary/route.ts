@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { getCityTier } from "@/lib/cityTiers";
 import { normalizedSkuExpr } from "@/lib/skuNormalize";
+import { stateMatchKeys, stateNormalizeSqlExpr } from "@/lib/stateNormalize";
 
 const NORM_SKU = normalizedSkuExpr("orders.sku");
+const NORM_STATE = stateNormalizeSqlExpr("orders.ship_state");
 
 export async function GET(req: NextRequest) {
   try {
@@ -31,7 +33,16 @@ export async function GET(req: NextRequest) {
     if (brand) { conditions.push(`LOWER(ec.brand) = LOWER($${idx++})`); params.push(brand); }
     if (year) { conditions.push(`EXTRACT(YEAR FROM orders.purchase_date) = $${idx++}`); params.push(parseInt(year)); }
     if (month) { conditions.push(`TO_CHAR(orders.purchase_date, 'YYYY-MM') = $${idx++}`); params.push(month); }
-    if (state) { conditions.push(`LOWER(orders.ship_state) = LOWER($${idx++})`); params.push(state); }
+    if (state) {
+      const keys = stateMatchKeys(state);
+      if (keys.length === 0) {
+        conditions.push("FALSE");
+      } else {
+        const placeholders = keys.map(() => `$${idx++}`).join(",");
+        conditions.push(`${NORM_STATE} IN (${placeholders})`);
+        params.push(...keys);
+      }
+    }
     if (city) {
       const cities = city.split(",").map(c => c.trim()).filter(Boolean);
       if (cities.length === 1) {

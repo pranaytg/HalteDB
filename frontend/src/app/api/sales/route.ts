@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { getCityTier } from "@/lib/cityTiers";
 import { normalizedSkuExpr } from "@/lib/skuNormalize";
+import { stateMatchKeys, stateNormalizeSqlExpr } from "@/lib/stateNormalize";
+
+const NORM_STATE = stateNormalizeSqlExpr("o.ship_state");
 
 export async function GET(req: NextRequest) {
   try {
@@ -57,8 +60,14 @@ export async function GET(req: NextRequest) {
       }
     }
     if (state) {
-      conditions.push(`LOWER(o.ship_state) = LOWER($${paramIdx++})`);
-      params.push(state);
+      const keys = stateMatchKeys(state);
+      if (keys.length === 0) {
+        conditions.push("FALSE");
+      } else {
+        const placeholders = keys.map(() => `$${paramIdx++}`).join(",");
+        conditions.push(`${NORM_STATE} IN (${placeholders})`);
+        params.push(...keys);
+      }
     }
     if (brand) {
       conditions.push(`LOWER(ec.brand) = LOWER($${paramIdx++})`);
