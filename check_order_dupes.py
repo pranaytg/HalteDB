@@ -7,7 +7,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 load_dotenv()
-engine = create_async_engine(os.environ["SUPABASE_URL"], echo=False)
+engine = create_async_engine(
+    os.environ["SUPABASE_URL"],
+    echo=False,
+    connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
+)
 SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
 
 

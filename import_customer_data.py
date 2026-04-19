@@ -32,7 +32,11 @@ DATABASE_URL = os.getenv("SUPABASE_URL")
 if not DATABASE_URL:
     raise ValueError("Missing SUPABASE_URL in environment variables")
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
+)
 SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession)
 
 CUSTOMER_DATA_DIR = Path(__file__).parent / "customer"

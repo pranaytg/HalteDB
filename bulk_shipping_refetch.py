@@ -42,7 +42,13 @@ def log(msg):
 
 
 def create_engine():
-    return create_async_engine(DATABASE_URL, pool_size=2, max_overflow=0, pool_pre_ping=True)
+    return create_async_engine(
+        DATABASE_URL,
+        pool_size=2,
+        max_overflow=0,
+        pool_pre_ping=True,
+        connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
+    )
 
 
 async def get_sp_api_token() -> str:

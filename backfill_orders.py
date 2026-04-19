@@ -28,7 +28,14 @@ DATABASE_URL = os.getenv("SUPABASE_URL")
 if not DATABASE_URL:
     raise ValueError("Missing SUPABASE_URL")
 
-engine = create_async_engine(DATABASE_URL, echo=False, pool_size=3, max_overflow=5, pool_timeout=30)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_size=3,
+    max_overflow=5,
+    pool_timeout=30,
+    connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
+)
 SessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
 
 # How far back to sync (in days)

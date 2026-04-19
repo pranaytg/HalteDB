@@ -17,7 +17,11 @@ from sqlalchemy import text
 load_dotenv()
 
 DATABASE_URL = os.getenv("SUPABASE_URL")
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
+)
 SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession)
 
 

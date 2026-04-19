@@ -10,7 +10,10 @@ from sqlalchemy import text
 load_dotenv()
 
 DATABASE_URL = os.getenv("SUPABASE_URL")
-engine = create_async_engine(DATABASE_URL)
+engine = create_async_engine(
+    DATABASE_URL,
+    connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
+)
 Session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

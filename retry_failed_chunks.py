@@ -14,7 +14,14 @@ logging.basicConfig(level="INFO", format="%(asctime)s | %(levelname)-8s | %(mess
 logger = logging.getLogger("retry")
 
 DATABASE_URL = os.getenv("SUPABASE_URL")
-engine = create_async_engine(DATABASE_URL, echo=False, pool_size=5, max_overflow=10, pool_timeout=60)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=60,
+    connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
+)
 SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, autocommit=False, autoflush=False)
 
 CHUNKS = [

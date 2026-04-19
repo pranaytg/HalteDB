@@ -26,7 +26,11 @@ DATABASE_URL = os.getenv("SUPABASE_URL")
 if not DATABASE_URL:
     raise ValueError("SUPABASE_URL not configured")
 
-engine = create_async_engine(DATABASE_URL, pool_pre_ping=True)
+engine = create_async_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
+)
 AsyncSessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 API_ENDPOINT = os.getenv("SP_API_ENDPOINT", "https://sellingpartnerapi-eu.amazon.com")
