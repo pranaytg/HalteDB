@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend
@@ -122,6 +122,20 @@ export default function ReplenishmentPage() {
   const [sortField, setSortField] = useState<string>("urgency");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [velocityWindow, setVelocityWindow] = useState<VelocityWindow>("weighted");
+  const [downloadLoading, setDownloadLoading] = useState(false);
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const downloadMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close download menu on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (downloadMenuRef.current && !downloadMenuRef.current.contains(e.target as Node)) {
+        setShowDownloadMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -217,7 +231,7 @@ export default function ReplenishmentPage() {
       color: URGENCY_COLORS[r.urgency],
     }));
 
-  // ── CSV Export ────────────────────────────────────────
+  // ── CSV Export (all filtered SKUs) ────────────────────
 
   const exportCSV = () => {
     const headers = [
@@ -258,6 +272,29 @@ export default function ReplenishmentPage() {
     a.download = `replenishment_plan_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // ── Download Critical+Urgent report (dynamic, server-generated) ──
+
+  const downloadReport = async (format: "xlsx" | "csv") => {
+    setDownloadLoading(true);
+    setShowDownloadMenu(false);
+    try {
+      const res = await fetch(`/api/inventory/replenishment/export?window=${velocityWindow}&format=${format}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const dateStr = new Date().toISOString().slice(0, 10);
+      a.download = `replenishment_critical_urgent_${dateStr}.${format}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(`Download failed: ${e.message}`);
+    } finally {
+      setDownloadLoading(false);
+    }
   };
 
   // ── Sort handler ─────────────────────────────────────
@@ -353,6 +390,117 @@ export default function ReplenishmentPage() {
             <button className="btn" onClick={exportCSV} style={{ fontSize: 13, background: "rgba(99,102,241,0.15)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.3)" }}>
               📥 Export CSV
             </button>
+            {/* Download Critical+Urgent Report */}
+            <div ref={downloadMenuRef} style={{ position: "relative", display: "inline-block" }}>
+              <button
+                className="btn"
+                onClick={() => setShowDownloadMenu(!showDownloadMenu)}
+                disabled={downloadLoading}
+                style={{
+                  fontSize: 13,
+                  background: downloadLoading
+                    ? "rgba(239,68,68,0.25)"
+                    : "linear-gradient(135deg, rgba(239,68,68,0.2), rgba(245,158,11,0.2))",
+                  color: downloadLoading ? "#fca5a5" : "#fbbf24",
+                  border: "1px solid rgba(245,158,11,0.35)",
+                  cursor: downloadLoading ? "wait" : "pointer",
+                  position: "relative",
+                  overflow: "hidden",
+                }}
+              >
+                {downloadLoading ? (
+                  <>
+                    <span style={{
+                      display: "inline-block",
+                      width: 14,
+                      height: 14,
+                      border: "2px solid rgba(251,191,36,0.3)",
+                      borderTopColor: "#fbbf24",
+                      borderRadius: "50%",
+                      animation: "spin 0.8s linear infinite",
+                      marginRight: 6,
+                      verticalAlign: "middle",
+                    }} />
+                    Generating…
+                  </>
+                ) : (
+                  "📊 Download Report"
+                )}
+              </button>
+              {showDownloadMenu && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 6px)",
+                    right: 0,
+                    background: "#1e293b",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 10,
+                    padding: 6,
+                    zIndex: 100,
+                    minWidth: 200,
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+                    animation: "fadeIn 0.15s ease",
+                  }}
+                >
+                  <div style={{ padding: "6px 12px", fontSize: 11, color: "var(--text-muted)", fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase" }}>
+                    Critical & Urgent SKUs Report
+                  </div>
+                  <button
+                    onClick={() => downloadReport("xlsx")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      width: "100%",
+                      padding: "10px 12px",
+                      background: "transparent",
+                      border: "none",
+                      borderRadius: 6,
+                      color: "#e2e8f0",
+                      fontSize: 13,
+                      cursor: "pointer",
+                      transition: "background 0.15s",
+                      textAlign: "left",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(99,102,241,0.15)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <span style={{ fontSize: 18 }}>📗</span>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>Excel (.xlsx)</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Multi-sheet with warehouse breakdown</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => downloadReport("csv")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      width: "100%",
+                      padding: "10px 12px",
+                      background: "transparent",
+                      border: "none",
+                      borderRadius: 6,
+                      color: "#e2e8f0",
+                      fontSize: 13,
+                      cursor: "pointer",
+                      transition: "background 0.15s",
+                      textAlign: "left",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(99,102,241,0.15)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <span style={{ fontSize: 18 }}>📄</span>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>CSV (.csv)</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Flat file for quick import</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", fontStyle: "italic", textAlign: "right" }}>
             {WINDOW_DESCRIPTIONS[velocityWindow]}

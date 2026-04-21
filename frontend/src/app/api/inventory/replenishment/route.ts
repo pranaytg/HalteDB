@@ -12,17 +12,26 @@ export async function GET(request: Request) {
       ? (windowParam as VelocityWindow)
       : "weighted";
 
-    // ── 1. Daily sales for last 90 days       
+    // ── 1. Daily sales for last 90 days (split combined pipe-separated SKUs) ──
     const dailySalesQuery = `
+      WITH split_orders AS (
+        SELECT
+          purchase_date,
+          TRIM(s.sku_part) as sku,
+          quantity::float / GREATEST(array_length(regexp_split_to_array(sku, '\\s*\\|\\s*'), 1), 1) as quantity,
+          item_price::float / GREATEST(array_length(regexp_split_to_array(sku, '\\s*\\|\\s*'), 1), 1) as item_price
+        FROM orders,
+        LATERAL regexp_split_to_table(sku, '\\s*\\|\\s*') AS s(sku_part)
+        WHERE purchase_date IS NOT NULL
+          AND purchase_date >= NOW() - INTERVAL '90 days'
+          AND order_status NOT IN ('Cancelled', 'Returned')
+      )
       SELECT 
         TO_CHAR(purchase_date, 'YYYY-MM-DD') as sale_date,
         sku,
         COALESCE(SUM(quantity), 0) as daily_qty,
         COALESCE(SUM(item_price), 0) as daily_revenue
-      FROM orders
-      WHERE purchase_date IS NOT NULL
-        AND purchase_date >= NOW() - INTERVAL '90 days'
-        AND order_status NOT IN ('Cancelled', 'Returned')
+      FROM split_orders
       GROUP BY TO_CHAR(purchase_date, 'YYYY-MM-DD'), sku
       ORDER BY sale_date ASC
     `;

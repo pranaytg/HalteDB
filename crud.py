@@ -33,6 +33,33 @@ async def upsert_inventory_batch(session: AsyncSession, batch: list[dict]):
     await session.commit()
 
 
+async def upsert_inbound_quantities(session: AsyncSession, batch: list[dict]):
+    """
+    Takes a batch of dictionary records for inbound inventory and upserts them
+    using fulfillment_center_id = 'INBOUND'.
+    """
+    if not batch:
+        return
+
+    stmt = insert(Inventory).values(batch)
+
+    update_dict = {
+        "inbound_working_quantity": stmt.excluded.inbound_working_quantity,
+        "inbound_shipped_quantity": stmt.excluded.inbound_shipped_quantity,
+        "inbound_receiving_quantity": stmt.excluded.inbound_receiving_quantity,
+        "last_updated": stmt.excluded.last_updated
+    }
+
+    upsert_stmt = stmt.on_conflict_do_update(
+        index_elements=['sku', 'fulfillment_center_id', 'condition'],
+        set_=update_dict
+    )
+
+    await session.execute(upsert_stmt)
+    await session.commit()
+
+
+
 async def upsert_orders_batch(session: AsyncSession, batch: list[dict]):
     if not batch:
         return

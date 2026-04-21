@@ -13,6 +13,7 @@ from sqlalchemy import text as sa_text
 from crud import (
     upsert_orders_batch,
     upsert_inventory_batch,
+    upsert_inbound_quantities,
     get_sync_meta,
     update_orders_sync_time,
     update_inventory_sync_time,
@@ -196,9 +197,95 @@ async def run_inventory_sync_job(session: AsyncSession):
             if batch:
                 await upsert_inventory_batch(session, batch)
 
+    # Fetch inbound transit pipeline separately from FBA API
+    await fetch_inbound_inventory(session)
+
     # Update sync timestamp
     await update_inventory_sync_time(session, datetime.now(timezone.utc))
     logger.info("Inventory sync complete!")
+
+
+async def fetch_inbound_inventory(session: AsyncSession):
+    endpoint = os.getenv("SP_API_ENDPOINT")
+    if not endpoint:
+        raise ValueError("Missing SP_API_ENDPOINT in environment")
+    endpoint = endpoint.strip('"').strip("'")
+    
+    marketplace_id = os.getenv("SP_API_MARKETPLACE_ID")
+    access_token = await get_amazon_access_token()
+    headers = {"x-amz-access-token": access_token}
+
+    logger.info("Fetching inbound pipeline inventory via FBA API...")
+    
+    next_token = None
+    batch = []
+    
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        while True:
+            params = {
+                "details": "true",
+                "granularityType": "Marketplace",
+                "granularityId": marketplace_id,
+                "marketplaceIds": marketplace_id
+            }
+            if next_token:
+                params["nextToken"] = next_token
+
+            api_url = f"{endpoint}/fba/inventory/v1/summaries"
+            response = await client.get(api_url, headers=headers, params=params)
+
+            if response.status_code == 429:
+                logger.warning("FBA Inventory API rate limited. Sleeping 2 seconds...")
+                await asyncio.sleep(2)
+                continue
+                
+            response.raise_for_status()
+            data = response.json()
+            payload = data.get("payload", {})
+            
+            summaries = payload.get("inventorySummaries", [])
+            for item in summaries:
+                sku = item.get("sellerSku")
+                if not sku:
+                    continue
+                asin = item.get("asin")
+                fnsku = item.get("fnSku")
+                details = item.get("inventoryDetails", {})
+                
+                inbound_working = details.get("inboundWorkingQuantity", 0)
+                inbound_shipped = details.get("inboundShippedQuantity", 0)
+                inbound_receiving = details.get("inboundReceivingQuantity", 0)
+                
+                batch.append({
+                    "sku": sku,
+                    "asin": asin,
+                    "fnsku": fnsku,
+                    "condition": "SELLABLE",
+                    "fulfillment_center_id": "INBOUND",
+                    "fulfillable_quantity": 0,
+                    "unfulfillable_quantity": 0,
+                    "reserved_quantity": 0,
+                    "inbound_working_quantity": inbound_working,
+                    "inbound_shipped_quantity": inbound_shipped,
+                    "inbound_receiving_quantity": inbound_receiving,
+                })
+
+            if len(batch) >= 100:
+                await upsert_inbound_quantities(session, batch)
+                batch.clear()
+
+            next_token = payload.get("nextToken")
+            if not next_token:
+                break
+                
+            # Respect rate limit of 2 requests per second
+            await asyncio.sleep(0.6)
+            
+        if batch:
+            await upsert_inbound_quantities(session, batch)
+            
+    logger.info("Inbound inventory sync complete!")
+
 
 
 # ============================================
