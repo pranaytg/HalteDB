@@ -21,6 +21,9 @@ async def upsert_inventory_batch(session: AsyncSession, batch: list[dict]):
         "fulfillable_quantity": stmt.excluded.fulfillable_quantity,
         "unfulfillable_quantity": stmt.excluded.unfulfillable_quantity,
         "reserved_quantity": stmt.excluded.reserved_quantity,
+        "inbound_working_quantity": stmt.excluded.inbound_working_quantity,
+        "inbound_shipped_quantity": stmt.excluded.inbound_shipped_quantity,
+        "inbound_receiving_quantity": stmt.excluded.inbound_receiving_quantity,
         "last_updated": stmt.excluded.last_updated
     }
 
@@ -31,6 +34,37 @@ async def upsert_inventory_batch(session: AsyncSession, batch: list[dict]):
 
     await session.execute(upsert_stmt)
     await session.commit()
+
+
+async def update_inbound_quantities_batch(session: AsyncSession, batch: list[dict]):
+    """
+    Updates inbound_working/shipped/receiving_quantity on ALL inventory rows
+    that match the given SKU.  The FBA Inventory API returns marketplace-level
+    (not FC-level) inbound numbers, so we fan them out to every FC row.
+    """
+    if not batch:
+        return
+
+    for record in batch:
+        await session.execute(
+            text(
+                "UPDATE inventory "
+                "SET inbound_working_quantity  = :iwq, "
+                "    inbound_shipped_quantity   = :isq, "
+                "    inbound_receiving_quantity  = :irq, "
+                "    last_updated = NOW() "
+                "WHERE sku = :sku"
+            ),
+            {
+                "sku": record["sku"],
+                "iwq": record["inbound_working_quantity"],
+                "isq": record["inbound_shipped_quantity"],
+                "irq": record["inbound_receiving_quantity"],
+            },
+        )
+
+    await session.commit()
+    logger.info(f"Updated inbound quantities for {len(batch)} SKUs")
 
 
 async def upsert_orders_batch(session: AsyncSession, batch: list[dict]):

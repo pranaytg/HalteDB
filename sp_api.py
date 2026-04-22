@@ -13,6 +13,7 @@ from sqlalchemy import text as sa_text
 from crud import (
     upsert_orders_batch,
     upsert_inventory_batch,
+    update_inbound_quantities_batch,
     get_sync_meta,
     update_orders_sync_time,
     update_inventory_sync_time,
@@ -199,6 +200,93 @@ async def run_inventory_sync_job(session: AsyncSession):
     # Update sync timestamp
     await update_inventory_sync_time(session, datetime.now(timezone.utc))
     logger.info("Inventory sync complete!")
+
+
+# ============================================
+# Inbound / In-Transit Inventory Sync (FBA Inventory API)
+# ============================================
+
+async def run_inbound_inventory_sync(session: AsyncSession):
+    """
+    Calls GET /fba/inventory/v1/summaries?details=true to fetch
+    inboundWorkingQuantity, inboundShippedQuantity, inboundReceivingQuantity
+    for every SKU and upserts them into the inventory table.
+    """
+    endpoint = os.getenv("SP_API_ENDPOINT", "https://sellingpartnerapi-eu.amazon.com").strip('"').strip("'")
+    marketplace_id = os.getenv("SP_API_MARKETPLACE_ID", "A21TJRUUN4KGV")
+    access_token = await get_amazon_access_token()
+
+    headers = {"x-amz-access-token": access_token}
+    base_url = (
+        f"{endpoint}/fba/inventory/v1/summaries"
+        f"?details=true"
+        f"&granularityType=Marketplace"
+        f"&granularityId={marketplace_id}"
+        f"&marketplaceIds={marketplace_id}"
+    )
+
+    batch: list[dict] = []
+    next_token: str | None = None
+    page = 0
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        while True:
+            page += 1
+            url = base_url
+            if next_token:
+                from urllib.parse import quote
+                url += f"&nextToken={quote(next_token)}"
+
+            logger.info(f"FBA Inventory Summaries — page {page}")
+            resp = await client.get(url, headers=headers)
+
+            if resp.status_code == 429:
+                logger.warning("Rate-limited on FBA Inventory API, waiting 5 s…")
+                await asyncio.sleep(5)
+                continue
+
+            if resp.status_code >= 400:
+                logger.error(f"FBA Inventory API error: {resp.status_code} {resp.text[:300]}")
+                resp.raise_for_status()
+
+            data = resp.json()
+            payload = data.get("payload", data)  # v1 wraps in "payload"
+            summaries = payload.get("inventorySummaries", [])
+
+            for item in summaries:
+                sku = item.get("sellerSku") or item.get("sellerSKU")
+                if not sku:
+                    continue
+
+                inv_details = item.get("inventoryDetails", {})
+                inbound = inv_details.get("fulfillableQuantity", None)  # we already have this
+                # The three fields we actually need:
+                iwq = inv_details.get("inboundWorkingQuantity", 0) or 0
+                isq = inv_details.get("inboundShippedQuantity", 0) or 0
+                irq = inv_details.get("inboundReceivingQuantity", 0) or 0
+
+                batch.append({
+                    "sku": sku,
+                    "inbound_working_quantity": int(iwq),
+                    "inbound_shipped_quantity": int(isq),
+                    "inbound_receiving_quantity": int(irq),
+                })
+
+            # Flush in chunks
+            if len(batch) >= 500:
+                await update_inbound_quantities_batch(session, batch)
+                batch.clear()
+
+            next_token = payload.get("nextToken")
+            if not next_token:
+                break
+
+            await asyncio.sleep(0.5)  # be kind to rate limits
+
+    if batch:
+        await update_inbound_quantities_batch(session, batch)
+
+    logger.info("Inbound / in-transit inventory sync complete!")
 
 
 # ============================================
@@ -1768,6 +1856,12 @@ async def run_full_sync(session: AsyncSession):
         await run_inventory_sync_job(session)
     except Exception as e:
         logger.error(f"Inventory sync failed: {e}")
+
+    try:
+        logger.info("--- Phase 1.5: Inbound / In-Transit Inventory Sync ---")
+        await run_inbound_inventory_sync(session)
+    except Exception as e:
+        logger.error(f"Inbound inventory sync failed: {e}")
 
     try:
         logger.info("--- Phase 2: Incremental Orders Sync ---")
