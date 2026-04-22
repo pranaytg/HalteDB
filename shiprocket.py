@@ -22,15 +22,21 @@ _token_cache: dict = {"token": None, "expires_at": 0}
 # SHIPROCKET LIVE API (requires dedicated API user)
 # ═══════════════════════════════════════════════════
 
-async def _get_token() -> str | None:
+def _invalidate_token() -> None:
+    _token_cache["token"] = None
+    _token_cache["expires_at"] = 0
+
+
+async def _get_token(force_refresh: bool = False) -> str | None:
     """Authenticate with Shiprocket. Returns None on failure (graceful fallback)."""
-    if _token_cache["token"] and time.time() < _token_cache["expires_at"]:
+    if not force_refresh and _token_cache["token"] and time.time() < _token_cache["expires_at"]:
         return _token_cache["token"]
 
     email = os.getenv("SHIPROCKET_EMAIL")
     password = os.getenv("SHIPROCKET_PASSWORD")
 
     if not email or not password:
+        logger.warning("Shiprocket auth skipped: SHIPROCKET_EMAIL/SHIPROCKET_PASSWORD env vars not set")
         return None
 
     try:
@@ -46,10 +52,14 @@ async def _get_token() -> str | None:
             data = resp.json()
             token = data.get("token")
             if not token:
+                logger.warning(f"Shiprocket auth returned no token: {str(data)[:200]}")
                 return None
 
             _token_cache["token"] = token
-            _token_cache["expires_at"] = time.time() + 9 * 86400
+            # Shiprocket tokens nominally last ~10 days but can be invalidated
+            # earlier (e.g. when the same account logs in from elsewhere). Keep
+            # the cache short so re-auth happens regularly; 401s also invalidate.
+            _token_cache["expires_at"] = time.time() + 4 * 86400
             logger.info("Shiprocket token refreshed")
             return token
     except Exception as e:
@@ -69,6 +79,10 @@ CARRIER_MAP = {
     "xpressbees": "xpressbees", "Xpressbees": "xpressbees", "XpressBees": "xpressbees",
     "ekart": "ekart", "Ekart": "ekart", "Ekart Logistics": "ekart",
     "Ecom Express": "ekart",
+    # India Post is the only courier serviceable for several remote pincodes
+    # (J&K, A&N Islands, NE). Bucket it under ekart-class for cheapest-rate purposes.
+    "india post": "indiapost", "India Post": "indiapost",
+    "speed post": "indiapost", "Speed Post": "indiapost",
 }
 
 CARRIER_LABELS = {
@@ -78,6 +92,7 @@ CARRIER_LABELS = {
     "dtdc": "DTDC",
     "xpressbees": "Xpressbees",
     "ekart": "Ekart",
+    "indiapost": "India Post",
 }
 
 
@@ -160,14 +175,14 @@ async def _shiprocket_rates(
     """
     token = await _get_token()
     if not token:
-        logger.debug("Shiprocket: no auth token — falling back")
+        logger.warning("Shiprocket: no auth token — request skipped")
         return None
 
     safe_origin_pin = normalize_pincode(origin_pin)
     safe_dest_pin = normalize_pincode(dest_pin)
     safe_weight = max(float(weight_kg or 0.5), 0.1)
     if len(safe_origin_pin) != 6 or len(safe_dest_pin) != 6:
-        logger.debug(f"Shiprocket: bad pincode(s) origin={origin_pin} dest={dest_pin}")
+        logger.warning(f"Shiprocket: bad pincode(s) origin={origin_pin} dest={dest_pin}")
         return None
 
     params: dict[str, str] = {
@@ -192,6 +207,22 @@ async def _shiprocket_rates(
                 params=params,
                 headers={"Authorization": f"Bearer {token}"},
             )
+            # Shiprocket invalidates tokens early when the same account logs in
+            # elsewhere. Drop the cache and re-auth once before giving up,
+            # otherwise every call for the rest of the process lifetime fails.
+            if resp.status_code in (401, 403):
+                logger.warning(
+                    f"Shiprocket rates HTTP {resp.status_code} — invalidating cached token and retrying"
+                )
+                _invalidate_token()
+                token = await _get_token(force_refresh=True)
+                if not token:
+                    return None
+                resp = await client.get(
+                    f"{SHIPROCKET_BASE}/courier/serviceability/",
+                    params=params,
+                    headers={"Authorization": f"Bearer {token}"},
+                )
             if resp.status_code != 200:
                 logger.warning(f"Shiprocket rates HTTP {resp.status_code}: {resp.text[:200]}")
                 return None
