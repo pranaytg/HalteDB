@@ -72,6 +72,7 @@ class Order(Base):
     # Profitability: invoice - COGS - shipping
     cogs_price = Column(Float, nullable=True)
     shipping_price = Column(Float, nullable=True, default=0.0)  # from SP-API or ₹100 flat for self-fulfilled
+    amazon_fee = Column(Float, nullable=True)  # Actual referral/commission fee from SP-API finance events
     profit = Column(Float, nullable=True)
 
     # Shipping address (from SP-API flat file)

@@ -57,6 +57,7 @@ export default function CogsEstimatePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [downloadingReport, setDownloadingReport] = useState(false);
   const [search, setSearch] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
@@ -213,6 +214,44 @@ export default function CogsEstimatePage() {
     finally { setSaving(false); }
   };
 
+  const handleDownloadExcel = async () => {
+    setDownloadingReport(true);
+    try {
+      const params = new URLSearchParams();
+      if (search.trim()) params.set("search", search.trim());
+      if (brandFilter) params.set("brand", brandFilter);
+
+      const query = params.toString();
+      const res = await fetch(`/api/cogs-estimate/report${query ? `?${query}` : ""}`);
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error || "Failed to download Excel", "error");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename=\"([^\"]+)\"/);
+      link.download = filenameMatch?.[1] || "haltedb_cogs_estimate.xlsx";
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showToast(`Downloaded Excel report for ${filtered.length} SKU${filtered.length === 1 ? "" : "s"}`, "success");
+    } catch {
+      showToast("Network error", "error");
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
   const uniqueBrands = Array.from(new Set(items.map(i => i.brand).filter(Boolean) as string[])).sort();
 
   const filtered = items.filter(i => {
@@ -302,6 +341,14 @@ export default function CogsEstimatePage() {
         </button>
         <button className="btn btn-primary" style={{ background: "#8b5cf6" }} onClick={handleRecalcAll} disabled={saving || items.length === 0}>
           {saving ? "Recalculating..." : "Recalculate All"}
+        </button>
+        <button
+          className="btn btn-primary"
+          style={{ background: "#166534" }}
+          onClick={handleDownloadExcel}
+          disabled={downloadingReport || filtered.length === 0}
+        >
+          {downloadingReport ? "Preparing Excel..." : "Download Excel"}
         </button>
       </div>
 

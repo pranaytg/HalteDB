@@ -147,36 +147,71 @@ def find_cheapest(rates: dict, amazon_cost: float) -> tuple[str, float]:
     return cheapest_provider, all_costs[cheapest_provider]
 
 
-async def _shiprocket_rates(origin_pin: str, dest_pin: str, weight_kg: float) -> dict | None:
-    """Try Shiprocket API. Returns None on any failure."""
+async def _shiprocket_rates(
+    origin_pin: str,
+    dest_pin: str,
+    weight_kg: float,
+    dims: dict | None = None,
+) -> dict | None:
+    """Try Shiprocket API. Returns None on any failure.
+
+    dims (optional): {"length", "breadth", "height"} in cm — passed through to
+    Shiprocket for better accuracy. Without these, some carriers reject the quote.
+    """
     token = await _get_token()
     if not token:
+        logger.debug("Shiprocket: no auth token — falling back")
         return None
 
     safe_origin_pin = normalize_pincode(origin_pin)
     safe_dest_pin = normalize_pincode(dest_pin)
     safe_weight = max(float(weight_kg or 0.5), 0.1)
     if len(safe_origin_pin) != 6 or len(safe_dest_pin) != 6:
+        logger.debug(f"Shiprocket: bad pincode(s) origin={origin_pin} dest={dest_pin}")
         return None
+
+    params: dict[str, str] = {
+        "pickup_postcode": safe_origin_pin,
+        "delivery_postcode": safe_dest_pin,
+        "weight": str(safe_weight),
+        "cod": "0",
+        "declared_value": "500",
+    }
+    if dims:
+        if dims.get("length"):
+            params["length"] = str(int(round(float(dims["length"]))))
+        if dims.get("breadth"):
+            params["breadth"] = str(int(round(float(dims["breadth"]))))
+        if dims.get("height"):
+            params["height"] = str(int(round(float(dims["height"]))))
 
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
                 f"{SHIPROCKET_BASE}/courier/serviceability/",
-                params={
-                    "pickup_postcode": safe_origin_pin,
-                    "delivery_postcode": safe_dest_pin,
-                    "weight": safe_weight,
-                    "cod": 0,
-                },
+                params=params,
                 headers={"Authorization": f"Bearer {token}"},
             )
             if resp.status_code != 200:
+                logger.warning(f"Shiprocket rates HTTP {resp.status_code}: {resp.text[:200]}")
                 return None
 
             data = resp.json()
+            # API sometimes returns HTTP 200 with an error status in the body.
+            api_status = data.get("status")
+            if api_status is not None and str(api_status) not in ("200", "1"):
+                logger.warning(f"Shiprocket rates API status={api_status} msg={data.get('message')}")
+                return None
+
+            companies = data.get("data", {}).get("available_courier_companies", []) or []
+            if not companies:
+                logger.warning(
+                    f"Shiprocket: no couriers for {safe_origin_pin}->{safe_dest_pin} w={safe_weight}"
+                )
+                return None
+
             rates = {}
-            for courier in data.get("data", {}).get("available_courier_companies", []):
+            for courier in companies:
                 name = courier.get("courier_name", "")
                 carrier_key = None
                 for pattern, key in CARRIER_MAP.items():
@@ -185,12 +220,36 @@ async def _shiprocket_rates(origin_pin: str, dest_pin: str, weight_kg: float) ->
                         break
                 if not carrier_key:
                     continue
-                cost = courier.get("rate", 0)
-                etd = courier.get("estimated_delivery_days", "")
+                # Try multiple field names — the API has changed over time.
+                cost_raw = (
+                    courier.get("rate")
+                    or courier.get("freight_charge")
+                    or courier.get("total_charges")
+                    or 0
+                )
+                try:
+                    cost = float(cost_raw)
+                except (TypeError, ValueError):
+                    cost = 0.0
+                if cost <= 0:
+                    continue
+                etd = courier.get("estimated_delivery_days") or courier.get("etd") or ""
                 if carrier_key not in rates or cost < rates[carrier_key]["cost"]:
-                    rates[carrier_key] = {"cost": round(float(cost), 2), "etd": f"{etd} days" if etd else "N/A"}
-            return rates if rates else None
-    except Exception:
+                    rates[carrier_key] = {
+                        "cost": round(cost, 2),
+                        "etd": f"{etd} days" if etd else "N/A",
+                    }
+            if not rates:
+                names = ", ".join(
+                    str(c.get("courier_name", "")) for c in companies[:5]
+                )
+                logger.warning(
+                    f"Shiprocket: no matching carriers in {len(companies)} results. Names: {names}"
+                )
+                return None
+            return rates
+    except Exception as e:
+        logger.warning(f"Shiprocket rates error: {e}")
         return None
 
 
@@ -334,20 +393,30 @@ def estimate_all_carriers(origin_pin: str, dest_pin: str, weight_kg: float) -> d
 # UNIFIED RATE FETCHER — tries Shiprocket, falls back
 # ═══════════════════════════════════════════════════
 
-async def get_shipping_rates(origin_pin: str, dest_pin: str, weight_kg: float) -> dict:
+async def get_shipping_rates(
+    origin_pin: str,
+    dest_pin: str,
+    weight_kg: float,
+    dims: dict | None = None,
+) -> dict:
     """Fetch shipping rates. Tries Shiprocket API first, falls back to rate cards."""
-    rates, _ = await get_shipping_rates_with_source(origin_pin, dest_pin, weight_kg)
+    rates, _ = await get_shipping_rates_with_source(origin_pin, dest_pin, weight_kg, dims)
     return rates
 
 
-async def get_shipping_rates_with_source(origin_pin: str, dest_pin: str, weight_kg: float) -> tuple[dict, str]:
+async def get_shipping_rates_with_source(
+    origin_pin: str,
+    dest_pin: str,
+    weight_kg: float,
+    dims: dict | None = None,
+) -> tuple[dict, str]:
     """Fetch shipping rates along with their source."""
     safe_origin_pin = normalize_pincode(origin_pin)
     safe_dest_pin = normalize_pincode(dest_pin)
     safe_weight = max(float(weight_kg or 0.5), 0.1)
 
     # Try Shiprocket live rates first
-    live_rates = await _shiprocket_rates(safe_origin_pin, safe_dest_pin, safe_weight)
+    live_rates = await _shiprocket_rates(safe_origin_pin, safe_dest_pin, safe_weight, dims)
     if live_rates:
         return live_rates, "shiprocket"
 

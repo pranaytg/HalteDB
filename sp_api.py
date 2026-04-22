@@ -41,6 +41,10 @@ AMAZON_FEE_EXCLUDE_KEYWORDS = (
     "withheld", "storage", "advertising", "promotion", "adjustment",
     "reimbursement", "servicefee", "subscription",
 )
+# Referral/closing fees that Amazon displays as "Amazon fees" on seller central
+AMAZON_REFERRAL_FEE_INCLUDE_KEYWORDS = (
+    "commission", "referral", "closing", "peritem", "variableclose", "fixedclose",
+)
 GST_INVOICE_LOOKBACK_DAYS = int(os.getenv("GST_INVOICE_LOOKBACK_DAYS", "45"))
 GST_INVOICE_REPORT_TYPES = (
     ("GET_GST_MTR_B2B_CUSTOM", "B2B"),
@@ -688,6 +692,36 @@ def _is_shipping_fee_type(fee_type: str | None) -> bool:
     return any(keyword in normalized for keyword in AMAZON_FEE_INCLUDE_KEYWORDS)
 
 
+def _is_referral_fee_type(fee_type: str | None) -> bool:
+    normalized = (fee_type or "").replace(" ", "").replace("_", "").lower()
+    if not normalized:
+        return False
+    return any(keyword in normalized for keyword in AMAZON_REFERRAL_FEE_INCLUDE_KEYWORDS)
+
+
+def _extract_referral_fee_total(fees) -> float:
+    total = 0.0
+    for fee in fees or []:
+        if not isinstance(fee, dict):
+            continue
+        fee_type = (
+            fee.get("FeeType")
+            or fee.get("feeType")
+            or fee.get("Type")
+            or fee.get("type")
+        )
+        if not _is_referral_fee_type(str(fee_type or "")):
+            continue
+        amount = (
+            fee.get("FeeAmount")
+            or fee.get("feeAmount")
+            or fee.get("Amount")
+            or fee.get("amount")
+        )
+        total += _extract_money_amount(amount)
+    return round(total, 2)
+
+
 def _extract_shipping_fee_total(fees) -> float:
     total = 0.0
     for fee in fees or []:
@@ -711,7 +745,8 @@ def _extract_shipping_fee_total(fees) -> float:
     return round(total, 2)
 
 
-def _extract_amazon_shipping_costs(financial_events: dict) -> dict[str, float]:
+def _extract_amazon_financial_breakdown(financial_events: dict) -> dict[str, dict[str, float]]:
+    """Return per-SKU {'shipping': X, 'referral': Y} from a financialEvents payload."""
     payload = financial_events.get("payload") if isinstance(financial_events, dict) else None
     events = payload.get("FinancialEvents") if isinstance(payload, dict) else None
     if not isinstance(events, dict):
@@ -719,7 +754,9 @@ def _extract_amazon_shipping_costs(financial_events: dict) -> dict[str, float]:
     if not isinstance(events, dict):
         return {}
 
-    sku_costs: defaultdict[str, float] = defaultdict(float)
+    shipping: defaultdict[str, float] = defaultdict(float)
+    referral: defaultdict[str, float] = defaultdict(float)
+
     event_lists = []
     for key in ("ShipmentEventList", "ShipmentSettleEventList"):
         values = events.get(key)
@@ -730,9 +767,9 @@ def _extract_amazon_shipping_costs(financial_events: dict) -> dict[str, float]:
         if not isinstance(event, dict):
             continue
 
-        event_fee_total = _extract_shipping_fee_total(
-            event.get("FeeList") or event.get("feeList") or []
-        )
+        event_fees = event.get("FeeList") or event.get("feeList") or []
+        event_shipping_total = _extract_shipping_fee_total(event_fees)
+        event_referral_total = _extract_referral_fee_total(event_fees)
         event_item_skus: set[str] = set()
 
         for item_key in ("ShipmentItemList", "ShipmentItemAdjustmentList"):
@@ -751,28 +788,44 @@ def _extract_amazon_shipping_costs(financial_events: dict) -> dict[str, float]:
                 if not sku:
                     continue
                 event_item_skus.add(str(sku))
-                item_fee_total = _extract_shipping_fee_total(
-                    item.get("ItemFeeList") or item.get("itemFeeList") or []
-                )
-                if item_fee_total > 0:
-                    sku_costs[str(sku)] += item_fee_total
+                item_fees = item.get("ItemFeeList") or item.get("itemFeeList") or []
+                ship = _extract_shipping_fee_total(item_fees)
+                ref = _extract_referral_fee_total(item_fees)
+                if ship > 0:
+                    shipping[str(sku)] += ship
+                if ref > 0:
+                    referral[str(sku)] += ref
 
-        if event_fee_total > 0 and len(event_item_skus) == 1:
-            event_sku = next(iter(event_item_skus))
-            sku_costs[event_sku] += event_fee_total
+        if len(event_item_skus) == 1:
+            sku_single = next(iter(event_item_skus))
+            if event_shipping_total > 0:
+                shipping[sku_single] += event_shipping_total
+            if event_referral_total > 0:
+                referral[sku_single] += event_referral_total
 
+    result: dict[str, dict[str, float]] = {}
+    for sku in set(shipping) | set(referral):
+        result[sku] = {
+            "shipping": round(shipping.get(sku, 0.0), 2),
+            "referral": round(referral.get(sku, 0.0), 2),
+        }
+    return result
+
+
+def _extract_amazon_shipping_costs(financial_events: dict) -> dict[str, float]:
     return {
-        sku: round(cost, 2)
-        for sku, cost in sku_costs.items()
-        if cost > 0
+        sku: entry["shipping"]
+        for sku, entry in _extract_amazon_financial_breakdown(financial_events).items()
+        if entry.get("shipping", 0) > 0
     }
 
 
-async def fetch_amazon_order_financial_shipping_costs(
+async def fetch_amazon_order_financial_breakdown(
     client: httpx.AsyncClient,
     access_token: str,
     order_id: str,
-) -> dict[str, float]:
+) -> dict[str, dict[str, float]]:
+    """Return per-SKU {'shipping': X, 'referral': Y} for a given Amazon order."""
     endpoint = os.getenv("SP_API_ENDPOINT", "https://sellingpartnerapi-eu.amazon.com").strip('"').strip("'")
     try:
         response = await client.get(
@@ -791,10 +844,19 @@ async def fetch_amazon_order_financial_shipping_costs(
         if response.status_code >= 400:
             logger.warning(f"Finance lookup failed for {order_id}: {response.status_code} {response.text[:200]}")
             return {}
-        return _extract_amazon_shipping_costs(response.json())
+        return _extract_amazon_financial_breakdown(response.json())
     except Exception as exc:
         logger.warning(f"Finance lookup error for {order_id}: {exc}")
         return {}
+
+
+async def fetch_amazon_order_financial_shipping_costs(
+    client: httpx.AsyncClient,
+    access_token: str,
+    order_id: str,
+) -> dict[str, float]:
+    breakdown = await fetch_amazon_order_financial_breakdown(client, access_token, order_id)
+    return {sku: entry["shipping"] for sku, entry in breakdown.items() if entry.get("shipping", 0) > 0}
 
 
 async def recalculate_profitability_for_orders(session: AsyncSession, order_ids: list[str]):
@@ -840,15 +902,19 @@ async def recalculate_profitability_for_orders(session: AsyncSession, order_ids:
       )
     """
     fee_expr = """
-      COALESCE(
-        (
-          SELECT ec.amazon_fee_percent
-          FROM estimated_cogs ec
-          WHERE ec.sku = o.sku
-          LIMIT 1
-        ),
-        15
-      )
+      CASE
+        WHEN o.amazon_fee IS NOT NULL AND o.amazon_fee > 0
+          THEN o.amazon_fee
+        ELSE o.item_price * COALESCE(
+          (
+            SELECT ec.amazon_fee_percent
+            FROM estimated_cogs ec
+            WHERE ec.sku = o.sku
+            LIMIT 1
+          ),
+          15
+        ) / 100
+      END
     """
     marketing_expr = """
       COALESCE(
@@ -880,7 +946,7 @@ async def recalculate_profitability_for_orders(session: AsyncSession, order_ids:
           ELSE
             o.item_price
             - ({cogs_expr})
-            - (o.item_price * ({fee_expr}) / 100)
+            - ({fee_expr})
             - ({shipping_expr})
             - ({marketing_expr})
         END
@@ -928,10 +994,14 @@ async def recalculate_profitability_all(session: AsyncSession) -> int:
       )
     """
     fee_expr = """
-      COALESCE(
-        (SELECT ec.amazon_fee_percent FROM estimated_cogs ec WHERE ec.sku = o.sku LIMIT 1),
-        15
-      )
+      CASE
+        WHEN o.amazon_fee IS NOT NULL AND o.amazon_fee > 0
+          THEN o.amazon_fee
+        ELSE o.item_price * COALESCE(
+          (SELECT ec.amazon_fee_percent FROM estimated_cogs ec WHERE ec.sku = o.sku LIMIT 1),
+          15
+        ) / 100
+      END
     """
     marketing_expr = """
       COALESCE(
@@ -953,7 +1023,7 @@ async def recalculate_profitability_all(session: AsyncSession) -> int:
           ELSE
             o.item_price
             - ({cogs_expr})
-            - (o.item_price * ({fee_expr}) / 100)
+            - ({fee_expr})
             - ({shipping_expr})
             - ({marketing_expr})
         END
@@ -996,7 +1066,10 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
         se.amazon_shipping_cost AS existing_estimated_amazon_cost,
         ps.weight_kg,
         ps.volumetric_weight_kg,
-        ps.chargeable_weight_kg
+        ps.chargeable_weight_kg,
+        ps.length_cm,
+        ps.width_cm,
+        ps.height_cm
       FROM orders o
       LEFT JOIN shipment_estimates se
         ON se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
@@ -1025,12 +1098,12 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
         if len(amazon_order_ids) >= AMAZON_FINANCE_LOOKUP_LIMIT:
             break
 
-    finance_costs: dict[str, dict[str, float]] = {}
+    finance_breakdown: dict[str, dict[str, dict[str, float]]] = {}
     if amazon_order_ids:
         access_token = await get_amazon_access_token()
         async with httpx.AsyncClient(timeout=30) as client:
             for index, order_id in enumerate(amazon_order_ids):
-                finance_costs[order_id] = await fetch_amazon_order_financial_shipping_costs(
+                finance_breakdown[order_id] = await fetch_amazon_order_financial_breakdown(
                     client,
                     access_token,
                     order_id,
@@ -1054,16 +1127,51 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
         chargeable_weight = float(order.get("chargeable_weight_kg") or actual_weight or 0.5)
 
         is_amz = is_amazon_fulfilled(order.get("fulfillment_channel"))
-        finance_cost = finance_costs.get(order["amazon_order_id"], {}).get(order["sku"], 0.0)
+        sku_breakdown = finance_breakdown.get(order["amazon_order_id"], {}).get(order["sku"], {})
+        finance_cost = float(sku_breakdown.get("shipping") or 0.0)
+        finance_referral = float(sku_breakdown.get("referral") or 0.0)
         recorded_cost = float(order.get("recorded_amazon_shipping_cost") or 0)
+        has_existing_row = order.get("shipment_estimate_id") is not None
 
-        if is_amz and (finance_cost > 0 or recorded_cost > 0):
-            # Amazon-fulfilled with SP-API data: use it directly, skip Shiprocket
+        if is_amz:
+            has_sp_api_data = finance_cost > 0 or recorded_cost > 0
+
+            if not has_sp_api_data:
+                # Amazon-fulfilled without SP-API finance data.
+                # If row exists, leave it alone — don't clobber user-recalc'd Shiprocket data.
+                if has_existing_row:
+                    continue
+                # No row yet — insert a minimal placeholder so the order shows up in UI.
+                await session.execute(sa_text("""
+                  INSERT INTO shipment_estimates (
+                    amazon_order_id, sku, origin_pincode,
+                    destination_pincode, destination_city, destination_state,
+                    package_weight_kg, volumetric_weight_kg, chargeable_weight_kg,
+                    amazon_shipping_cost, rate_source, estimated_at
+                  ) VALUES (
+                    :amazon_order_id, :sku, :origin_pincode,
+                    :destination_pincode, :destination_city, :destination_state,
+                    :package_weight_kg, :volumetric_weight_kg, :chargeable_weight_kg,
+                    0, 'sp_api_pending', NOW()
+                  )
+                  ON CONFLICT (amazon_order_id, sku) DO NOTHING
+                """), {
+                    "amazon_order_id": order["amazon_order_id"],
+                    "sku": order["sku"],
+                    "origin_pincode": normalize_pincode(ORIGIN_PINCODE) or ORIGIN_PINCODE,
+                    "destination_pincode": dest_pin,
+                    "destination_city": order.get("ship_city"),
+                    "destination_state": order.get("ship_state"),
+                    "package_weight_kg": actual_weight,
+                    "volumetric_weight_kg": volumetric_weight,
+                    "chargeable_weight_kg": chargeable_weight,
+                })
+                estimated += 1
+                continue
+
+            # Amazon-fulfilled WITH SP-API data — targeted update of amazon_shipping_cost.
             actual_amazon_cost = finance_cost or recorded_cost
-            amazon_cost = actual_amazon_cost
-            rates = {}
-            source = "sp_api_finance"
-            actual_amazon_count += 1
+
             if finance_cost > 0 and abs(finance_cost - recorded_cost) > 0.01:
                 await session.execute(sa_text("""
                   UPDATE orders
@@ -1074,23 +1182,85 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
                     "amazon_order_id": order["amazon_order_id"],
                     "sku": order["sku"],
                 })
-        else:
-            # Merchant-fulfilled or Amazon-fulfilled without SP-API data yet:
-            # fetch Shiprocket live rates (no rate card for Amazon-fulfilled)
-            if is_amz:
-                # Amazon-fulfilled but no finance data yet — store 0, don't use Shiprocket
-                rates = {}
-                source = "sp_api_pending"
-                amazon_cost = 0.0
-            else:
-                # Merchant-fulfilled — use Shiprocket live rates
-                rates, source = await get_shipping_rates_with_source(ORIGIN_PINCODE, dest_pin, chargeable_weight)
-                if source == "shiprocket":
-                    shiprocket_count += 1
-                else:
-                    fallback_count += 1
-                amazon_cost = 0.0
+            if finance_referral > 0:
+                await session.execute(sa_text("""
+                  UPDATE orders
+                  SET amazon_fee = :amazon_fee
+                  WHERE amazon_order_id = :amazon_order_id AND sku = :sku
+                """), {
+                    "amazon_fee": finance_referral,
+                    "amazon_order_id": order["amazon_order_id"],
+                    "sku": order["sku"],
+                })
 
+            # Insert-if-new-or-update-just-amazon-cost. Carrier columns and rate_source
+            # are preserved on existing rows so user-recalc'd Shiprocket data isn't wiped.
+            await session.execute(sa_text("""
+              INSERT INTO shipment_estimates (
+                amazon_order_id, sku, origin_pincode,
+                destination_pincode, destination_city, destination_state,
+                package_weight_kg, volumetric_weight_kg, chargeable_weight_kg,
+                amazon_shipping_cost, cheapest_provider, cheapest_cost,
+                rate_source, estimated_at
+              ) VALUES (
+                :amazon_order_id, :sku, :origin_pincode,
+                :destination_pincode, :destination_city, :destination_state,
+                :package_weight_kg, :volumetric_weight_kg, :chargeable_weight_kg,
+                :amazon_shipping_cost,
+                CASE WHEN :amazon_shipping_cost > 0 THEN 'Amazon' ELSE NULL END,
+                CASE WHEN :amazon_shipping_cost > 0 THEN :amazon_shipping_cost ELSE NULL END,
+                'sp_api_finance', NOW()
+              )
+              ON CONFLICT (amazon_order_id, sku) DO UPDATE SET
+                amazon_shipping_cost = EXCLUDED.amazon_shipping_cost,
+                cheapest_provider = CASE
+                  WHEN EXCLUDED.amazon_shipping_cost > 0
+                       AND (shipment_estimates.cheapest_cost IS NULL
+                            OR EXCLUDED.amazon_shipping_cost < shipment_estimates.cheapest_cost)
+                  THEN 'Amazon'
+                  ELSE shipment_estimates.cheapest_provider
+                END,
+                cheapest_cost = CASE
+                  WHEN EXCLUDED.amazon_shipping_cost > 0
+                       AND (shipment_estimates.cheapest_cost IS NULL
+                            OR EXCLUDED.amazon_shipping_cost < shipment_estimates.cheapest_cost)
+                  THEN EXCLUDED.amazon_shipping_cost
+                  ELSE shipment_estimates.cheapest_cost
+                END,
+                estimated_at = NOW()
+            """), {
+                "amazon_order_id": order["amazon_order_id"],
+                "sku": order["sku"],
+                "origin_pincode": normalize_pincode(ORIGIN_PINCODE) or ORIGIN_PINCODE,
+                "destination_pincode": dest_pin,
+                "destination_city": order.get("ship_city"),
+                "destination_state": order.get("ship_state"),
+                "package_weight_kg": actual_weight,
+                "volumetric_weight_kg": volumetric_weight,
+                "chargeable_weight_kg": chargeable_weight,
+                "amazon_shipping_cost": actual_amazon_cost,
+            })
+            actual_amazon_count += 1
+            touched_order_ids.add(order["amazon_order_id"])
+            estimated += 1
+            continue
+
+        # Merchant-fulfilled — fetch Shiprocket live rates and do full UPSERT.
+        dims = {}
+        if order.get("length_cm"):
+            dims["length"] = order["length_cm"]
+        if order.get("width_cm"):
+            dims["breadth"] = order["width_cm"]
+        if order.get("height_cm"):
+            dims["height"] = order["height_cm"]
+        rates, source = await get_shipping_rates_with_source(
+            ORIGIN_PINCODE, dest_pin, chargeable_weight, dims or None
+        )
+        if source == "shiprocket":
+            shiprocket_count += 1
+        else:
+            fallback_count += 1
+        amazon_cost = 0.0
         cheapest_provider, cheapest_cost = find_cheapest(rates, amazon_cost)
 
         await session.execute(sa_text("""

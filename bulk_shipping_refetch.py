@@ -67,25 +67,36 @@ def _is_shipping_fee(fee_type: str) -> bool:
     return any(k in lower for k in ("fbaperunitfulfillmentfee", "shipping", "fulfillment", "delivery", "weight handling"))
 
 
+def _is_referral_fee(fee_type: str) -> bool:
+    lower = fee_type.replace(" ", "").replace("_", "").lower()
+    return any(k in lower for k in ("commission", "referral", "closing", "peritem", "variableclose", "fixedclose"))
+
+
 def _money_amount(val) -> float:
     if isinstance(val, dict):
         return abs(float(val.get("CurrencyAmount") or val.get("currencyAmount") or 0))
     return abs(float(val or 0))
 
 
-def _extract_shipping_costs(data: dict) -> dict:
+def _extract_breakdown(data: dict) -> dict:
+    """Return {sku: {'shipping': X, 'referral': Y}} from a financialEvents payload."""
     payload = data.get("payload", {})
     events = payload.get("FinancialEvents", {})
-    sku_costs = defaultdict(float)
+    shipping = defaultdict(float)
+    referral = defaultdict(float)
     for key in ("ShipmentEventList", "ShipmentSettleEventList"):
         for event in (events.get(key) or []):
             if not isinstance(event, dict):
                 continue
-            event_fee = 0
+            event_ship = 0.0
+            event_ref = 0.0
             for fee in (event.get("FeeList") or []):
                 ft = fee.get("FeeType") or fee.get("feeType") or ""
+                amt = _money_amount(fee.get("FeeAmount") or fee.get("feeAmount"))
                 if _is_shipping_fee(ft):
-                    event_fee += _money_amount(fee.get("FeeAmount") or fee.get("feeAmount"))
+                    event_ship += amt
+                elif _is_referral_fee(ft):
+                    event_ref += amt
             item_skus = set()
             for item in (event.get("ShipmentItemList") or []) + (event.get("ShipmentItemAdjustmentList") or []):
                 if not isinstance(item, dict):
@@ -96,14 +107,27 @@ def _extract_shipping_costs(data: dict) -> dict:
                 item_skus.add(sku)
                 for fee in (item.get("ItemFeeList") or []):
                     ft = fee.get("FeeType") or fee.get("feeType") or ""
+                    amt = _money_amount(fee.get("FeeAmount") or fee.get("feeAmount"))
                     if _is_shipping_fee(ft):
-                        sku_costs[sku] += _money_amount(fee.get("FeeAmount") or fee.get("feeAmount"))
-            if event_fee > 0 and len(item_skus) == 1:
-                sku_costs[next(iter(item_skus))] += event_fee
-    return {sku: round(cost, 2) for sku, cost in sku_costs.items() if cost > 0}
+                        shipping[sku] += amt
+                    elif _is_referral_fee(ft):
+                        referral[sku] += amt
+            if len(item_skus) == 1:
+                sku_single = next(iter(item_skus))
+                if event_ship > 0:
+                    shipping[sku_single] += event_ship
+                if event_ref > 0:
+                    referral[sku_single] += event_ref
+    result = {}
+    for sku in set(shipping) | set(referral):
+        result[sku] = {
+            "shipping": round(shipping.get(sku, 0.0), 2),
+            "referral": round(referral.get(sku, 0.0), 2),
+        }
+    return result
 
 
-async def fetch_finance_shipping(client, token, order_id):
+async def fetch_finance_breakdown(client, token, order_id):
     try:
         resp = await client.get(
             f"{SP_API_ENDPOINT}/finances/v0/orders/{order_id}/financialEvents",
@@ -117,38 +141,81 @@ async def fetch_finance_shipping(client, token, order_id):
             )
         if resp.status_code >= 400:
             return {}
-        return _extract_shipping_costs(resp.json())
+        return _extract_breakdown(resp.json())
     except Exception:
         return {}
 
 
 async def get_shiprocket_token() -> str | None:
+    email = os.getenv("SHIPROCKET_EMAIL")
+    password = os.getenv("SHIPROCKET_PASSWORD")
+    if not email or not password:
+        log("  Shiprocket login: SHIPROCKET_EMAIL / SHIPROCKET_PASSWORD not set in env")
+        return None
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(f"{SHIPROCKET_BASE}/auth/login", json={
-                "email": os.getenv("SHIPROCKET_EMAIL"),
-                "password": os.getenv("SHIPROCKET_PASSWORD"),
-            })
-            if resp.status_code == 200:
-                return resp.json().get("token")
+            resp = await client.post(
+                f"{SHIPROCKET_BASE}/auth/login",
+                json={"email": email, "password": password},
+            )
+            if resp.status_code != 200:
+                log(f"  Shiprocket login HTTP {resp.status_code}: {resp.text[:200]}")
+                return None
+            token = resp.json().get("token")
+            if not token:
+                log(f"  Shiprocket login: no token in response")
+                return None
+            return token
     except Exception as e:
-        log(f"Shiprocket login error: {e}")
+        log(f"  Shiprocket login error: {e}")
     return None
 
 
-async def fetch_shiprocket_rates(client, token, origin_pin, dest_pin, weight_kg):
+async def fetch_shiprocket_rates(client, token, origin_pin, dest_pin, weight_kg, dims=None):
+    """Call Shiprocket serviceability API. Returns None on any failure.
+
+    dims: optional {"length", "breadth", "height"} in cm. Passing dimensions
+    materially increases carrier availability (some couriers reject quotes
+    when dims are missing).
+    """
+    origin_pin = normalize_pincode(origin_pin)
+    dest_pin = normalize_pincode(dest_pin)
+    if len(origin_pin) != 6 or len(dest_pin) != 6:
+        return None
+    params = {
+        "pickup_postcode": origin_pin,
+        "delivery_postcode": dest_pin,
+        "weight": max(float(weight_kg or 0.5), 0.1),
+        "cod": 0,
+        "declared_value": 500,
+    }
+    if dims:
+        if dims.get("length"):
+            params["length"] = int(round(float(dims["length"])))
+        if dims.get("breadth"):
+            params["breadth"] = int(round(float(dims["breadth"])))
+        if dims.get("height"):
+            params["height"] = int(round(float(dims["height"])))
     try:
         resp = await client.get(
             f"{SHIPROCKET_BASE}/courier/serviceability/",
-            params={"pickup_postcode": origin_pin, "delivery_postcode": dest_pin, "weight": max(weight_kg, 0.1), "cod": 0},
+            params=params,
             headers={"Authorization": f"Bearer {token}"},
         )
         if resp.status_code != 200:
+            log(f"  Shiprocket HTTP {resp.status_code}: {resp.text[:200]}")
             return None
         data = resp.json()
+        api_status = data.get("status")
+        if api_status is not None and str(api_status) not in ("200", "1"):
+            log(f"  Shiprocket API status={api_status} msg={data.get('message')}")
+            return None
+        companies = data.get("data", {}).get("available_courier_companies", []) or []
+        if not companies:
+            return None
         rates = {}
-        for courier in data.get("data", {}).get("available_courier_companies", []):
-            name = courier.get("courier_name", "").lower()
+        for courier in companies:
+            name = str(courier.get("courier_name", "")).lower()
             carrier_key = None
             for pattern, key in CARRIER_MAP.items():
                 if pattern in name:
@@ -156,12 +223,24 @@ async def fetch_shiprocket_rates(client, token, origin_pin, dest_pin, weight_kg)
                     break
             if not carrier_key:
                 continue
-            cost = float(courier.get("rate", 0))
-            etd = courier.get("estimated_delivery_days", "")
+            cost_raw = (
+                courier.get("rate")
+                or courier.get("freight_charge")
+                or courier.get("total_charges")
+                or 0
+            )
+            try:
+                cost = float(cost_raw)
+            except (TypeError, ValueError):
+                cost = 0.0
+            if cost <= 0:
+                continue
+            etd = courier.get("estimated_delivery_days") or courier.get("etd") or ""
             if carrier_key not in rates or cost < rates[carrier_key]["cost"]:
                 rates[carrier_key] = {"cost": round(cost, 2), "etd": f"{etd} days" if etd else "N/A"}
         return rates if rates else None
-    except Exception:
+    except Exception as e:
+        log(f"  Shiprocket error: {e}")
         return None
 
 
@@ -201,9 +280,11 @@ async def main():
                     o.amazon_order_id, o.sku, o.fulfillment_channel,
                     o.shipping_price, o.ship_postal_code,
                     se.chargeable_weight_kg, se.package_weight_kg,
-                    se.destination_pincode, se.rate_source as old_rate_source
+                    se.destination_pincode, se.rate_source as old_rate_source,
+                    ps.length_cm, ps.width_cm, ps.height_cm
                 FROM orders o
                 JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
+                LEFT JOIN product_specifications ps ON ps.sku = o.sku
                 WHERE o.ship_postal_code IS NOT NULL AND o.ship_postal_code != ''
                   AND se.rate_source != 'sp_api_finance'
                 ORDER BY o.purchase_date DESC NULLS LAST
@@ -231,6 +312,7 @@ async def main():
 
     sp_api_success = 0
     sp_api_no_data = 0
+    sp_api_referral_success = 0
 
     order_id_list = list(dict.fromkeys(o["amazon_order_id"] for o in amazon_orders))
     order_map = defaultdict(list)
@@ -241,6 +323,7 @@ async def main():
 
     token = await get_sp_api_token()
     batch_updates = []
+    fee_updates = []
 
     UPDATE_ORDER_SQL = """
         UPDATE orders SET shipping_price = :cost
@@ -250,29 +333,43 @@ async def main():
         UPDATE shipment_estimates SET amazon_shipping_cost = :cost, rate_source = 'sp_api_finance'
         WHERE amazon_order_id = :oid AND sku = :sku
     """
+    UPDATE_FEE_SQL = """
+        UPDATE orders SET amazon_fee = :fee
+        WHERE amazon_order_id = :oid AND sku = :sku
+    """
 
     async with httpx.AsyncClient(timeout=30) as client:
         for i, order_id in enumerate(order_id_list):
             if i > 0 and i % 200 == 0:
                 token = await get_sp_api_token()
 
-            costs = await fetch_finance_shipping(client, token, order_id)
+            breakdown = await fetch_finance_breakdown(client, token, order_id)
 
             for o in order_map[order_id]:
                 sku = o["sku"]
-                cost = costs.get(sku, 0.0)
+                entry = breakdown.get(sku, {})
+                cost = float(entry.get("shipping") or 0.0)
+                referral = float(entry.get("referral") or 0.0)
                 if cost > 0:
                     sp_api_success += 1
                     batch_updates.append({"cost": cost, "oid": order_id, "sku": sku})
                 else:
                     sp_api_no_data += 1
+                if referral > 0:
+                    sp_api_referral_success += 1
+                    fee_updates.append({"fee": referral, "oid": order_id, "sku": sku})
 
             if len(batch_updates) >= SP_API_BATCH:
                 # Write orders + shipment_estimates in two batches
                 await db_write(batch_updates, UPDATE_ORDER_SQL)
                 await db_write(batch_updates, UPDATE_SE_SQL)
-                log(f"  [{i+1}/{len(order_id_list)}] Committed {len(batch_updates)} updates (total success: {sp_api_success})")
+                log(f"  [{i+1}/{len(order_id_list)}] Committed {len(batch_updates)} shipping updates (total success: {sp_api_success})")
                 batch_updates = []
+
+            if len(fee_updates) >= SP_API_BATCH:
+                await db_write(fee_updates, UPDATE_FEE_SQL)
+                log(f"  [{i+1}/{len(order_id_list)}] Committed {len(fee_updates)} referral-fee updates (total success: {sp_api_referral_success})")
+                fee_updates = []
 
             if i < len(order_id_list) - 1:
                 await asyncio.sleep(FINANCE_DELAY)
@@ -280,10 +377,14 @@ async def main():
     if batch_updates:
         await db_write(batch_updates, UPDATE_ORDER_SQL)
         await db_write(batch_updates, UPDATE_SE_SQL)
-        log(f"  Final batch: {len(batch_updates)} updates")
+        log(f"  Final shipping batch: {len(batch_updates)} updates")
+    if fee_updates:
+        await db_write(fee_updates, UPDATE_FEE_SQL)
+        log(f"  Final referral-fee batch: {len(fee_updates)} updates")
 
     log(f"\n  SP-API results:")
-    log(f"    Successful: {sp_api_success}")
+    log(f"    Shipping successful:   {sp_api_success}")
+    log(f"    Referral fee captured: {sp_api_referral_success}")
     log(f"    No data:    {sp_api_no_data}")
     log(f"    Previously done: {already_done}")
     log(f"    Total SP-API success: {sp_api_success + already_done}")
@@ -321,7 +422,16 @@ async def main():
                     continue
 
                 weight = float(order["chargeable_weight_kg"] or order["package_weight_kg"] or 0.5)
-                rates = await fetch_shiprocket_rates(client, sr_token, ORIGIN_PINCODE, dest_pin, weight)
+                dims = {}
+                if order.get("length_cm"):
+                    dims["length"] = order["length_cm"]
+                if order.get("width_cm"):
+                    dims["breadth"] = order["width_cm"]
+                if order.get("height_cm"):
+                    dims["height"] = order["height_cm"]
+                rates = await fetch_shiprocket_rates(
+                    client, sr_token, ORIGIN_PINCODE, dest_pin, weight, dims or None
+                )
 
                 if rates:
                     shiprocket_success += 1

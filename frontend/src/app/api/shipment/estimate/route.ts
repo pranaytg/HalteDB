@@ -19,6 +19,7 @@ export async function POST() {
         o.fulfillment_channel,
         o.ship_postal_code, o.ship_city, o.ship_state,
         o.shipping_price as recorded_amazon_shipping_cost,
+        se.id as shipment_estimate_id,
         se.amazon_shipping_cost as existing_estimated_amazon_cost,
         o.item_price, o.quantity, o.purchase_date
       FROM orders o
@@ -64,40 +65,89 @@ export async function POST() {
       const volumetricWeight = (spec?.volumetric_weight_kg as number) || null;
       const chargeableWeight = (spec?.chargeable_weight_kg as number) || actualWeight;
 
-      // Pass dimensions to Shiprocket when available (improves accuracy)
+      const isAmzFulfilled = (order.fulfillment_channel || "").toLowerCase().includes("amazon")
+        || (order.fulfillment_channel || "").toLowerCase().includes("afn");
+      const recordedAmazonCost = Number(order.recorded_amazon_shipping_cost) || 0;
+      const hasExistingRow = order.shipment_estimate_id != null;
+
+      if (isAmzFulfilled) {
+        if (recordedAmazonCost <= 0) {
+          // Amazon-fulfilled with no SP-API data yet.
+          // If row exists, leave it alone — don't clobber user-recalc'd Shiprocket data.
+          if (hasExistingRow) continue;
+          // No row yet — insert a minimal placeholder so it shows up in the UI.
+          await pool.query(`
+            INSERT INTO shipment_estimates (
+              amazon_order_id, sku, origin_pincode,
+              destination_pincode, destination_city, destination_state,
+              package_weight_kg, volumetric_weight_kg, chargeable_weight_kg,
+              amazon_shipping_cost, rate_source, estimated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 'sp_api_pending', NOW())
+            ON CONFLICT (amazon_order_id, sku) DO NOTHING
+          `, [
+            order.amazon_order_id, order.sku, ORIGIN_PIN,
+            destPin, order.ship_city, order.ship_state,
+            actualWeight, volumetricWeight, chargeableWeight,
+          ]);
+          estimated++;
+          continue;
+        }
+
+        // Amazon-fulfilled WITH SP-API data — targeted update of amazon_shipping_cost.
+        // Carrier columns and rate_source are preserved on existing rows.
+        await pool.query(`
+          INSERT INTO shipment_estimates (
+            amazon_order_id, sku, origin_pincode,
+            destination_pincode, destination_city, destination_state,
+            package_weight_kg, volumetric_weight_kg, chargeable_weight_kg,
+            amazon_shipping_cost, cheapest_provider, cheapest_cost,
+            rate_source, estimated_at
+          ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+            CASE WHEN $10::numeric > 0 THEN 'Amazon' ELSE NULL END,
+            CASE WHEN $10::numeric > 0 THEN $10::numeric ELSE NULL END,
+            'sp_api_finance', NOW()
+          )
+          ON CONFLICT (amazon_order_id, sku) DO UPDATE SET
+            amazon_shipping_cost = EXCLUDED.amazon_shipping_cost,
+            cheapest_provider = CASE
+              WHEN EXCLUDED.amazon_shipping_cost > 0
+                   AND (shipment_estimates.cheapest_cost IS NULL
+                        OR EXCLUDED.amazon_shipping_cost < shipment_estimates.cheapest_cost)
+              THEN 'Amazon'
+              ELSE shipment_estimates.cheapest_provider
+            END,
+            cheapest_cost = CASE
+              WHEN EXCLUDED.amazon_shipping_cost > 0
+                   AND (shipment_estimates.cheapest_cost IS NULL
+                        OR EXCLUDED.amazon_shipping_cost < shipment_estimates.cheapest_cost)
+              THEN EXCLUDED.amazon_shipping_cost
+              ELSE shipment_estimates.cheapest_cost
+            END,
+            estimated_at = NOW()
+        `, [
+          order.amazon_order_id, order.sku, ORIGIN_PIN,
+          destPin, order.ship_city, order.ship_state,
+          actualWeight, volumetricWeight, chargeableWeight,
+          recordedAmazonCost,
+        ]);
+        estimated++;
+        continue;
+      }
+
+      // Merchant-fulfilled: use Shiprocket live rates + full UPSERT.
       const dims: ShiprocketDimensions = {};
       if ((spec?.length_cm as number) > 0) dims.length = spec.length_cm as number;
       if ((spec?.width_cm as number) > 0) dims.breadth = spec.width_cm as number;
       if ((spec?.height_cm as number) > 0) dims.height = spec.height_cm as number;
 
-      const isAmzFulfilled = (order.fulfillment_channel || "").toLowerCase().includes("amazon")
-        || (order.fulfillment_channel || "").toLowerCase().includes("afn");
-      const recordedAmazonCost = Number(order.recorded_amazon_shipping_cost) || 0;
-
-      let rates: Record<string, { cost: number; etd: string }>;
-      let source: string;
-      let amazonCost: number;
-
-      if (isAmzFulfilled && recordedAmazonCost > 0) {
-        // Amazon-fulfilled with SP-API data: use it directly, skip Shiprocket
-        rates = {};
-        source = "sp_api_finance";
-        amazonCost = recordedAmazonCost;
-      } else if (isAmzFulfilled) {
-        // Amazon-fulfilled but no SP-API data yet: store 0, don't use Shiprocket
-        rates = {};
-        source = "sp_api_pending";
-        amazonCost = 0;
-      } else {
-        // Merchant-fulfilled: use Shiprocket live rates
-        const result = await fetchShiprocketRates(ORIGIN_PIN, destPin, chargeableWeight, dims)
-          || getFallbackRates(ORIGIN_PIN, destPin, chargeableWeight);
-        rates = result.rates;
-        source = result.source;
-        if (source === "shiprocket") shiprocketCount++;
-        else fallbackCount++;
-        amazonCost = 0;
-      }
+      const result = await fetchShiprocketRates(ORIGIN_PIN, destPin, chargeableWeight, dims)
+        || getFallbackRates(ORIGIN_PIN, destPin, chargeableWeight);
+      const rates = result.rates;
+      const source = result.source;
+      if (source === "shiprocket") shiprocketCount++;
+      else fallbackCount++;
+      const amazonCost = 0;
 
       const { cheapestProvider, cheapestCost } = findCheapest(rates, amazonCost);
 
@@ -151,7 +201,7 @@ export async function POST() {
         source,
       ]);
 
-        estimated++;
+      estimated++;
     }
 
     return NextResponse.json({
