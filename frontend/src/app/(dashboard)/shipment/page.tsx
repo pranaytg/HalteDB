@@ -25,7 +25,7 @@ interface ShipmentEstimate {
   length_cm: number | null;
   width_cm: number | null;
   height_cm: number | null;
-  amazon_shipping_cost: number;
+  amazon_shipping_cost: number | null;
   amazon_cost_source: string | null;
   delhivery_cost: number | null;
   bluedart_cost: number | null;
@@ -59,6 +59,52 @@ interface Summary {
 }
 
 type FilterMode = "all" | "estimated" | "pending";
+
+function getRateSourceBadge(rateSource: string | null) {
+  switch (rateSource) {
+    case "shiprocket":
+      return {
+        label: "LIVE",
+        background: "rgba(34,197,94,0.15)",
+        color: "#22c55e",
+      };
+    case "shiprocket_failed":
+      return {
+        label: "NO QUOTE",
+        background: "rgba(239,68,68,0.15)",
+        color: "#f87171",
+      };
+    case "sp_api_finance":
+      return {
+        label: "SP API",
+        background: "rgba(59,130,246,0.15)",
+        color: "#60a5fa",
+      };
+    case "sp_api_pending":
+      return {
+        label: "PENDING",
+        background: "rgba(148,163,184,0.16)",
+        color: "#cbd5e1",
+      };
+    default:
+      return null;
+  }
+}
+
+function describeRateSource(rateSource: string | null) {
+  switch (rateSource) {
+    case "shiprocket":
+      return "live";
+    case "shiprocket_failed":
+      return "no Shiprocket quote";
+    case "sp_api_finance":
+      return "synced from SP API";
+    case "sp_api_pending":
+      return "waiting on SP API";
+    default:
+      return "updated";
+  }
+}
 
 const fmt = (n: number | null | undefined) => {
   if (n == null) return "\u2014";
@@ -146,7 +192,7 @@ export default function ShipmentPage() {
       });
       const data = await r.json();
       if (r.ok) {
-        setToast(`Rate ${data.rate_source === "shiprocket" ? "live" : "estimated"} for ${orderId.slice(-8)}`);
+        setToast(`Rate ${describeRateSource(data.rate_source)} for ${orderId.slice(-8)}`);
         fetchData();
       } else {
         setToast(data.error || "Failed to calculate rate");
@@ -346,7 +392,7 @@ export default function ShipmentPage() {
                   <th style={{ ...th, cursor: "pointer", textAlign: "center" }} onClick={() => handleSort("chargeable_weight_kg")}>
                     Weights {sortField === "chargeable_weight_kg" ? (sortDir === "asc" ? "\u2191" : "\u2193") : ""}
                   </th>
-                  <th style={{ ...th, textAlign: "center", fontSize: 10, color: "var(--text-muted)" }}>Source</th>
+                  <th style={{ ...th, textAlign: "center", fontSize: 10, color: "var(--text-muted)" }}>Quotes</th>
                   <SortTh field="amazon_shipping_cost" label="Amazon" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#ff9900" />
                   <SortTh field="delhivery_cost" label="Delhivery" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#e23744" />
                   <SortTh field="bluedart_cost" label="BlueDart" sortField={sortField} sortDir={sortDir} onClick={handleSort} color="#0066cc" />
@@ -360,6 +406,8 @@ export default function ShipmentPage() {
               <tbody>
                 {sorted.map((e) => {
                   const rowKey = `${e.amazon_order_id}-${e.sku}`;
+                  const channel = (e.fulfillment_channel || "").toLowerCase();
+                  const isAmazonFulfilled = channel.includes("amazon") || channel.includes("afn");
                   const costs = {
                     delhivery: e.delhivery_cost,
                     bluedart: e.bluedart_cost,
@@ -451,32 +499,45 @@ export default function ShipmentPage() {
                       </td>
 
                       <td style={{ ...td, textAlign: "center" }}>
-                        {e.rate_source ? (
-                          <span style={{
-                            fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
-                            background: e.rate_source === "shiprocket"
-                              ? "rgba(34,197,94,0.15)" : "rgba(251,191,36,0.15)",
-                            color: e.rate_source === "shiprocket" ? "#22c55e" : "#f59e0b",
-                            textTransform: "uppercase", letterSpacing: 0.5,
-                          }}>
-                            {e.rate_source === "shiprocket" ? "LIVE" : "EST"}
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 9, color: "var(--text-muted)" }}>\u2014</span>
-                        )}
+                        {(() => {
+                          const badge = getRateSourceBadge(e.rate_source);
+                          if (!badge) {
+                            return (
+                              <span style={{ fontSize: 9, color: "var(--text-muted)" }}>\u2014</span>
+                            );
+                          }
+                          return (
+                            <span style={{
+                              fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
+                              background: badge.background,
+                              color: badge.color,
+                              textTransform: "uppercase", letterSpacing: 0.5,
+                            }}>
+                              {badge.label}
+                            </span>
+                          );
+                        })()}
                       </td>
 
-                      {e.fulfillment_channel && !e.fulfillment_channel.toLowerCase().includes('amazon') && !e.fulfillment_channel.toLowerCase().includes('afn') ? (
-                        <td style={{ ...td, textAlign: "center", color: "var(--text-muted)", fontWeight: 800 }}>---</td>
-                      ) : (
+                      {isAmazonFulfilled ? (
                         <CostCell
                           cost={e.amazon_shipping_cost}
                           isMin={false}
-                          etd={e.amazon_cost_source === "estimated" ? "est." : ""}
+                          etd=""
                         />
+                      ) : (
+                        <td style={{ ...td, textAlign: "center", color: "var(--text-muted)", fontWeight: 800 }}>---</td>
                       )}
 
-                      {!hasEstimates ? (
+                      {isAmazonFulfilled ? (
+                        <td colSpan={6} style={{ ...td, textAlign: "center", color: "var(--text-muted)", fontSize: 11 }}>
+                          {e.amazon_shipping_cost != null && e.amazon_shipping_cost > 0
+                            ? "Fulfilled by Amazon · SP API only"
+                            : (e.rate_source === "sp_api_pending" || !e.rate_source)
+                              ? "Awaiting Amazon Finance settlement"
+                              : "No SP API shipping data"}
+                        </td>
+                      ) : !hasEstimates ? (
                         <td colSpan={6} style={{ textAlign: "center", padding: "8px" }}>
                           <button
                             className="btn btn-primary btn-sm"
@@ -568,10 +629,11 @@ export default function ShipmentPage() {
         background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)",
         fontSize: 12, color: "var(--text-muted)",
       }}>
-        Rates marked <strong style={{ color: "#22c55e" }}>LIVE</strong> come from Shiprocket API.
-        Rates marked <strong style={{ color: "#f59e0b" }}>EST</strong> use zone-based carrier rate cards as fallback.
-        Amazon cost uses the actual order shipping charge when Amazon provides one; otherwise Amazon-fulfilled orders use an estimated Amazon cost.
-        Shipment estimation runs automatically when the main sync runs. Use <strong>Recalc</strong> to refresh rates for a specific order.
+        Amazon-fulfilled orders show only the actual SP API shipping cost (no carrier comparison).
+        Self-fulfilled orders show <strong style={{ color: "#22c55e" }}>LIVE</strong> Shiprocket quotes only.
+        Rows marked <strong style={{ color: "#cbd5e1" }}>PENDING</strong> are still waiting for Amazon Finance settlement.
+        Rows marked <strong style={{ color: "#f87171" }}>NO QUOTE</strong> failed Shiprocket lookup — try Recalc.
+        Shipment estimation runs automatically when the main sync runs.
       </div>
 
       {toast && <div className="toast toast-success">{toast}</div>}

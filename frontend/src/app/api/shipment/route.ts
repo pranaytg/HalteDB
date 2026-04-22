@@ -26,11 +26,18 @@ export async function GET(req: NextRequest) {
         o.ship_state as destination_state,
         o.fulfillment_channel,
         CASE
+          WHEN o.shipping_price IS NOT NULL AND o.shipping_price > 0 THEN o.shipping_price
+          WHEN se.rate_source = 'sp_api_finance'
+            AND se.amazon_shipping_cost IS NOT NULL
+            AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
           WHEN se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
-          ELSE o.shipping_price
+          ELSE NULL
         END as amazon_shipping_cost,
         CASE
           WHEN o.shipping_price IS NOT NULL AND o.shipping_price > 0 THEN 'actual'
+          WHEN se.rate_source = 'sp_api_finance'
+            AND se.amazon_shipping_cost IS NOT NULL
+            AND se.amazon_shipping_cost > 0 THEN 'actual'
           WHEN se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0 THEN 'estimated'
           ELSE NULL
         END as amazon_cost_source,
@@ -65,15 +72,39 @@ export async function GET(req: NextRequest) {
     const overallResult = await pool.query(`
       SELECT
         COUNT(*) as total_estimates,
-        ROUND(AVG(amazon_shipping_cost)::numeric, 2) as avg_amazon_cost,
-        ROUND(AVG(cheapest_cost)::numeric, 2) as avg_cheapest_cost,
-        ROUND(AVG(delhivery_cost)::numeric, 2) as avg_delhivery_cost,
-        ROUND(AVG(bluedart_cost)::numeric, 2) as avg_bluedart_cost,
-        ROUND(AVG(dtdc_cost)::numeric, 2) as avg_dtdc_cost,
-        ROUND(AVG(xpressbees_cost)::numeric, 2) as avg_xpressbees_cost,
-        ROUND(AVG(ekart_cost)::numeric, 2) as avg_ekart_cost,
-        ROUND(SUM(GREATEST(COALESCE(amazon_shipping_cost,0) - COALESCE(cheapest_cost,0), 0))::numeric, 2) as total_potential_savings
-      FROM shipment_estimates
+        ROUND(AVG(
+          CASE
+            WHEN o.shipping_price IS NOT NULL AND o.shipping_price > 0 THEN o.shipping_price
+            WHEN se.rate_source = 'sp_api_finance'
+              AND se.amazon_shipping_cost IS NOT NULL
+              AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
+            WHEN se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
+            ELSE NULL
+          END
+        )::numeric, 2) as avg_amazon_cost,
+        ROUND(AVG(se.cheapest_cost)::numeric, 2) as avg_cheapest_cost,
+        ROUND(AVG(se.delhivery_cost)::numeric, 2) as avg_delhivery_cost,
+        ROUND(AVG(se.bluedart_cost)::numeric, 2) as avg_bluedart_cost,
+        ROUND(AVG(se.dtdc_cost)::numeric, 2) as avg_dtdc_cost,
+        ROUND(AVG(se.xpressbees_cost)::numeric, 2) as avg_xpressbees_cost,
+        ROUND(AVG(se.ekart_cost)::numeric, 2) as avg_ekart_cost,
+        ROUND(SUM(GREATEST(
+          COALESCE(
+            CASE
+              WHEN o.shipping_price IS NOT NULL AND o.shipping_price > 0 THEN o.shipping_price
+              WHEN se.rate_source = 'sp_api_finance'
+                AND se.amazon_shipping_cost IS NOT NULL
+                AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
+              WHEN se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
+              ELSE NULL
+            END,
+            0
+          ) - COALESCE(se.cheapest_cost, 0),
+          0
+        )::numeric, 2) as total_potential_savings
+      FROM shipment_estimates se
+      LEFT JOIN orders o
+        ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
     `);
 
     // Provider wins breakdown — normalize names on the fly

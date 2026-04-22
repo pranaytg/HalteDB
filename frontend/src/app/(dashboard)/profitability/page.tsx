@@ -50,6 +50,10 @@ const getOrderRuleLabel = (row: Pick<OrderRow, "order_status">) =>
   isReturnLike(row.order_status)
     ? "Net profit = -2 x shipping"
     : "Revenue - COGS - Amazon fee - Shipping - Marketing";
+const getAmazonFeeCaption = (row: Pick<OrderRow, "amazon_fee_source">) => {
+  if (row.amazon_fee_source === "actual") return "SP API";
+  return "pending";
+};
 
 const STATUS_COLORS: Record<string, string> = {
   Shipped: "#10b981", Pending: "#f59e0b", Cancelled: "#ef4444", Returned: "#ef4444",
@@ -70,6 +74,8 @@ interface Summary {
   avg_profit_margin: number;
   profitable_orders: number;
   loss_orders: number;
+  actual_amazon_fee_orders: number;
+  pending_amazon_fee_orders: number;
   orders_with_cogs: number;
 }
 
@@ -91,7 +97,8 @@ interface OrderRow {
   amazon_fee_percent: number | null;
   marketing_cost: number | null;
   estimated_amazon_sp: number | null;
-  amazon_fee: number;
+  amazon_fee_source: "actual" | "pending";
+  amazon_fee: number | null;
   net_profit: number;
   profit_margin_pct: number | null;
 }
@@ -389,7 +396,14 @@ export default function ProfitabilityPage() {
           <div className="stat-card">
             <div className="stat-label">Amazon Fees</div>
             <div className="stat-value" style={{ color: "#f97316" }}>{fmtK(Number(summary.total_amazon_fees))}</div>
-            <div className="stat-sub">Referral commission (~15%)</div>
+            <div className="stat-sub">
+              {Number(summary.actual_amazon_fee_orders).toLocaleString()} SP API actual
+              {summary.pending_amazon_fee_orders > 0 && (
+                <span style={{ color: "var(--text-muted)" }}>
+                  {" "}· {Number(summary.pending_amazon_fee_orders).toLocaleString()} pending
+                </span>
+              )}
+            </div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Shipping</div>
@@ -399,7 +413,7 @@ export default function ProfitabilityPage() {
           <div className="stat-card">
             <div className="stat-label">Marketing</div>
             <div className="stat-value" style={{ color: "#8b5cf6" }}>{fmtK(Number(summary.total_marketing))}</div>
-            <div className="stat-sub">Ads & promotions</div>
+            <div className="stat-sub">Estimated from COGS per SKU</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Net Profit</div>
@@ -440,7 +454,7 @@ export default function ProfitabilityPage() {
             <div className="card" style={{ padding: 20 }}>
               <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 600 }}>Cost Breakdown (All Orders)</h3>
               <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: -8 }}>
-                ℹ Amazon fees are still estimated using the % set in COGS Estimate per SKU (default 15%). Amazon-fulfilled shipping now uses synced Amazon actuals when available, otherwise the latest shipment estimate fallback.
+                ℹ Amazon fees come from SP API Finance only — orders awaiting settlement show as pending and are excluded from the totals. Marketing is a per-SKU estimate from COGS (Amazon Ads API isn&apos;t wired up, so per-order ad spend isn&apos;t available).
               </p>
               <div style={{ height: 220 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -548,7 +562,12 @@ export default function ProfitabilityPage() {
                             {isReturn ? "—" : (row.cogs_estimate != null ? fmt(Number(row.cogs_estimate)) : "No data")}
                           </td>
                           <td style={{ color: isReturn ? "var(--text-muted)" : "#f97316" }}>
-                            {isReturn ? "—" : fmt(Number(row.amazon_fee))}
+                            {isReturn ? "—" : (row.amazon_fee != null ? fmt(Number(row.amazon_fee)) : "—")}
+                            {!isReturn && (
+                              <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 4 }}>
+                                ({getAmazonFeeCaption(row)})
+                              </span>
+                            )}
                           </td>
                           <td style={{ color: "#f59e0b" }}>
                             {fmt(shippingCharge)}
@@ -692,7 +711,7 @@ export default function ProfitabilityPage() {
                       </td>
                       <td style={{ color: "#6366f1" }}>{row.margin1 != null ? fmt(Number(row.margin1)) : "—"}</td>
                       <td style={{ color: "#8b5cf6" }}>{row.margin2 != null ? fmt(Number(row.margin2)) : "—"}</td>
-                      <td>{row.amazon_fee_pct != null ? `${Number(row.amazon_fee_pct).toFixed(0)}%` : "15%"}</td>
+                      <td>{row.amazon_fee_pct != null ? `${Number(row.amazon_fee_pct).toFixed(0)}%` : "—"}</td>
                       <td style={{ color: "#f59e0b" }}>{row.marketing_per_unit != null ? fmt(Number(row.marketing_per_unit)) : "—"}</td>
                       <td style={{ fontWeight: 700, color: profitColor(Number(row.total_profit)) }}>
                         {Number(row.total_profit) < 0 ? "-" : ""}
@@ -782,10 +801,10 @@ export default function ProfitabilityPage() {
                         {row.cogs_estimate != null ? fmt(Number(row.cogs_estimate)) : "No data"}
                       </td>
                       <td style={{ color: "#f97316" }}>
-                        {isReturn ? "—" : fmt(Number(row.amazon_fee))}
-                        {!isReturn && row.amazon_fee_percent != null && (
+                        {isReturn ? "—" : (row.amazon_fee != null ? fmt(Number(row.amazon_fee)) : "—")}
+                        {!isReturn && (
                           <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 4 }}>
-                            ({Number(row.amazon_fee_percent).toFixed(0)}%)
+                            ({getAmazonFeeCaption(row)})
                           </span>
                         )}
                       </td>
@@ -856,11 +875,15 @@ export default function ProfitabilityPage() {
                                       <span style={{ color: "#8b5cf6" }}>{fmt(Number(row.margin2_amount))}</span>
                                     </>
                                   )}
-                                  <span style={{ color: "var(--text-muted)" }}>− Amazon fee ({row.amazon_fee_percent ?? 15}%):</span>
-                                  <span style={{ color: "#f97316" }}>−{fmt(Number(row.amazon_fee))}</span>
+                                  <span style={{ color: "var(--text-muted)" }}>
+                                    − Amazon fee ({row.amazon_fee_source === "actual" ? "SP API actual" : "pending settlement"}):
+                                  </span>
+                                  <span style={{ color: "#f97316" }}>
+                                    {row.amazon_fee != null ? `−${fmt(Number(row.amazon_fee))}` : "—"}
+                                  </span>
                                   <span style={{ color: "var(--text-muted)" }}>− Shipping:</span>
                                   <span style={{ color: "#f59e0b" }}>−{fmt(Number(row.shipping_price))}</span>
-                                  <span style={{ color: "var(--text-muted)" }}>− Marketing:</span>
+                                  <span style={{ color: "var(--text-muted)" }}>− Marketing (COGS estimate):</span>
                                   <span style={{ color: "#8b5cf6" }}>−{fmt(Number(row.marketing_cost) || 0)}</span>
                                   <span style={{ color: "var(--text-muted)", borderTop: "1px solid var(--border)", paddingTop: 4 }}>= Net Profit:</span>
                                   <span style={{ fontWeight: 700, color: profitColor(Number(row.net_profit)), borderTop: "1px solid var(--border)", paddingTop: 4 }}>

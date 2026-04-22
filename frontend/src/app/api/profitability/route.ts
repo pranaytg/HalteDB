@@ -8,9 +8,9 @@ import pool from "@/lib/db";
    Profit formula:
      net_profit = item_price
                   - cogs (final_price from estimated_cogs)
-                  - amazon_fee (item_price × amazon_fee_percent / 100)
-                  - shipping (Amazon actual first, then synced estimate fallback)
-                  - marketing (estimated_cogs.marketing_cost)
+                  - amazon_fee (SP-API actual only; null when not yet settled)
+                  - shipping (Amazon SP-API for fulfilled, seller-paid/Shiprocket for self)
+                  - marketing (estimated_cogs.marketing_cost — per-SKU estimate)
 
    Query params:
      page, limit, sku, startDate, endDate, status, brand, category
@@ -81,6 +81,25 @@ export async function GET(req: NextRequest) {
       END
     `;
 
+    // SP-API actuals only — no percentage-based fallback.
+    // NULL means Amazon Finance hasn't settled this order yet.
+    const AMAZON_FEE_EXPR = `
+      CASE
+        WHEN o.amazon_fee IS NOT NULL AND o.amazon_fee > 0
+        THEN o.amazon_fee
+        ELSE NULL
+      END
+    `;
+
+    const AMAZON_FEE_SOURCE_EXPR = `
+      CASE
+        WHEN o.amazon_fee IS NOT NULL AND o.amazon_fee > 0 THEN 'actual'
+        ELSE 'pending'
+      END
+    `;
+
+    const MARKETING_EXPR = `COALESCE(ec.marketing_cost, 0)`;
+
     const PROFIT_EXPR = `
       CASE
         WHEN o.order_status IN ('Cancelled', 'Returned') THEN
@@ -88,9 +107,9 @@ export async function GET(req: NextRequest) {
         ELSE
           o.item_price
           - COALESCE(ec.final_price, 0)
-          - (o.item_price * COALESCE(ec.amazon_fee_percent, 15) / 100)
+          - COALESCE((${AMAZON_FEE_EXPR}), 0)
           - (${SHIPPING_EXPR})
-          - COALESCE(ec.marketing_cost, 0)
+          - (${MARKETING_EXPR})
       END
     `;
 
@@ -100,9 +119,9 @@ export async function GET(req: NextRequest) {
         ELSE ROUND((
           (o.item_price
            - COALESCE(ec.final_price, 0)
-           - (o.item_price * COALESCE(ec.amazon_fee_percent, 15) / 100)
+           - COALESCE((${AMAZON_FEE_EXPR}), 0)
            - (${SHIPPING_EXPR})
-           - COALESCE(ec.marketing_cost, 0)
+           - (${MARKETING_EXPR})
           ) / NULLIF(o.item_price, 0) * 100
         )::numeric, 1)
       END
@@ -129,21 +148,23 @@ export async function GET(req: NextRequest) {
         COUNT(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN 1 END) AS active_orders,
         ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN o.item_price ELSE 0 END)::numeric, 2) AS total_revenue,
         ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN COALESCE(ec.final_price,0) ELSE 0 END)::numeric, 2) AS total_cogs,
-        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN o.item_price * COALESCE(ec.amazon_fee_percent,15) / 100 ELSE 0 END)::numeric, 2) AS total_amazon_fees,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN COALESCE((${AMAZON_FEE_EXPR}), 0) ELSE 0 END)::numeric, 2) AS total_amazon_fees,
         ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN (${SHIPPING_EXPR}) ELSE 0 END)::numeric, 2) AS total_shipping,
-        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN COALESCE(ec.marketing_cost,0) ELSE 0 END)::numeric, 2) AS total_marketing,
+        ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN (${MARKETING_EXPR}) ELSE 0 END)::numeric, 2) AS total_marketing,
         ROUND(SUM(${PROFIT_EXPR})::numeric, 2) AS total_profit,
         ROUND(AVG(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') AND o.item_price > 0
           THEN (
             o.item_price
             - COALESCE(ec.final_price,0)
-            - o.item_price * COALESCE(ec.amazon_fee_percent,15) / 100
+            - COALESCE((${AMAZON_FEE_EXPR}), 0)
             - (${SHIPPING_EXPR})
-            - COALESCE(ec.marketing_cost,0)
+            - (${MARKETING_EXPR})
           ) / o.item_price * 100
           ELSE NULL END)::numeric, 1) AS avg_profit_margin,
         COUNT(CASE WHEN ${PROFIT_EXPR} > 0 THEN 1 END) AS profitable_orders,
         COUNT(CASE WHEN ${PROFIT_EXPR} <= 0 AND o.order_status NOT IN ('Cancelled','Returned') THEN 1 END) AS loss_orders,
+        COUNT(CASE WHEN o.amazon_fee IS NOT NULL AND o.amazon_fee > 0 THEN 1 END) AS actual_amazon_fee_orders,
+        COUNT(CASE WHEN (o.amazon_fee IS NULL OR o.amazon_fee <= 0) AND o.order_status NOT IN ('Cancelled','Returned') THEN 1 END) AS pending_amazon_fee_orders,
         COUNT(ec.sku) AS orders_with_cogs
       ${FROM_CLAUSE}
       WHERE ${WHERE}
@@ -156,9 +177,9 @@ export async function GET(req: NextRequest) {
           COUNT(*) AS orders,
           ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN o.item_price ELSE 0 END)::numeric, 2) AS revenue,
           ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN COALESCE(ec.final_price,0) ELSE 0 END)::numeric, 2) AS cogs,
-          ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN o.item_price * COALESCE(ec.amazon_fee_percent,15) / 100 ELSE 0 END)::numeric, 2) AS amazon_fees,
+          ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN COALESCE((${AMAZON_FEE_EXPR}), 0) ELSE 0 END)::numeric, 2) AS amazon_fees,
           ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN (${SHIPPING_EXPR}) ELSE 0 END)::numeric, 2) AS shipping,
-          ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN COALESCE(ec.marketing_cost,0) ELSE 0 END)::numeric, 2) AS marketing,
+          ROUND(SUM(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN (${MARKETING_EXPR}) ELSE 0 END)::numeric, 2) AS marketing,
           ROUND(SUM(${PROFIT_EXPR})::numeric, 2) AS profit
         ${FROM_CLAUSE}
         WHERE ${WHERE} AND o.purchase_date IS NOT NULL
@@ -187,9 +208,9 @@ export async function GET(req: NextRequest) {
             THEN (
               o.item_price
               - COALESCE(ec.final_price,0)
-              - o.item_price * COALESCE(ec.amazon_fee_percent,15) / 100
+              - COALESCE((${AMAZON_FEE_EXPR}), 0)
               - (${SHIPPING_EXPR})
-              - COALESCE(ec.marketing_cost,0)
+              - (${MARKETING_EXPR})
             ) / o.item_price * 100
             ELSE NULL END)::numeric, 1) AS avg_margin_pct
         ${FROM_CLAUSE}
@@ -225,8 +246,9 @@ export async function GET(req: NextRequest) {
         ec.margin2_amount,
         ec.amazon_fee_percent,
         ec.marketing_cost,
+        ${AMAZON_FEE_SOURCE_EXPR} AS amazon_fee_source,
         ec.amazon_selling_price AS estimated_amazon_sp,
-        ROUND((o.item_price * COALESCE(ec.amazon_fee_percent,15) / 100)::numeric, 2) AS amazon_fee,
+        ROUND((${AMAZON_FEE_EXPR})::numeric, 2) AS amazon_fee,
         ROUND(${PROFIT_EXPR}::numeric, 2) AS net_profit,
         ${MARGIN_EXPR} AS profit_margin_pct
       ${FROM_CLAUSE}

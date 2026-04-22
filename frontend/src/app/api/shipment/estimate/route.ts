@@ -1,10 +1,29 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 import {
-  fetchShiprocketRates, getFallbackRates, findCheapest,
+  fetchShiprocketRates, findCheapest,
   normalizePincode, normalizeProviderName, ORIGIN_PIN,
   ShiprocketDimensions,
 } from "@/lib/shipment";
+
+const EMPTY_RATES: Record<string, { cost: number; etd: string }> = {};
+
+function getExistingCarrierCheapest(order: Record<string, unknown>) {
+  const candidates = [
+    ["Delhivery", Number(order.delhivery_cost) || 0] as [string, number],
+    ["BlueDart", Number(order.bluedart_cost) || 0] as [string, number],
+    ["DTDC", Number(order.dtdc_cost) || 0] as [string, number],
+    ["Xpressbees", Number(order.xpressbees_cost) || 0] as [string, number],
+    ["Ekart", Number(order.ekart_cost) || 0] as [string, number],
+  ].filter(([, cost]) => cost > 0);
+
+  if (candidates.length === 0) {
+    return { cheapestProvider: null, cheapestCost: null };
+  }
+
+  candidates.sort((a, b) => a[1] - b[1]);
+  return { cheapestProvider: candidates[0][0], cheapestCost: candidates[0][1] };
+}
 
 // ═══════════════════════════════════════════════════
 // POST /api/shipment/estimate — estimate rates for new orders (bulk)
@@ -21,6 +40,8 @@ export async function POST() {
         o.shipping_price as recorded_amazon_shipping_cost,
         se.id as shipment_estimate_id,
         se.amazon_shipping_cost as existing_estimated_amazon_cost,
+        se.cheapest_provider, se.cheapest_cost,
+        se.delhivery_cost, se.bluedart_cost, se.dtdc_cost, se.xpressbees_cost, se.ekart_cost,
         o.item_price, o.quantity, o.purchase_date
       FROM orders o
       LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
@@ -55,7 +76,7 @@ export async function POST() {
 
     let estimated = 0;
     let shiprocketCount = 0;
-    let fallbackCount = 0;
+    let shiprocketFailedCount = 0;
 
     for (const order of ordersResult.rows) {
       const destPin = normalizePincode(order.ship_postal_code);
@@ -74,7 +95,25 @@ export async function POST() {
         if (recordedAmazonCost <= 0) {
           // Amazon-fulfilled with no SP-API data yet.
           // If row exists, leave it alone — don't clobber user-recalc'd Shiprocket data.
-          if (hasExistingRow) continue;
+          if (hasExistingRow) {
+            const { cheapestProvider, cheapestCost } = getExistingCarrierCheapest(order);
+            await pool.query(`
+              UPDATE shipment_estimates
+              SET
+                amazon_shipping_cost = 0,
+                cheapest_provider = $3,
+                cheapest_cost = $4,
+                estimated_at = NOW()
+              WHERE amazon_order_id = $1 AND sku = $2
+            `, [
+              order.amazon_order_id,
+              order.sku,
+              cheapestProvider,
+              cheapestCost,
+            ]);
+            estimated++;
+            continue;
+          }
           // No row yet — insert a minimal placeholder so it shows up in the UI.
           await pool.query(`
             INSERT INTO shipment_estimates (
@@ -141,12 +180,11 @@ export async function POST() {
       if ((spec?.width_cm as number) > 0) dims.breadth = spec.width_cm as number;
       if ((spec?.height_cm as number) > 0) dims.height = spec.height_cm as number;
 
-      const result = await fetchShiprocketRates(ORIGIN_PIN, destPin, chargeableWeight, dims)
-        || getFallbackRates(ORIGIN_PIN, destPin, chargeableWeight);
-      const rates = result.rates;
-      const source = result.source;
+      const result = await fetchShiprocketRates(ORIGIN_PIN, destPin, chargeableWeight, dims);
+      const rates = result?.rates || EMPTY_RATES;
+      const source = result ? result.source : "shiprocket_failed";
       if (source === "shiprocket") shiprocketCount++;
-      else fallbackCount++;
+      else shiprocketFailedCount++;
       const amazonCost = 0;
 
       const { cheapestProvider, cheapestCost } = findCheapest(rates, amazonCost);
@@ -205,10 +243,10 @@ export async function POST() {
     }
 
     return NextResponse.json({
-      message: `Estimated or refreshed ${estimated} orders (${shiprocketCount} Shiprocket live, ${fallbackCount} fallback)`,
+      message: `Estimated or refreshed ${estimated} orders (${shiprocketCount} Shiprocket live, ${shiprocketFailedCount} Shiprocket failed)`,
       estimated,
       shiprocket: shiprocketCount,
-      fallback: fallbackCount,
+      shiprocket_failed: shiprocketFailedCount,
     });
   } catch (error) {
     console.error("Shipment estimate error:", error);

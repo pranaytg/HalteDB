@@ -31,6 +31,8 @@ logger = logging.getLogger("haltedb")
 SHIPMENT_SYNC_BATCH_SIZE = int(os.getenv("SHIPMENT_SYNC_BATCH_SIZE", "150"))
 AMAZON_FINANCE_LOOKUP_LIMIT = int(os.getenv("AMAZON_FINANCE_LOOKUP_LIMIT", "25"))
 AMAZON_FINANCE_LOOKUP_DELAY_SECONDS = float(os.getenv("AMAZON_FINANCE_LOOKUP_DELAY_SECONDS", "2.1"))
+AMAZON_FINANCE_LOOKUP_MAX_RETRIES = int(os.getenv("AMAZON_FINANCE_LOOKUP_MAX_RETRIES", "3"))
+AMAZON_FINANCE_LOOKUP_BACKOFF_MULTIPLIER = float(os.getenv("AMAZON_FINANCE_LOOKUP_BACKOFF_MULTIPLIER", "2.0"))
 ORIGIN_PINCODE = os.getenv("ORIGIN_PINCODE", "160012")
 AMAZON_FEE_INCLUDE_KEYWORDS = (
     "fba", "fulfillment", "shipping", "shipment", "weight",
@@ -516,11 +518,27 @@ async def run_product_specs_sync(session: AsyncSession):
         WHERE o.sku IS NOT NULL AND o.asin IS NOT NULL AND ps.id IS NULL
         GROUP BY o.sku
     """))
-    missing = {row[0]: row[1] for row in result.all()}
+    raw_missing = {row[0]: row[1] for row in result.all()}
+
+    def is_valid_asin(value: str | None) -> bool:
+        asin = (value or "").strip().upper()
+        return len(asin) == 10 and asin.isalnum()
+
+    missing = {
+        sku: (asin or "").strip().upper()
+        for sku, asin in raw_missing.items()
+        if is_valid_asin(asin)
+    }
+    invalid_asin_count = len(raw_missing) - len(missing)
 
     if not missing:
+        if invalid_asin_count:
+            logger.info("Skipped %s SKUs with invalid ASINs while syncing product specs.", invalid_asin_count)
         logger.info("All SKUs already have product specifications.")
         return
+
+    if invalid_asin_count:
+        logger.info("Skipped %s SKUs with invalid ASINs while syncing product specs.", invalid_asin_count)
 
     logger.info(f"Fetching specs for {len(missing)} missing SKUs from SP-API Catalog...")
 
@@ -830,19 +848,30 @@ async def fetch_amazon_order_financial_breakdown(
     """Return per-SKU {'shipping': X, 'referral': Y} for a given Amazon order."""
     endpoint = os.getenv("SP_API_ENDPOINT", "https://sellingpartnerapi-eu.amazon.com").strip('"').strip("'")
     try:
-        response = await client.get(
-            f"{endpoint}/finances/v0/orders/{order_id}/financialEvents",
-            headers={"x-amz-access-token": access_token},
-        )
-        if response.status_code == 404:
-            return {}
-        if response.status_code == 429:
-            logger.warning(f"Finance lookup throttled for {order_id}; retrying once after delay")
-            await asyncio.sleep(AMAZON_FINANCE_LOOKUP_DELAY_SECONDS)
+        response = None
+        backoff_seconds = AMAZON_FINANCE_LOOKUP_DELAY_SECONDS
+        for attempt in range(AMAZON_FINANCE_LOOKUP_MAX_RETRIES + 1):
             response = await client.get(
                 f"{endpoint}/finances/v0/orders/{order_id}/financialEvents",
                 headers={"x-amz-access-token": access_token},
             )
+            if response.status_code == 404:
+                return {}
+            if response.status_code != 429:
+                break
+            if attempt >= AMAZON_FINANCE_LOOKUP_MAX_RETRIES:
+                break
+            logger.warning(
+                "Finance lookup throttled for %s; retrying in %.1fs (%s/%s)",
+                order_id,
+                backoff_seconds,
+                attempt + 1,
+                AMAZON_FINANCE_LOOKUP_MAX_RETRIES,
+            )
+            await asyncio.sleep(backoff_seconds)
+            backoff_seconds *= AMAZON_FINANCE_LOOKUP_BACKOFF_MULTIPLIER
+        if response is None:
+            return {}
         if response.status_code >= 400:
             logger.warning(f"Finance lookup failed for {order_id}: {response.status_code} {response.text[:200]}")
             return {}
@@ -1036,6 +1065,24 @@ async def recalculate_profitability_all(session: AsyncSession) -> int:
     return result.rowcount or 0
 
 
+def _find_existing_carrier_cheapest(order: dict) -> tuple[str | None, float | None]:
+    candidates: list[tuple[str, float]] = []
+    for provider, key in (
+        ("Delhivery", "delhivery_cost"),
+        ("BlueDart", "bluedart_cost"),
+        ("DTDC", "dtdc_cost"),
+        ("Xpressbees", "xpressbees_cost"),
+        ("Ekart", "ekart_cost"),
+    ):
+        cost = float(order.get(key) or 0)
+        if cost > 0:
+            candidates.append((provider, round(cost, 2)))
+    if not candidates:
+        return None, None
+    candidates.sort(key=lambda item: item[1])
+    return candidates[0]
+
+
 async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
     where_extra = (
         "AND se.id IS NULL"
@@ -1066,6 +1113,13 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
         o.shipping_price AS recorded_amazon_shipping_cost,
         se.id AS shipment_estimate_id,
         se.amazon_shipping_cost AS existing_estimated_amazon_cost,
+        se.cheapest_provider,
+        se.cheapest_cost,
+        se.delhivery_cost,
+        se.bluedart_cost,
+        se.dtdc_cost,
+        se.xpressbees_cost,
+        se.ekart_cost,
         ps.weight_kg,
         ps.volumetric_weight_kg,
         ps.chargeable_weight_kg,
@@ -1115,7 +1169,7 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
 
     estimated = 0
     shiprocket_count = 0
-    fallback_count = 0
+    shiprocket_failed_count = 0
     actual_amazon_count = 0
     touched_order_ids: set[str] = set()
 
@@ -1140,8 +1194,24 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
 
             if not has_sp_api_data:
                 # Amazon-fulfilled without SP-API finance data.
-                # If row exists, leave it alone — don't clobber user-recalc'd Shiprocket data.
                 if has_existing_row:
+                    cheapest_provider, cheapest_cost = _find_existing_carrier_cheapest(order)
+                    await session.execute(sa_text("""
+                      UPDATE shipment_estimates
+                      SET
+                        amazon_shipping_cost = 0,
+                        cheapest_provider = :cheapest_provider,
+                        cheapest_cost = :cheapest_cost,
+                        estimated_at = NOW()
+                      WHERE amazon_order_id = :amazon_order_id AND sku = :sku
+                    """), {
+                        "amazon_order_id": order["amazon_order_id"],
+                        "sku": order["sku"],
+                        "cheapest_provider": cheapest_provider,
+                        "cheapest_cost": cheapest_cost,
+                    })
+                    touched_order_ids.add(order["amazon_order_id"])
+                    estimated += 1
                     continue
                 # No row yet — insert a minimal placeholder so the order shows up in UI.
                 await session.execute(sa_text("""
@@ -1208,9 +1278,9 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
                 :amazon_order_id, :sku, :origin_pincode,
                 :destination_pincode, :destination_city, :destination_state,
                 :package_weight_kg, :volumetric_weight_kg, :chargeable_weight_kg,
-                :amazon_shipping_cost,
-                CASE WHEN :amazon_shipping_cost > 0 THEN 'Amazon' ELSE NULL END,
-                CASE WHEN :amazon_shipping_cost > 0 THEN :amazon_shipping_cost ELSE NULL END,
+                CAST(:amazon_shipping_cost AS DOUBLE PRECISION),
+                CASE WHEN CAST(:amazon_shipping_cost AS DOUBLE PRECISION) > 0 THEN 'Amazon' ELSE NULL END,
+                CASE WHEN CAST(:amazon_shipping_cost AS DOUBLE PRECISION) > 0 THEN CAST(:amazon_shipping_cost AS DOUBLE PRECISION) ELSE NULL END,
                 'sp_api_finance', NOW()
               )
               ON CONFLICT (amazon_order_id, sku) DO UPDATE SET
@@ -1261,7 +1331,7 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
         if source == "shiprocket":
             shiprocket_count += 1
         else:
-            fallback_count += 1
+            shiprocket_failed_count += 1
         amazon_cost = 0.0
         cheapest_provider, cheapest_cost = find_cheapest(rates, amazon_cost)
 
@@ -1340,10 +1410,10 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
         await recalculate_profitability_for_orders(session, sorted(touched_order_ids))
 
     logger.info(
-        "Shipment sync complete: %s rows refreshed (%s Shiprocket, %s fallback, %s Amazon actual)",
+        "Shipment sync complete: %s rows refreshed (%s Shiprocket, %s Shiprocket-failed, %s Amazon actual)",
         estimated,
         shiprocket_count,
-        fallback_count,
+        shiprocket_failed_count,
         actual_amazon_count,
     )
 
@@ -2039,29 +2109,18 @@ async def run_full_sync(session: AsyncSession):
     """
     logger.info("=== STARTING FULL SYNC ===")
 
-    try:
-        logger.info("--- Phase 1: Inventory Sync ---")
-        await run_inventory_sync_job(session)
-    except Exception as e:
-        logger.error(f"Inventory sync failed: {e}")
+    async def _run_phase(label: str, runner):
+        logger.info(label)
+        try:
+            await runner(session)
+        except Exception:
+            await session.rollback()
+            logger.exception("%s failed", label.replace("--- ", "").replace(" ---", ""))
 
-    try:
-        logger.info("--- Phase 2: Incremental Orders Sync ---")
-        await run_incremental_orders_sync(session)
-    except Exception as e:
-        logger.error(f"Orders sync failed: {e}")
-
-    try:
-        logger.info("--- Phase 3: Product Specifications Sync ---")
-        await run_product_specs_sync(session)
-    except Exception as e:
-        logger.error(f"Product specs sync failed: {e}")
-
-    try:
-        logger.info("--- Phase 4: Shipment Cost Sync ---")
-        await run_shipment_sync(session)
-    except Exception as e:
-        logger.error(f"Shipment sync failed: {e}")
+    await _run_phase("--- Phase 1: Inventory Sync ---", run_inventory_sync_job)
+    await _run_phase("--- Phase 2: Incremental Orders Sync ---", run_incremental_orders_sync)
+    await _run_phase("--- Phase 3: Product Specifications Sync ---", run_product_specs_sync)
+    await _run_phase("--- Phase 4: Shipment Cost Sync ---", run_shipment_sync)
 
     logger.info("=== FULL SYNC COMPLETE ===")
 

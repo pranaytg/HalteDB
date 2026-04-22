@@ -15,10 +15,12 @@ import asyncio
 import httpx
 import logging
 from contextlib import asynccontextmanager
+from uuid import uuid4
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.pool import NullPool
 from datetime import datetime, timezone
 
 from sp_api import (
@@ -57,15 +59,41 @@ logger = logging.getLogger("haltedb")
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
-    pool_size=5,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=1800,
-    connect_args={"statement_cache_size": 0, "prepared_statement_cache_size": 0},
+    poolclass=NullPool,
+    connect_args={
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4().hex}__",
+    },
 )
 SessionLocal = async_sessionmaker(
     autocommit=False, autoflush=False, bind=engine, class_=AsyncSession
 )
+
+
+# Track if a full sync is currently running to prevent overlapping jobs.
+_sync_running = False
+
+
+async def _run_full_sync_job(source: str, already_reserved: bool = False) -> bool:
+    global _sync_running
+
+    if _sync_running and not already_reserved:
+        logger.info("Skipping %s full sync because another sync is already running.", source)
+        return False
+
+    if not already_reserved:
+        _sync_running = True
+
+    try:
+        async with SessionLocal() as session:
+            await run_full_sync(session)
+        return True
+    except Exception:
+        logger.exception("%s full sync failed", source.capitalize())
+        return False
+    finally:
+        _sync_running = False
 
 
 # ============================================
@@ -76,11 +104,7 @@ async def _scheduled_sync_loop():
     await asyncio.sleep(60)  # Wait for server to fully boot
     while True:
         logger.info(f"⏰ Scheduled sync triggered (every {SYNC_INTERVAL}s)")
-        try:
-            async with SessionLocal() as session:
-                await run_full_sync(session)
-        except Exception as e:
-            logger.error(f"Scheduled sync failed: {e}")
+        await _run_full_sync_job("scheduled")
         await asyncio.sleep(SYNC_INTERVAL)
 
 
@@ -164,10 +188,6 @@ async def sync_status(session: AsyncSession = Depends(get_db)):
 # Sync Triggers
 # ============================================
 
-# Track if a sync is currently running to prevent overlapping syncs
-_sync_running = False
-
-
 @app.post("/sync-all")
 async def trigger_full_sync(
     background_tasks: BackgroundTasks,
@@ -181,18 +201,8 @@ async def trigger_full_sync(
     if _sync_running:
         return {"status": "skipped", "message": "A sync is already running."}
 
-    async def _run_sync():
-        global _sync_running
-        _sync_running = True
-        try:
-            async with SessionLocal() as sync_session:
-                await run_full_sync(sync_session)
-        except Exception as e:
-            logger.error(f"Full sync failed: {e}")
-        finally:
-            _sync_running = False
-
-    background_tasks.add_task(_run_sync)
+    _sync_running = True
+    background_tasks.add_task(_run_full_sync_job, "manual", True)
     return {
         "status": "accepted",
         "message": "Full sync (inventory + orders) started in background.",
