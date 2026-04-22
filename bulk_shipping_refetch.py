@@ -6,10 +6,12 @@ Bulk re-fetch shipping costs for all orders:
 Processes in batches to avoid Supabase connection timeouts.
 Skips orders already updated with sp_api_finance source.
 """
+import argparse
 import asyncio
 import os
 import re
 import sys
+from datetime import date, datetime
 import httpx
 from collections import defaultdict
 from dotenv import load_dotenv
@@ -255,27 +257,53 @@ def normalize_pincode(pin):
     return re.sub(r"\D", "", str(pin or ""))[:6]
 
 
-async def db_write(updates, query_template):
-    """Write updates to DB with a fresh engine per batch."""
-    eng = create_engine()
-    try:
-        async with eng.begin() as conn:
-            for u in updates:
-                await conn.execute(text(query_template), u)
-    finally:
-        await eng.dispose()
+async def db_write(updates, query_template, max_retries=3):
+    """Write updates to DB with a fresh engine per batch. Retries on transient connection drops."""
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        eng = create_engine()
+        try:
+            async with eng.begin() as conn:
+                for u in updates:
+                    await conn.execute(text(query_template), u)
+            return
+        except Exception as e:
+            last_err = e
+            log(f"  db_write attempt {attempt}/{max_retries} failed: {type(e).__name__}: {e}")
+            await asyncio.sleep(2 * attempt)
+        finally:
+            await eng.dispose()
+    raise last_err
 
 
 async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--since", help="ISO date (YYYY-MM-DD); only refetch orders with purchase_date >= this", default=None)
+    parser.add_argument("--force", action="store_true", help="Recalc rows even if already sp_api_finance")
+    args = parser.parse_args()
+
     log("=" * 60)
     log("BULK SHIPPING COST RE-FETCH")
     log("=" * 60)
+    if args.since:
+        log(f"Date filter: purchase_date >= {args.since}")
+    if args.force:
+        log("Force mode: recalculating rows regardless of existing rate_source")
 
-    # Load orders — skip already-updated sp_api_finance rows
+    where_extra = []
+    sql_params = {}
+    if args.since:
+        where_extra.append("o.purchase_date >= :since_date")
+        sql_params["since_date"] = datetime.strptime(args.since, "%Y-%m-%d").date()
+    if not args.force:
+        where_extra.append("se.rate_source != 'sp_api_finance'")
+    extra_sql = (" AND " + " AND ".join(where_extra)) if where_extra else ""
+
+    # Load orders
     eng = create_engine()
     try:
         async with eng.connect() as conn:
-            result = await conn.execute(text("""
+            result = await conn.execute(text(f"""
                 SELECT
                     o.amazon_order_id, o.sku, o.fulfillment_channel,
                     o.shipping_price, o.ship_postal_code,
@@ -286,9 +314,9 @@ async def main():
                 JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
                 LEFT JOIN product_specifications ps ON ps.sku = o.sku
                 WHERE o.ship_postal_code IS NOT NULL AND o.ship_postal_code != ''
-                  AND se.rate_source != 'sp_api_finance'
+                  {extra_sql}
                 ORDER BY o.purchase_date DESC NULLS LAST
-            """))
+            """), sql_params)
             orders = [dict(row._mapping) for row in result.fetchall()]
 
             # Also count already done

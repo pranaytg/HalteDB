@@ -1,0 +1,256 @@
+INFO:     Started server process [28932]
+INFO:     Waiting for application startup.
+2026-04-22 16:24:51 | INFO     | haltedb | HalteDB backend starting up...
+2026-04-22 16:24:51 | INFO     | haltedb | Hourly sync scheduler started (interval: 3600s)
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-04-22 16:25:18 | INFO     | haltedb | === STARTING FULL SYNC ===
+2026-04-22 16:25:18 | INFO     | haltedb | --- Phase 1: Inventory Sync ---
+2026-04-22 16:25:20 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-22 16:25:21 | INFO     | haltedb | Requesting Ledger Inventory Report from Amazon...
+2026-04-22 16:25:22 | INFO     | httpx | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-22 16:25:22 | INFO     | haltedb | Report requested! ID: 109941020565. Polling...
+2026-04-22 16:25:37 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109941020565 "HTTP/1.1 200 "
+2026-04-22 16:25:37 | INFO     | haltedb |   Polling inventory report: DONE
+2026-04-22 16:25:38 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.c9f7e989-fd85-4328-ab6e-1dd6c59acee9.TE7TL7XQ2RW4G.18200 "HTTP/1.1 200 "
+2026-04-22 16:25:38 | INFO     | haltedb | Downloading & parsing inventory ledger data...
+2026-04-22 16:25:38 | INFO     | httpx | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/c9f7e989-fd85-4328-ab6e-1dd6c59acee9.amzn1.tortuga.4.eu.TE7TL7XQ2RW4G?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260422T105537Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260422%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=62ec277be9f062acbf354fa7a53e91e5b0f327921fd718dd9beeff47a29595d6 "HTTP/1.1 200 OK"
+2026-04-22 16:25:49 | INFO     | haltedb | Inventory sync complete!
+2026-04-22 16:25:49 | INFO     | haltedb | --- Phase 2: Incremental Orders Sync ---
+2026-04-22 16:25:51 | INFO     | haltedb | \u23f0 Scheduled sync triggered (every 3600s)
+2026-04-22 16:25:51 | INFO     | haltedb | Skipping scheduled full sync because another sync is already running.
+2026-04-22 16:25:52 | INFO     | haltedb | Incremental orders sync: 2026-04-19T10:55:52+00:00 \u2192 2026-04-22T10:55:52+00:00
+2026-04-22 16:25:54 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-22 16:25:55 | INFO     | haltedb | Requesting Orders from 2026-04-19 to 2026-04-22...
+2026-04-22 16:25:56 | INFO     | httpx | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-22 16:26:12 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109942020565 "HTTP/1.1 200 "
+2026-04-22 16:26:12 | INFO     | haltedb |   Polling orders report: DONE
+2026-04-22 16:26:12 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.e3e75148-a587-4118-b86e-75fbbb1c9760.T3LPREZCL3UFCZ.2409 "HTTP/1.1 200 "
+2026-04-22 16:26:13 | INFO     | httpx | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/e3e75148-a587-4118-b86e-75fbbb1c9760.amzn1.tortuga.4.eu.T3LPREZCL3UFCZ?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260422T105612Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260422%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=6850f4b08dc13749e7bc2f23e35cc3558e4d3c540e901f90bf4fbd62a71a1460 "HTTP/1.1 200 OK"
+2026-04-22 16:26:18 | INFO     | haltedb | Orders synced up to 2026-04-22!
+2026-04-22 16:26:19 | INFO     | haltedb | Incremental orders sync complete!
+2026-04-22 16:26:19 | INFO     | haltedb | --- Phase 3: Product Specifications Sync ---
+2026-04-22 16:26:22 | INFO     | haltedb | Skipped 1 SKUs with invalid ASINs while syncing product specs.
+2026-04-22 16:26:22 | INFO     | haltedb | Fetching specs for 12 missing SKUs from SP-API Catalog...
+2026-04-22 16:26:24 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-22 16:26:26 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/catalog/2022-04-01/items?marketplaceIds=A21TJRUUN4KGV&identifiers=B07YDNQCKD%2CB084Z7J4P6%2CB084QFY5ZY%2CB0DMJNB9R9%2CB08HMT2V7Y%2CB08PMG4F1K%2CB076WVBF8G%2CB0DGDBXFZN%2CB0CTHPRMCM%2CB0CX1W9HKR%2CB08KGCLSZ3%2CB0FJFRV96W&identifiersType=ASIN&includedData=dimensions "HTTP/1.1 200 "
+2026-04-22 16:26:26 | INFO     | haltedb | Specs batch 1: saved 0 items
+2026-04-22 16:26:27 | INFO     | haltedb | Product specifications sync complete.
+2026-04-22 16:26:27 | INFO     | haltedb | --- Phase 4: Shipment Cost Sync ---
+2026-04-22 16:26:32 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-22 16:26:33 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-2594620-7175554/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:26:36 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/406-9272337-9363569/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:26:38 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/406-4873826-5679560/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:26:41 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/402-0480053-2174754/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:26:43 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-7449294-4847548/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:26:46 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/406-0229324-8900305/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:26:48 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/402-7912024-1787568/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:26:51 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-9045817-9680344/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:26:53 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/403-0497002-1608314/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:26:56 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/402-8076404-1033117/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:26:58 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-3277095-9218765/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:01 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/406-2538780-9041910/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:03 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-7008045-9213967/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:05 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/406-7947898-2641931/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:08 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-4500582-3941966/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:10 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-4157770-0077109/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:13 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-8201610-0532318/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:15 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-5298132-3726764/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:18 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-1776634-0380309/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:20 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-0349626-5023506/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:23 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-8201427-4196339/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:25 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-9183758-8877151/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:27 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/407-6570716-8199552/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:30 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/407-8279996-6148361/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:32 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/406-3410293-3373168/financialEvents "HTTP/1.1 200 "
+2026-04-22 16:27:35 | INFO     | httpx | HTTP Request: POST https://apiv2.shiprocket.in/v1/external/auth/login "HTTP/1.1 200 OK"
+2026-04-22 16:27:35 | INFO     | shiprocket | Shiprocket token refreshed
+2026-04-22 16:27:37 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=585401&weight=20.8&cod=0&declared_value=500&length=65&breadth=40&height=40 "HTTP/1.1 200 OK"
+2026-04-22 16:27:39 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=585401&weight=20.8&cod=0&declared_value=500&length=65&breadth=40&height=40 "HTTP/1.1 200 OK"
+2026-04-22 16:27:40 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=110057&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:27:51 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=600118&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:03 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=382415&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:05 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=570018&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:07 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=736101&weight=0.303&cod=0&declared_value=500&length=22&breadth=19&height=4 "HTTP/1.1 200 OK"
+2026-04-22 16:28:16 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=160030&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:18 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=410506&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:27 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=410221&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:33 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=613005&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:35 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=591240&weight=48.0&cod=0&declared_value=500&length=71&breadth=60&height=37 "HTTP/1.1 200 OK"
+2026-04-22 16:28:37 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400006&weight=54.0&cod=0&declared_value=500&length=75&breadth=60&height=60 "HTTP/1.1 200 OK"
+2026-04-22 16:28:40 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=560087&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:42 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=332709&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:47 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=201304&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:50 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=174305&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:54 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=695003&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:28:57 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=227409&weight=48.0&cod=0&declared_value=500&length=71&breadth=60&height=37 "HTTP/1.1 200 OK"
+2026-04-22 16:29:01 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=509401&weight=0.621&cod=0&declared_value=500&length=24&breadth=6&height=6 "HTTP/1.1 200 OK"
+2026-04-22 16:29:07 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400701&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:10 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=132001&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:16 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=181133&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:18 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=560017&weight=0.1&cod=0&declared_value=500&length=15&breadth=10&height=3 "HTTP/1.1 200 OK"
+2026-04-22 16:29:20 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=700094&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:22 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=600099&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:29 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=641603&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:32 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=411043&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:33 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400059&weight=0.1&cod=0&declared_value=500&length=17&breadth=8&height=3 "HTTP/1.1 200 OK"
+2026-04-22 16:29:38 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=571421&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:40 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=734429&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:42 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=517505&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:44 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=751018&weight=0.1&cod=0&declared_value=500&length=13&breadth=8&height=4 "HTTP/1.1 200 OK"
+2026-04-22 16:29:46 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=411021&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:48 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=140603&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:51 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=110065&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:53 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=798626&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:29:56 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=182204&weight=0.1&cod=0&declared_value=500&length=17&breadth=9&height=3 "HTTP/1.1 200 OK"
+2026-04-22 16:29:57 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=182204&weight=0.1&cod=0&declared_value=500&length=15&breadth=3&height=3 "HTTP/1.1 200 OK"
+2026-04-22 16:30:02 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=123001&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:30:09 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=364001&weight=2.971&cod=0&declared_value=500&length=48&breadth=19&height=17 "HTTP/1.1 200 OK"
+2026-04-22 16:30:14 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=500003&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:30:15 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400006&weight=54.0&cod=0&declared_value=500&length=75&breadth=60&height=60 "HTTP/1.1 200 OK"
+2026-04-22 16:30:17 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400050&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 16:30:24 | INFO     | haltedb | Recalculated profitability for 86 order row(s)
+2026-04-22 16:30:24 | INFO     | haltedb | Shipment sync complete: 150 rows refreshed (44 Shiprocket, 0 fallback, 38 Amazon actual)
+2026-04-22 16:30:24 | INFO     | haltedb | === FULL SYNC COMPLETE ===
+2026-04-22 17:25:51 | INFO     | haltedb | \u23f0 Scheduled sync triggered (every 3600s)
+2026-04-22 17:25:51 | INFO     | haltedb | === STARTING FULL SYNC ===
+2026-04-22 17:25:51 | INFO     | haltedb | --- Phase 1: Inventory Sync ---
+2026-04-22 17:25:53 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-22 17:25:54 | INFO     | haltedb | Requesting Ledger Inventory Report from Amazon...
+2026-04-22 17:25:55 | INFO     | httpx | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 429 "
+2026-04-22 17:25:55 | ERROR    | haltedb | Amazon Inventory Report request rejected: {
+  "errors": [
+    {
+      "code": "QuotaExceeded",
+      "message": "You exceeded your quota for the requested resource.",
+      "details": ""
+    }
+  ]
+}
+2026-04-22 17:25:55 | ERROR    | haltedb | Phase 1: Inventory Sync failed
+Traceback (most recent call last):
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 2115, in _run_phase
+    await runner(session)
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 126, in run_inventory_sync_job
+    res.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_models.py", line 829, in raise_for_status
+    raise HTTPStatusError(message, request=request, response=self)
+httpx.HTTPStatusError: Client error '429 ' for url 'https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
+2026-04-22 17:25:55 | INFO     | haltedb | --- Phase 2: Incremental Orders Sync ---
+2026-04-22 17:25:59 | INFO     | haltedb | Incremental orders sync: 2026-04-19T11:55:59+00:00 \u2192 2026-04-22T11:55:59+00:00
+2026-04-22 17:26:01 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-22 17:26:02 | INFO     | haltedb | Requesting Orders from 2026-04-19 to 2026-04-22...
+2026-04-22 17:26:03 | INFO     | httpx | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-22 17:26:18 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109945020565 "HTTP/1.1 200 "
+2026-04-22 17:26:18 | INFO     | haltedb |   Polling orders report: IN_PROGRESS
+2026-04-22 17:26:34 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109945020565 "HTTP/1.1 200 "
+2026-04-22 17:26:34 | INFO     | haltedb |   Polling orders report: IN_PROGRESS
+2026-04-22 17:26:50 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/109945020565 "HTTP/1.1 200 "
+2026-04-22 17:26:50 | INFO     | haltedb |   Polling orders report: DONE
+2026-04-22 17:26:51 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.93e0fc76-db62-4d13-9c9a-ec326adc925c.T3JGDZKH8H02LK.2409 "HTTP/1.1 200 "
+2026-04-22 17:26:52 | INFO     | httpx | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/93e0fc76-db62-4d13-9c9a-ec326adc925c.amzn1.tortuga.4.eu.T3JGDZKH8H02LK?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260422T115650Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260422%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=fe43499c00dfe4f8bc5151cc9a8a67f0728c7793a2ae36753e7d655e11e336ea "HTTP/1.1 200 OK"
+2026-04-22 17:26:58 | INFO     | haltedb | Orders synced up to 2026-04-22!
+2026-04-22 17:26:59 | INFO     | haltedb | Incremental orders sync complete!
+2026-04-22 17:26:59 | INFO     | haltedb | --- Phase 3: Product Specifications Sync ---
+2026-04-22 17:27:02 | INFO     | haltedb | Skipped 1 SKUs with invalid ASINs while syncing product specs.
+2026-04-22 17:27:02 | INFO     | haltedb | Fetching specs for 12 missing SKUs from SP-API Catalog...
+2026-04-22 17:27:04 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-22 17:27:06 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/catalog/2022-04-01/items?marketplaceIds=A21TJRUUN4KGV&identifiers=B07YDNQCKD%2CB084Z7J4P6%2CB084QFY5ZY%2CB0DMJNB9R9%2CB08HMT2V7Y%2CB08PMG4F1K%2CB076WVBF8G%2CB0DGDBXFZN%2CB0CTHPRMCM%2CB0CX1W9HKR%2CB08KGCLSZ3%2CB0FJFRV96W&identifiersType=ASIN&includedData=dimensions "HTTP/1.1 200 "
+2026-04-22 17:27:06 | INFO     | haltedb | Specs batch 1: saved 0 items
+2026-04-22 17:27:06 | INFO     | haltedb | Product specifications sync complete.
+2026-04-22 17:27:06 | INFO     | haltedb | --- Phase 4: Shipment Cost Sync ---
+2026-04-22 17:27:12 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-22 17:27:13 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/402-7261122-0698708/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:16 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-3768519-7522727/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:18 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/406-6087119-6849914/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:21 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/407-0113349-2997902/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:23 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/406-9044770-6376307/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:26 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/403-4465377-8865961/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:28 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/407-2718246-6020369/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:31 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-2581051-1938712/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:33 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-7011376-3397104/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:35 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/403-9790143-5152359/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:38 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-0830108-3630709/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:40 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/403-5257290-3875547/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:43 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/407-2110544-1497113/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:45 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-6533853-7525159/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:48 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-8544671-5548352/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:51 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-2085918-3087568/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:53 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/403-4136633-6942737/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:56 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-5217515-0233957/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:27:58 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/407-1103008-8391519/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:28:01 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-1806166-8925913/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:28:03 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/407-0218645-6332355/financialEvents "HTTP/1.1 429 "
+2026-04-22 17:28:03 | WARNING  | haltedb | Finance lookup throttled for 407-0218645-6332355; retrying in 2.1s (1/3)
+2026-04-22 17:28:05 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/407-0218645-6332355/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:28:08 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-1889467-5794757/financialEvents "HTTP/1.1 429 "
+2026-04-22 17:28:08 | WARNING  | haltedb | Finance lookup throttled for 405-1889467-5794757; retrying in 2.1s (1/3)
+2026-04-22 17:28:10 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-1889467-5794757/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:28:13 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-4650382-8437104/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:28:15 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-2499649-3209114/financialEvents "HTTP/1.1 200 "
+2026-04-22 17:28:18 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-3201591-5931563/financialEvents "HTTP/1.1 429 "
+2026-04-22 17:28:18 | WARNING  | haltedb | Finance lookup throttled for 408-3201591-5931563; retrying in 2.1s (1/3)
+2026-04-22 17:28:20 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-3201591-5931563/financialEvents "HTTP/1.1 429 "
+2026-04-22 17:28:20 | WARNING  | haltedb | Finance lookup throttled for 408-3201591-5931563; retrying in 4.2s (2/3)
+2026-04-22 17:28:25 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-3201591-5931563/financialEvents "HTTP/1.1 429 "
+2026-04-22 17:28:25 | WARNING  | haltedb | Finance lookup throttled for 408-3201591-5931563; retrying in 8.4s (3/3)
+2026-04-22 17:28:34 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-3201591-5931563/financialEvents "HTTP/1.1 429 "
+2026-04-22 17:28:34 | WARNING  | haltedb | Finance lookup failed for 408-3201591-5931563: 429 {
+  "errors": [
+    {
+      "code": "QuotaExceeded",
+      "message": "You exceeded your quota for the requested resource.",
+      "details": ""
+    }
+  ]
+}
+2026-04-22 17:28:38 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=321001&weight=0.1&cod=0&declared_value=500&length=15&breadth=3&height=3 "HTTP/1.1 200 OK"
+2026-04-22 17:28:40 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=380059&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:28:44 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=562109&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:28:52 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=691537&weight=16.8&cod=0&declared_value=500&length=140&breadth=30&height=20 "HTTP/1.1 200 OK"
+2026-04-22 17:29:06 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=841226&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:29:08 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=600119&weight=48.0&cod=0&declared_value=500&length=71&breadth=60&height=37 "HTTP/1.1 200 OK"
+2026-04-22 17:29:10 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400006&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:29:14 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=388120&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:29:22 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=500016&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:29:29 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=364001&weight=2.971&cod=0&declared_value=500&length=48&breadth=19&height=17 "HTTP/1.1 200 OK"
+2026-04-22 17:29:31 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=382025&weight=0.1&cod=0&declared_value=500&length=13&breadth=8&height=4 "HTTP/1.1 200 OK"
+2026-04-22 17:29:34 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=506170&weight=16.8&cod=0&declared_value=500&length=140&breadth=30&height=20 "HTTP/1.1 200 OK"
+2026-04-22 17:29:37 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=141109&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:29:39 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=516228&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:29:42 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=600122&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:29:52 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=303303&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:29:57 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400601&weight=0.1&cod=0&declared_value=500&length=17&breadth=9&height=3 "HTTP/1.1 200 OK"
+2026-04-22 17:29:59 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=500018&weight=0.1&cod=0&declared_value=500&length=20&breadth=10&height=2 "HTTP/1.1 200 OK"
+2026-04-22 17:30:06 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=560087&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:30:09 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=462026&weight=54.0&cod=0&declared_value=500&length=75&breadth=60&height=60 "HTTP/1.1 200 OK"
+2026-04-22 17:30:13 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=700019&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:30:15 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=700054&weight=0.1&cod=0&declared_value=500&length=15&breadth=10&height=3 "HTTP/1.1 200 OK"
+2026-04-22 17:30:18 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=791001&weight=33.66&cod=0&declared_value=500&length=187&breadth=30&height=30 "HTTP/1.1 200 OK"
+2026-04-22 17:30:22 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=384001&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:30:26 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400059&weight=0.1&cod=0&declared_value=500&length=15&breadth=10&height=3 "HTTP/1.1 200 OK"
+2026-04-22 17:30:27 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=453112&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:30:30 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=382721&weight=1.391&cod=0&declared_value=500&length=38&breadth=31&height=6 "HTTP/1.1 200 OK"
+2026-04-22 17:30:33 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=462026&weight=54.0&cod=0&declared_value=500&length=75&breadth=60&height=60 "HTTP/1.1 200 OK"
+2026-04-22 17:30:35 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=791001&weight=33.66&cod=0&declared_value=500&length=187&breadth=30&height=30 "HTTP/1.1 200 OK"
+2026-04-22 17:30:42 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=110048&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:30:46 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400039&weight=0.269&cod=0&declared_value=500&length=30&breadth=13&height=4 "HTTP/1.1 200 OK"
+2026-04-22 17:30:48 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=190014&weight=0.1&cod=0&declared_value=500&length=20&breadth=10&height=2 "HTTP/1.1 200 OK"
+2026-04-22 17:30:50 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=190001&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:30:52 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=796310&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:30:54 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=570017&weight=0.1&cod=0&declared_value=500&length=15&breadth=10&height=3 "HTTP/1.1 200 OK"
+2026-04-22 17:30:55 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=523326&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:30:58 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=796017&weight=55.0&cod=0&declared_value=500&length=85&breadth=58&height=30 "HTTP/1.1 200 OK"
+2026-04-22 17:31:01 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=629802&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:31:07 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=110049&weight=11.529&cod=0&declared_value=500&length=40&breadth=39&height=37 "HTTP/1.1 200 OK"
+2026-04-22 17:31:08 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=110049&weight=0.1&cod=0&declared_value=500&length=13&breadth=8&height=4 "HTTP/1.1 200 OK"
+2026-04-22 17:31:10 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=686510&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:31:16 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=272205&weight=7.825&cod=0&declared_value=500&length=46&breadth=35&height=24 "HTTP/1.1 200 OK"
+2026-04-22 17:31:17 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=560016&weight=0.1&cod=0&declared_value=500&length=13&breadth=8&height=4 "HTTP/1.1 200 OK"
+2026-04-22 17:31:20 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=742225&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:31:21 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=751006&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-22 17:31:26 | INFO     | haltedb | Recalculated profitability for 99 order row(s)
+2026-04-22 17:31:26 | INFO     | haltedb | Shipment sync complete: 150 rows refreshed (45 Shiprocket, 0 fallback, 50 Amazon actual)
+2026-04-22 17:31:26 | INFO     | haltedb | === FULL SYNC COMPLETE ===

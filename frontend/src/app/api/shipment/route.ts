@@ -101,7 +101,7 @@ export async function GET(req: NextRequest) {
             0
           ) - COALESCE(se.cheapest_cost, 0),
           0
-        )::numeric, 2) as total_potential_savings
+        ))::numeric, 2) as total_potential_savings
       FROM shipment_estimates se
       LEFT JOIN orders o
         ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku

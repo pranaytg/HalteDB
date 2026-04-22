@@ -1,0 +1,16 @@
+============================================================
+BULK SHIPPING COST RE-FETCH
+============================================================
+Date filter: purchase_date >= 2026-01-01
+
+Orders remaining to process: 1598
+Already updated (sp_api_finance): 2093
+  Amazon-fulfilled (remaining): 1117
+  Merchant-fulfilled: 481
+
+============================================================
+PART 1: SP-API Finance for Amazon-fulfilled orders
+============================================================
+Unique order IDs to query: 1078
+  [460/1078] Committed 80 referral-fee updates (total success: 80)
+  [571/1078] Committed 80 referral-fee updates (total success: 160)

@@ -1,0 +1,8 @@
+INFO:     127.0.0.1:52405 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52406 - "POST /sync-all HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65415 - "GET /sync-status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56528 - "GET /sync-status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58416 - "GET /sync-status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63169 - "GET /sync-status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58344 - "GET /sync-status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56241 - "GET /sync-invoices/status HTTP/1.1" 200 OK
