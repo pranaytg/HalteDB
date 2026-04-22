@@ -479,11 +479,13 @@ async def run_incremental_orders_sync(session: AsyncSession):
     now = datetime.now(timezone.utc).replace(microsecond=0)
 
     if meta.last_orders_sync:
-        # Fetch from last sync, with 1-hour overlap for safety
-        start_time = meta.last_orders_sync - timedelta(hours=1)
+        # Always look back at least 3 days so status changes
+        # (Pending → Shipped, Cancelled, etc.) on recent orders get re-synced.
+        lookback_start = now - timedelta(days=3)
+        start_time = min(meta.last_orders_sync - timedelta(hours=1), lookback_start)
     else:
-        # First run: fetch last 2 days
-        start_time = now - timedelta(days=2)
+        # First run: fetch last 3 days
+        start_time = now - timedelta(days=3)
 
     logger.info(f"Incremental orders sync: {start_time.isoformat()} → {now.isoformat()}")
 
