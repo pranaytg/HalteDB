@@ -18,13 +18,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        'customers',
-        sa.Column('channel', sa.String(), nullable=False, server_default='website'),
+    op.execute(
+        "ALTER TABLE customers ADD COLUMN IF NOT EXISTS channel VARCHAR "
+        "DEFAULT 'website' NOT NULL"
     )
-    op.create_index('ix_customers_channel', 'customers', ['channel'])
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_customers_channel ON customers (channel)"
+    )
 
 
 def downgrade() -> None:
-    op.drop_index('ix_customers_channel', table_name='customers')
-    op.drop_column('customers', 'channel')
+    op.execute("DROP INDEX IF EXISTS ix_customers_channel")
+    op.execute("ALTER TABLE customers DROP COLUMN IF EXISTS channel")

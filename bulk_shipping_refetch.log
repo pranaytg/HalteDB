@@ -14,3 +14,50 @@ PART 1: SP-API Finance for Amazon-fulfilled orders
 Unique order IDs to query: 1078
   [460/1078] Committed 80 referral-fee updates (total success: 80)
   [571/1078] Committed 80 referral-fee updates (total success: 160)
+  [669/1078] Committed 80 referral-fee updates (total success: 240)
+  [775/1078] Committed 80 referral-fee updates (total success: 320)
+  [878/1078] Committed 80 referral-fee updates (total success: 400)
+  [993/1078] Committed 80 referral-fee updates (total success: 480)
+  Final shipping batch: 6 updates
+  Final referral-fee batch: 61 updates
+
+  SP-API results:
+    Shipping successful:   6
+    Referral fee captured: 541
+    No data:    1111
+    Previously done: 2093
+    Total SP-API success: 2099
+
+============================================================
+PART 2: Shiprocket live rates for Merchant-fulfilled orders
+============================================================
+  [52/481] Committed 50 (success: 50)
+  [102/481] Committed 50 (success: 100)
+  Shiprocket API status=404 msg=No Courier serviceable for entered pincodes.
+  [153/481] Committed 50 (success: 150)
+  Shiprocket API status=404 msg=No Courier serviceable for entered pincodes.
+  Shiprocket API status=404 msg=serviceable courier not found between postcode
+  [206/481] Committed 50 (success: 200)
+  [256/481] Committed 50 (success: 250)
+  [307/481] Committed 50 (success: 300)
+  [357/481] Committed 50 (success: 350)
+  Shiprocket API status=404 msg=No Courier serviceable for entered pincodes.
+  [408/481] Committed 50 (success: 400)
+  [458/481] Committed 50 (success: 450)
+
+  Shiprocket results:
+    Successful: 473
+    Failed:     8
+
+============================================================
+FINAL SUMMARY
+============================================================
+Amazon-fulfilled (total 3210):
+  SP-API Finance success: 2099
+  No data (pending/unsettled): 1111
+
+Merchant-fulfilled (481):
+  Shiprocket live success: 473
+  Shiprocket failed:       8
+
+Overall: 2572/3691 updated with real prices (69.7%)

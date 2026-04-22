@@ -6,3 +6,4 @@ INFO:     127.0.0.1:58416 - "GET /sync-status HTTP/1.1" 200 OK
 INFO:     127.0.0.1:63169 - "GET /sync-status HTTP/1.1" 200 OK
 INFO:     127.0.0.1:58344 - "GET /sync-status HTTP/1.1" 200 OK
 INFO:     127.0.0.1:56241 - "GET /sync-invoices/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56391 - "GET /sync-status HTTP/1.1" 200 OK

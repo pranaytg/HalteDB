@@ -18,8 +18,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('orders', sa.Column('amazon_fee', sa.Float(), nullable=True))
+    op.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS amazon_fee DOUBLE PRECISION")
 
 
 def downgrade() -> None:
-    op.drop_column('orders', 'amazon_fee')
+    op.execute("ALTER TABLE orders DROP COLUMN IF EXISTS amazon_fee")
