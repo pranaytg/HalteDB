@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { getCityTier } from "@/lib/cityTiers";
-import { normalizedSkuExpr } from "@/lib/skuNormalize";
+import { normalizedSkuExpr, estimatedCogsLateralJoin } from "@/lib/skuNormalize";
 import { stateMatchKeys, stateNormalizeSqlExpr } from "@/lib/stateNormalize";
 
 const NORM_SKU = normalizedSkuExpr("orders.sku");
 const NORM_STATE = stateNormalizeSqlExpr("orders.ship_state");
+
+// Matches Cancelled, CANCELLED, Returned, RETURNED, RTO, "Shipped - Returned to Seller", etc.
+const RETURN_LIKE = "LOWER(COALESCE(orders.order_status, '')) ~ '(cancel|return|rto)'";
+const REVENUE_EXPR = `CASE WHEN ${RETURN_LIKE} THEN 0 ELSE orders.item_price END`;
+const UNITS_EXPR = `CASE WHEN ${RETURN_LIKE} THEN 0 ELSE orders.quantity END`;
+// For return-like rows the recalc stored in orders.profit may be stale (it only caught exact
+// 'Cancelled'/'Returned'). Recompute -2 * shipping inline to match the Profitability rule.
+const PROFIT_EXPR = `CASE WHEN ${RETURN_LIKE} THEN -2 * COALESCE(orders.shipping_price, 0) ELSE COALESCE(orders.profit, 0) END`;
+const ACTIVE_COUNT_EXPR = `COUNT(*) FILTER (WHERE NOT (${RETURN_LIKE}))`;
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,7 +32,7 @@ export async function GET(req: NextRequest) {
     /* ── Build dynamic WHERE ── */
     const conditions: string[] = [
       "orders.purchase_date IS NOT NULL",
-      "orders.order_status NOT IN ('Cancelled', 'Returned')",
+      "orders.item_price > 0",
       "orders.amazon_order_id NOT LIKE 'ORD-%'",
     ];
     const params: (string | number)[] = [];
@@ -77,24 +86,15 @@ export async function GET(req: NextRequest) {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const fromClause = `FROM orders LEFT JOIN estimated_cogs ec ON LOWER(
-      CASE
-        WHEN orders.sku ~ E' \\\\d+$' THEN REGEXP_REPLACE(orders.sku, E' \\\\d+$', '')
-        WHEN orders.sku ~ E'-[A-Za-z]$' THEN REGEXP_REPLACE(orders.sku, E'-[A-Za-z]$', '')
-        WHEN orders.sku ~ E'-\\\\d+$' THEN REGEXP_REPLACE(orders.sku, E'-\\\\d+$', '')
-        WHEN orders.sku ~ E'x\\\\d+$' THEN REGEXP_REPLACE(orders.sku, E'x\\\\d+$', '')
-        WHEN orders.sku ~ E'\\\\.\\\\d+x?$' THEN REGEXP_REPLACE(orders.sku, E'\\\\.\\\\d+x?$', '')
-        ELSE orders.sku
-      END
-    ) = LOWER(ec.sku)`;
+    const fromClause = `FROM orders ${estimatedCogsLateralJoin("orders")}`;
 
     // Monthly aggregated
     const monthlyResult = await pool.query(`
       SELECT TO_CHAR(orders.purchase_date, 'YYYY-MM') as month,
-             COUNT(*) as total_orders,
-             COALESCE(SUM(orders.item_price), 0) as total_revenue,
-             COALESCE(SUM(orders.profit), 0) as total_profit,
-             COALESCE(SUM(orders.quantity), 0) as total_units
+             ${ACTIVE_COUNT_EXPR} as total_orders,
+             COALESCE(SUM(${REVENUE_EXPR}), 0) as total_revenue,
+             COALESCE(SUM(${PROFIT_EXPR}), 0) as total_profit,
+             COALESCE(SUM(${UNITS_EXPR}), 0) as total_units
       ${fromClause} ${where}
       GROUP BY TO_CHAR(orders.purchase_date, 'YYYY-MM')
       ORDER BY month ASC
@@ -103,10 +103,10 @@ export async function GET(req: NextRequest) {
     // SKU-wise summary (variants collapsed to base SKU)
     const skuResult = await pool.query(`
       SELECT ${NORM_SKU} as sku,
-             COUNT(*) as total_orders,
-             COALESCE(SUM(orders.item_price), 0) as total_revenue,
-             COALESCE(SUM(orders.profit), 0) as total_profit,
-             COALESCE(SUM(orders.quantity), 0) as total_units
+             ${ACTIVE_COUNT_EXPR} as total_orders,
+             COALESCE(SUM(${REVENUE_EXPR}), 0) as total_revenue,
+             COALESCE(SUM(${PROFIT_EXPR}), 0) as total_profit,
+             COALESCE(SUM(${UNITS_EXPR}), 0) as total_units
       ${fromClause} ${where}
       GROUP BY ${NORM_SKU}
       ORDER BY total_revenue DESC
@@ -116,9 +116,9 @@ export async function GET(req: NextRequest) {
     // Daily sales for the last 30 days (also filtered)
     const dailyResult = await pool.query(`
       SELECT TO_CHAR(orders.purchase_date, 'YYYY-MM-DD') as date,
-             COUNT(*) as total_orders,
-             COALESCE(SUM(orders.item_price), 0) as total_revenue,
-             COALESCE(SUM(orders.profit), 0) as total_profit
+             ${ACTIVE_COUNT_EXPR} as total_orders,
+             COALESCE(SUM(${REVENUE_EXPR}), 0) as total_revenue,
+             COALESCE(SUM(${PROFIT_EXPR}), 0) as total_profit
       ${fromClause} ${where}
       ${conditions.length > 0 ? "AND" : "WHERE"} orders.purchase_date >= NOW() - INTERVAL '30 days'
       GROUP BY TO_CHAR(orders.purchase_date, 'YYYY-MM-DD')

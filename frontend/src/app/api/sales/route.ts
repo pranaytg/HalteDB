@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { getCityTier } from "@/lib/cityTiers";
-import { normalizedSkuExpr } from "@/lib/skuNormalize";
+import { normalizedSkuExpr, estimatedCogsLateralJoin } from "@/lib/skuNormalize";
 import { stateMatchKeys, stateNormalizeSqlExpr } from "@/lib/stateNormalize";
 
 const NORM_STATE = stateNormalizeSqlExpr("o.ship_state");
+
+// Matches Cancelled, CANCELLED, Returned, RETURNED, RTO, "Shipped - Returned to Seller", etc.
+const RETURN_LIKE = "LOWER(COALESCE(o.order_status, '')) ~ '(cancel|return|rto)'";
+const REVENUE_EXPR = `CASE WHEN ${RETURN_LIKE} THEN 0 ELSE o.item_price END`;
+const UNITS_EXPR = `CASE WHEN ${RETURN_LIKE} THEN 0 ELSE o.quantity END`;
+const PROFIT_EXPR = `CASE WHEN ${RETURN_LIKE} THEN -2 * COALESCE(o.shipping_price, 0) ELSE COALESCE(o.profit, 0) END`;
+const ROW_COGS_EXPR = `CASE WHEN ${RETURN_LIKE} THEN NULL ELSE o.cogs_price END`;
+const ACTIVE_COUNT_EXPR = `COUNT(*) FILTER (WHERE NOT (${RETURN_LIKE}))`;
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,7 +30,7 @@ export async function GET(req: NextRequest) {
     const brand = searchParams.get("brand");
 
     const conditions: string[] = [
-      "o.order_status NOT IN ('Cancelled', 'Returned')",
+      "o.item_price > 0",
       "o.amazon_order_id NOT LIKE 'ORD-%'",
     ];
     const params: (string | number)[] = [];
@@ -97,22 +105,15 @@ export async function GET(req: NextRequest) {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const fromClause = `FROM orders o LEFT JOIN estimated_cogs ec ON LOWER(
-      CASE
-        WHEN o.sku ~ E' \\\\d+$' THEN REGEXP_REPLACE(o.sku, E' \\\\d+$', '')
-        WHEN o.sku ~ E'-[A-Za-z]$' THEN REGEXP_REPLACE(o.sku, E'-[A-Za-z]$', '')
-        WHEN o.sku ~ E'-\\\\d+$' THEN REGEXP_REPLACE(o.sku, E'-\\\\d+$', '')
-        WHEN o.sku ~ E'x\\\\d+$' THEN REGEXP_REPLACE(o.sku, E'x\\\\d+$', '')
-        WHEN o.sku ~ E'\\\\.\\\\d+x?$' THEN REGEXP_REPLACE(o.sku, E'\\\\.\\\\d+x?$', '')
-        ELSE o.sku
-      END
-    ) = LOWER(ec.sku)`;
+    const fromClause = `FROM orders o ${estimatedCogsLateralJoin("o")}`;
 
     let query = `
       SELECT o.id, o.amazon_order_id, o.purchase_date, o.order_status,
              o.fulfillment_channel, o.sales_channel, o.sku, o.asin,
              o.quantity, o.currency, o.item_price, o.item_tax,
-             o.cogs_price, o.profit, o.ship_city, o.ship_state
+             ${ROW_COGS_EXPR} as cogs_price,
+             ${PROFIT_EXPR} as profit,
+             o.ship_city, o.ship_state
       ${fromClause}
       ${where}
     `;
@@ -131,11 +132,11 @@ export async function GET(req: NextRequest) {
     const summaryParams = params.slice(0, params.length - 2); // exclude limit/offset
     const summaryQuery = `
       SELECT
-        COUNT(*) as total_orders,
-        COALESCE(SUM(o.item_price), 0) as total_revenue,
-        COALESCE(SUM(o.profit), 0) as total_profit,
-        COALESCE(SUM(o.quantity), 0) as total_units,
-        COALESCE(AVG(o.profit), 0) as avg_profit_per_order
+        ${ACTIVE_COUNT_EXPR} as total_orders,
+        COALESCE(SUM(${REVENUE_EXPR}), 0) as total_revenue,
+        COALESCE(SUM(${PROFIT_EXPR}), 0) as total_profit,
+        COALESCE(SUM(${UNITS_EXPR}), 0) as total_units,
+        COALESCE(AVG(${PROFIT_EXPR}), 0) as avg_profit_per_order
       ${fromClause}
       ${where}
     `;

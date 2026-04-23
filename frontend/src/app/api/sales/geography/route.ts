@@ -9,6 +9,13 @@ import {
 
 const NORM_STATE = stateNormalizeSqlExpr("ship_state");
 
+// Matches Cancelled, CANCELLED, Returned, RETURNED, RTO, "Shipped - Returned to Seller", etc.
+const RETURN_LIKE = "LOWER(COALESCE(order_status, '')) ~ '(cancel|return|rto)'";
+const REVENUE_EXPR = `CASE WHEN ${RETURN_LIKE} THEN 0 ELSE item_price END`;
+const UNITS_EXPR = `CASE WHEN ${RETURN_LIKE} THEN 0 ELSE quantity END`;
+const PROFIT_EXPR = `CASE WHEN ${RETURN_LIKE} THEN -2 * COALESCE(shipping_price, 0) ELSE COALESCE(profit, 0) END`;
+const ACTIVE_COUNT_EXPR = `COUNT(*) FILTER (WHERE NOT (${RETURN_LIKE}))`;
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -22,7 +29,7 @@ export async function GET(req: NextRequest) {
     const endDate = searchParams.get("endDate");
 
     /* ── Build WHERE clause ── */
-    let where = "WHERE ship_city IS NOT NULL AND ship_city != '' AND order_status NOT IN ('Cancelled', 'Returned') AND amazon_order_id NOT LIKE 'ORD-%'";
+    let where = "WHERE ship_city IS NOT NULL AND ship_city != '' AND item_price > 0 AND amazon_order_id NOT LIKE 'ORD-%'";
     const params: (string | number)[] = [];
     let idx = 1;
 
@@ -101,10 +108,10 @@ export async function GET(req: NextRequest) {
     /* ── By State ── */
     const byStateQuery = `
       SELECT ship_state as state,
-             COUNT(*) as total_orders,
-             COALESCE(SUM(item_price), 0) as total_revenue,
-             COALESCE(SUM(profit), 0) as total_profit,
-             COALESCE(SUM(quantity), 0) as total_units
+             ${ACTIVE_COUNT_EXPR} as total_orders,
+             COALESCE(SUM(${REVENUE_EXPR}), 0) as total_revenue,
+             COALESCE(SUM(${PROFIT_EXPR}), 0) as total_profit,
+             COALESCE(SUM(${UNITS_EXPR}), 0) as total_units
       FROM orders ${where}
       AND ship_state IS NOT NULL AND ship_state != ''
       GROUP BY ship_state
@@ -115,10 +122,10 @@ export async function GET(req: NextRequest) {
     /* ── By City ── */
     const byCityQuery = `
       SELECT ship_city as city, ship_state as state,
-             COUNT(*) as total_orders,
-             COALESCE(SUM(item_price), 0) as total_revenue,
-             COALESCE(SUM(profit), 0) as total_profit,
-             COALESCE(SUM(quantity), 0) as total_units
+             ${ACTIVE_COUNT_EXPR} as total_orders,
+             COALESCE(SUM(${REVENUE_EXPR}), 0) as total_revenue,
+             COALESCE(SUM(${PROFIT_EXPR}), 0) as total_profit,
+             COALESCE(SUM(${UNITS_EXPR}), 0) as total_units
       FROM orders ${where}
       GROUP BY ship_city, ship_state
       ORDER BY total_revenue DESC
@@ -158,10 +165,10 @@ export async function GET(req: NextRequest) {
     /* ── By Tier (aggregated from current filtered results) ── */
     const allCitiesQuery = `
       SELECT ship_city as city,
-             COUNT(*) as total_orders,
-             COALESCE(SUM(item_price), 0) as total_revenue,
-             COALESCE(SUM(profit), 0) as total_profit,
-             COALESCE(SUM(quantity), 0) as total_units
+             ${ACTIVE_COUNT_EXPR} as total_orders,
+             COALESCE(SUM(${REVENUE_EXPR}), 0) as total_revenue,
+             COALESCE(SUM(${PROFIT_EXPR}), 0) as total_profit,
+             COALESCE(SUM(${UNITS_EXPR}), 0) as total_units
       FROM orders ${where}
       GROUP BY ship_city
     `;

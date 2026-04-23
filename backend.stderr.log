@@ -1405,3 +1405,1137 @@ Traceback (most recent call last):
                ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 socket.gaierror: [Errno 11001] getaddrinfo failed
 2026-04-23 01:39:57 | INFO     | haltedb | === FULL SYNC COMPLETE ===
+2026-04-23 02:39:57 | INFO     | haltedb | \u23f0 Scheduled sync triggered (every 3600s)
+2026-04-23 02:39:57 | INFO     | haltedb | === STARTING FULL SYNC ===
+2026-04-23 02:39:57 | INFO     | haltedb | --- Phase 1: Inventory Sync ---
+2026-04-23 02:39:59 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-23 02:40:00 | INFO     | haltedb | Requesting Ledger Inventory Report from Amazon...
+2026-04-23 02:40:01 | INFO     | httpx | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-23 02:40:01 | INFO     | haltedb | Report requested! ID: 110043020565. Polling...
+2026-04-23 02:40:17 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/110043020565 "HTTP/1.1 200 "
+2026-04-23 02:40:17 | INFO     | haltedb |   Polling inventory report: DONE
+2026-04-23 02:40:17 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.24747235-f3cd-4253-aa86-ba34febc6c8c.T2GG8OTWKANU1D.18200 "HTTP/1.1 200 "
+2026-04-23 02:40:17 | INFO     | haltedb | Downloading & parsing inventory ledger data...
+2026-04-23 02:40:18 | INFO     | httpx | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/24747235-f3cd-4253-aa86-ba34febc6c8c.amzn1.tortuga.4.eu.T2GG8OTWKANU1D?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260422T211016Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260422%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=72795acf6f9f94221625ab6ebf939f5417d06a53dadcc798c9b0fa05fef5b43b "HTTP/1.1 200 OK"
+2026-04-23 02:40:26 | INFO     | haltedb | Inventory sync complete!
+2026-04-23 02:40:26 | INFO     | haltedb | --- Phase 2: Incremental Orders Sync ---
+2026-04-23 02:40:29 | INFO     | haltedb | Incremental orders sync: 2026-04-19T21:10:29+00:00 \u2192 2026-04-22T21:10:29+00:00
+2026-04-23 02:40:31 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-23 02:40:32 | INFO     | haltedb | Requesting Orders from 2026-04-19 to 2026-04-22...
+2026-04-23 02:40:33 | INFO     | httpx | HTTP Request: POST https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports "HTTP/1.1 202 "
+2026-04-23 02:40:49 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/110044020565 "HTTP/1.1 200 "
+2026-04-23 02:40:49 | INFO     | haltedb |   Polling orders report: IN_PROGRESS
+2026-04-23 02:41:05 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/reports/110044020565 "HTTP/1.1 200 "
+2026-04-23 02:41:05 | INFO     | haltedb |   Polling orders report: DONE
+2026-04-23 02:41:05 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/reports/2021-06-30/documents/amzn1.spdoc.1.4.eu.0eaf9b53-ac72-4ee8-9781-e99cd90acead.T25GD1U7YF2VJR.2409 "HTTP/1.1 200 "
+2026-04-23 02:41:06 | INFO     | httpx | HTTP Request: GET https://tortuga-prod-eu.s3-eu-west-1.amazonaws.com/0eaf9b53-ac72-4ee8-9781-e99cd90acead.amzn1.tortuga.4.eu.T25GD1U7YF2VJR?response-content-encoding=identity&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20260422T211104Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=AKIAX2ZVOZFBLR46OOVU%2F20260422%2Feu-west-1%2Fs3%2Faws4_request&X-Amz-Signature=269d219f1addcfee8ffcd5c40be427e736835b4cdd0f7dc12670497527e7357a "HTTP/1.1 200 OK"
+2026-04-23 02:41:12 | INFO     | haltedb | Auto-assigned COGS/profit to 1 orders
+2026-04-23 02:41:12 | INFO     | haltedb | Orders synced up to 2026-04-22!
+2026-04-23 02:41:15 | INFO     | haltedb | Incremental orders sync complete!
+2026-04-23 02:41:15 | INFO     | haltedb | --- Phase 3: Product Specifications Sync ---
+2026-04-23 02:41:18 | INFO     | haltedb | Skipped 1 SKUs with invalid ASINs while syncing product specs.
+2026-04-23 02:41:18 | INFO     | haltedb | Fetching specs for 12 missing SKUs from SP-API Catalog...
+2026-04-23 02:41:20 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-23 02:41:21 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/catalog/2022-04-01/items?marketplaceIds=A21TJRUUN4KGV&identifiers=B07YDNQCKD%2CB084Z7J4P6%2CB084QFY5ZY%2CB0DMJNB9R9%2CB08HMT2V7Y%2CB08PMG4F1K%2CB076WVBF8G%2CB0DGDBXFZN%2CB0CTHPRMCM%2CB0CX1W9HKR%2CB08KGCLSZ3%2CB0FJFRV96W&identifiersType=ASIN&includedData=dimensions "HTTP/1.1 200 "
+2026-04-23 02:41:22 | INFO     | haltedb | Specs batch 1: saved 0 items
+2026-04-23 02:41:22 | INFO     | haltedb | Product specifications sync complete.
+2026-04-23 02:41:22 | INFO     | haltedb | --- Phase 4: Shipment Cost Sync ---
+2026-04-23 02:41:27 | INFO     | httpx | HTTP Request: POST https://api.amazon.com/auth/o2/token "HTTP/1.1 200 OK"
+2026-04-23 02:41:29 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-0858014-3005101/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:41:32 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-6695385-7370714/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:41:34 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-9361880-3753956/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:41:37 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/402-8978595-2895545/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:41:39 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/402-2196866-8891538/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:41:42 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/403-0421734-7731564/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:41:44 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/402-5756920-9159538/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:41:47 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/402-7568507-8821138/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:41:50 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/402-6404446-8591516/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:41:52 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/403-5931318-3465158/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:41:55 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/403-0213169-9133968/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:41:57 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-8106461-6445120/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:00 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-0748841-8252304/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:02 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/404-1038943-7965146/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:05 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/171-2884635-2756320/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:08 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/406-4791859-4165112/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:10 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/405-5667948-6044360/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:13 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/406-3523764-6612340/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:16 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/407-2020322-2369935/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:18 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/404-8083926-3161922/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:21 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/402-3774587-0657140/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:23 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/408-0687633-6802758/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:26 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/403-4058681-0219507/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:29 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/407-6959546-8207548/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:31 | INFO     | httpx | HTTP Request: GET https://sellingpartnerapi-eu.amazon.com/finances/v0/orders/403-9216914-3070701/financialEvents "HTTP/1.1 200 "
+2026-04-23 02:42:37 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=577301&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:42:39 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=741150&weight=8.0&cod=0&declared_value=500&length=42&breadth=26&height=26 "HTTP/1.1 200 OK"
+2026-04-23 02:42:40 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=575002&weight=22.644&cod=0&declared_value=500&length=60&breadth=51&height=37 "HTTP/1.1 200 OK"
+2026-04-23 02:42:45 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=689123&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:42:47 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=689123&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:42:49 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=474006&weight=22.644&cod=0&declared_value=500&length=60&breadth=51&height=37 "HTTP/1.1 200 OK"
+2026-04-23 02:42:50 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=585225&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:42:52 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=585225&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:42:58 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400610&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:43:03 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=585225&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:43:05 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=585225&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:43:06 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=585225&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:43:08 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=500034&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:43:12 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=695015&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:43:14 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=695015&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:43:15 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=415208&weight=54.0&cod=0&declared_value=500&length=75&breadth=60&height=60 "HTTP/1.1 200 OK"
+2026-04-23 02:43:17 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=190002&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:43:19 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=531085&weight=33.66&cod=0&declared_value=500&length=187&breadth=30&height=30 "HTTP/1.1 200 OK"
+2026-04-23 02:43:33 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=560048&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:43:34 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=600100&weight=0.1&cod=0&declared_value=500&length=17&breadth=8&height=3 "HTTP/1.1 200 OK"
+2026-04-23 02:43:37 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=415208&weight=54.0&cod=0&declared_value=500&length=75&breadth=60&height=60 "HTTP/1.1 200 OK"
+2026-04-23 02:43:38 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=700145&weight=22.644&cod=0&declared_value=500&length=60&breadth=51&height=37 "HTTP/1.1 200 OK"
+2026-04-23 02:43:40 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=403507&weight=0.13&cod=0&declared_value=500&length=22&breadth=8&height=4 "HTTP/1.1 200 OK"
+2026-04-23 02:43:44 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=403401&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:43:45 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=140802&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:43:47 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400070&weight=22.644&cod=0&declared_value=500&length=60&breadth=51&height=37 "HTTP/1.1 200 OK"
+2026-04-23 02:43:54 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=721645&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:44:11 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=670301&weight=156.16&cod=0&declared_value=500&length=122&breadth=80&height=80 "HTTP/1.1 200 OK"
+2026-04-23 02:44:11 | WARNING  | shiprocket | Shiprocket rates API status=404 msg=No Courier serviceable for entered pincodes.
+2026-04-23 02:44:13 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=796181&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:44:15 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=176309&weight=6.48&cod=0&declared_value=500&length=90&breadth=20&height=18 "HTTP/1.1 200 OK"
+2026-04-23 02:44:16 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=110094&weight=39.2&cod=0&declared_value=500&length=70&breadth=70&height=40 "HTTP/1.1 200 OK"
+2026-04-23 02:44:18 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=686001&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:44:20 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=721654&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:44:25 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=744105&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:44:27 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=635802&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:44:29 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=518501&weight=55.0&cod=0&declared_value=500&length=85&breadth=58&height=30 "HTTP/1.1 200 OK"
+2026-04-23 02:44:33 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=641006&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:44:38 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=833201&weight=22.644&cod=0&declared_value=500&length=60&breadth=51&height=37 "HTTP/1.1 200 OK"
+2026-04-23 02:44:40 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=621711&weight=0.1&cod=0&declared_value=500&length=13&breadth=8&height=3 "HTTP/1.1 200 OK"
+2026-04-23 02:44:42 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=140802&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:44:47 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=795004&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:44:47 | WARNING  | shiprocket | Shiprocket rates API status=404 msg=serviceable courier not found between postcode
+2026-04-23 02:44:48 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=533005&weight=134.112&cod=0&declared_value=500&length=120&breadth=51&height=110 "HTTP/1.1 200 OK"
+2026-04-23 02:44:50 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=452016&weight=0.13&cod=0&declared_value=500&length=22&breadth=8&height=4 "HTTP/1.1 200 OK"
+2026-04-23 02:44:53 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=493889&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:44:56 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=177033&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:44:58 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=841417&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:45:00 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=121004&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:45:05 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=271801&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:45:07 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=641603&weight=0.1&cod=0&declared_value=500&length=13&breadth=8&height=3 "HTTP/1.1 200 OK"
+2026-04-23 02:45:09 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=271801&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:45:10 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=226025&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:45:15 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=767045&weight=0.1&cod=0&declared_value=500&length=13&breadth=8&height=3 "HTTP/1.1 200 OK"
+2026-04-23 02:45:16 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400072&weight=0.1&cod=0&declared_value=500&length=13&breadth=8&height=3 "HTTP/1.1 200 OK"
+2026-04-23 02:45:21 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=600056&weight=6.005&cod=0&declared_value=500&length=50&breadth=34&height=18 "HTTP/1.1 200 OK"
+2026-04-23 02:45:22 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=751003&weight=6.48&cod=0&declared_value=500&length=90&breadth=20&height=18 "HTTP/1.1 200 OK"
+2026-04-23 02:45:24 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=226025&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:45:26 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=421303&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:45:30 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=400702&weight=0.5&cod=0&declared_value=500 "HTTP/1.1 200 OK"
+2026-04-23 02:45:35 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=683102&weight=6.014&cod=0&declared_value=500&length=48&breadth=30&height=21 "HTTP/1.1 200 OK"
+2026-04-23 02:45:36 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=302012&weight=6.014&cod=0&declared_value=500&length=48&breadth=30&height=21 "HTTP/1.1 200 OK"
+2026-04-23 02:45:38 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=500004&weight=7.825&cod=0&declared_value=500&length=46&breadth=35&height=24 "HTTP/1.1 200 OK"
+2026-04-23 02:45:38 | WARNING  | shiprocket | Shiprocket: no matching carriers in 1 results. Names: India Post-Speed Post Air Prepaid
+2026-04-23 02:45:40 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=249185&weight=33.66&cod=0&declared_value=500&length=187&breadth=30&height=30 "HTTP/1.1 200 OK"
+2026-04-23 02:45:43 | INFO     | httpx | HTTP Request: GET https://apiv2.shiprocket.in/v1/external/courier/serviceability/?pickup_postcode=160012&delivery_postcode=585102&weight=20.931&cod=0&declared_value=500&length=64&breadth=42&height=39 "HTTP/1.1 200 OK"
+2026-04-23 02:45:47 | INFO     | haltedb | Recalculated profitability for 114 order row(s)
+2026-04-23 02:45:47 | INFO     | haltedb | Shipment sync complete: 150 rows refreshed (60 Shiprocket, 3 fallback, 44 Amazon actual)
+2026-04-23 02:45:47 | INFO     | haltedb | === FULL SYNC COMPLETE ===
+2026-04-23 07:17:52 | INFO     | haltedb | \u23f0 Scheduled sync triggered (every 3600s)
+2026-04-23 07:17:52 | INFO     | haltedb | === STARTING FULL SYNC ===
+2026-04-23 07:17:52 | INFO     | haltedb | --- Phase 1: Inventory Sync ---
+2026-04-23 07:17:53 | ERROR    | haltedb | Phase 1: Inventory Sync failed
+Traceback (most recent call last):
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_transports\default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_transports\default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_async\connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_async\connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        pool_request.request
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_async\connection.py", line 101, in handle_async_request
+    raise exc
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_async\connection.py", line 78, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_async\connection.py", line 124, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_backends\auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_backends\anyio.py", line 113, in connect_tcp
+    with map_exceptions(exc_map):
+         ~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Python313\Lib\contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ConnectError: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 2115, in _run_phase
+    await runner(session)
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 101, in run_inventory_sync_job
+    access_token = await get_amazon_access_token()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 81, in get_amazon_access_token
+    response = await client.post(auth_url, data=payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1859, in post
+    return await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<13 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_transports\default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+         ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Python313\Lib\contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-23 07:17:53 | INFO     | haltedb | --- Phase 2: Incremental Orders Sync ---
+2026-04-23 07:17:53 | ERROR    | haltedb | Phase 2: Incremental Orders Sync failed
+Traceback (most recent call last):
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 2115, in _run_phase
+    await runner(session)
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 479, in run_incremental_orders_sync
+    meta = await get_sync_meta(session)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\crud.py", line 137, in get_sync_meta
+    result = await session.execute(select(SyncMeta).where(SyncMeta.id == 1))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\ext\asyncio\session.py", line 463, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3273, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 145, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3297, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\impl.py", line 308, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 961, in connect
+    await_only(creator_fn(*arg, **kw)),
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connection.py", line 2421, in connect
+    return await connect_utils._connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<20 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1075, in _connect
+    raise last_error or exceptions.TargetServerAttributeNotMatched(
+    ...<2 lines>...
+    )
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1049, in _connect
+    conn = await _connect_addr(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 886, in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 931, in __connect_addr
+    tr, pr = await connector
+             ^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 802, in _create_ssl_connection
+    tr, pr = await loop.create_connection(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        host, port)
+        ^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1112, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        (host, port), family=family,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        type=socket.SOCK_STREAM, proto=proto, flags=flags, loop=self)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1495, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                  proto=proto, flags=flags)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 934, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "C:\Python313\Lib\socket.py", line 975, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+2026-04-23 07:17:53 | INFO     | haltedb | --- Phase 3: Product Specifications Sync ---
+2026-04-23 07:17:53 | ERROR    | haltedb | Phase 3: Product Specifications Sync failed
+Traceback (most recent call last):
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 2115, in _run_phase
+    await runner(session)
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 514, in run_product_specs_sync
+    result = await session.execute(sa_text("""
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    """))
+    ^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\ext\asyncio\session.py", line 463, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3273, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 145, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3297, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\impl.py", line 308, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 961, in connect
+    await_only(creator_fn(*arg, **kw)),
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connection.py", line 2421, in connect
+    return await connect_utils._connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<20 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1075, in _connect
+    raise last_error or exceptions.TargetServerAttributeNotMatched(
+    ...<2 lines>...
+    )
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1049, in _connect
+    conn = await _connect_addr(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 886, in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 931, in __connect_addr
+    tr, pr = await connector
+             ^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 802, in _create_ssl_connection
+    tr, pr = await loop.create_connection(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        host, port)
+        ^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1112, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        (host, port), family=family,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        type=socket.SOCK_STREAM, proto=proto, flags=flags, loop=self)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1495, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                  proto=proto, flags=flags)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 934, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "C:\Python313\Lib\socket.py", line 975, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+2026-04-23 07:17:53 | INFO     | haltedb | --- Phase 4: Shipment Cost Sync ---
+2026-04-23 07:17:53 | ERROR    | haltedb | Phase 4: Shipment Cost Sync failed
+Traceback (most recent call last):
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 2115, in _run_phase
+    await runner(session)
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 1104, in run_shipment_sync
+    orders_result = await session.execute(sa_text(f"""
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<34 lines>...
+    """), {"limit": SHIPMENT_SYNC_BATCH_SIZE})
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\ext\asyncio\session.py", line 463, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3273, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 145, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3297, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\impl.py", line 308, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 961, in connect
+    await_only(creator_fn(*arg, **kw)),
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connection.py", line 2421, in connect
+    return await connect_utils._connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<20 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1075, in _connect
+    raise last_error or exceptions.TargetServerAttributeNotMatched(
+    ...<2 lines>...
+    )
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1049, in _connect
+    conn = await _connect_addr(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 886, in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 931, in __connect_addr
+    tr, pr = await connector
+             ^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 802, in _create_ssl_connection
+    tr, pr = await loop.create_connection(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        host, port)
+        ^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1112, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        (host, port), family=family,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        type=socket.SOCK_STREAM, proto=proto, flags=flags, loop=self)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1495, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                  proto=proto, flags=flags)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 934, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "C:\Python313\Lib\socket.py", line 975, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+2026-04-23 07:17:53 | INFO     | haltedb | === FULL SYNC COMPLETE ===
+2026-04-23 22:27:54 | INFO     | haltedb | \u23f0 Scheduled sync triggered (every 3600s)
+2026-04-23 22:27:55 | INFO     | haltedb | === STARTING FULL SYNC ===
+2026-04-23 22:27:55 | INFO     | haltedb | --- Phase 1: Inventory Sync ---
+2026-04-23 22:27:56 | ERROR    | haltedb | Phase 1: Inventory Sync failed
+Traceback (most recent call last):
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_transports\default.py", line 101, in map_httpcore_exceptions
+    yield
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_transports\default.py", line 394, in handle_async_request
+    resp = await self._pool.handle_async_request(req)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_async\connection_pool.py", line 256, in handle_async_request
+    raise exc from None
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_async\connection_pool.py", line 236, in handle_async_request
+    response = await connection.handle_async_request(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        pool_request.request
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_async\connection.py", line 101, in handle_async_request
+    raise exc
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_async\connection.py", line 78, in handle_async_request
+    stream = await self._connect(request)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_async\connection.py", line 124, in _connect
+    stream = await self._network_backend.connect_tcp(**kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_backends\auto.py", line 31, in connect_tcp
+    return await self._backend.connect_tcp(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_backends\anyio.py", line 113, in connect_tcp
+    with map_exceptions(exc_map):
+         ~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Python313\Lib\contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpcore\_exceptions.py", line 14, in map_exceptions
+    raise to_exc(exc) from exc
+httpcore.ConnectError: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 2115, in _run_phase
+    await runner(session)
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 101, in run_inventory_sync_job
+    access_token = await get_amazon_access_token()
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 81, in get_amazon_access_token
+    response = await client.post(auth_url, data=payload)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1859, in post
+    return await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<13 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1540, in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1629, in send
+    response = await self._send_handling_auth(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1657, in _send_handling_auth
+    response = await self._send_handling_redirects(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1694, in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_client.py", line 1730, in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_transports\default.py", line 393, in handle_async_request
+    with map_httpcore_exceptions():
+         ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Python313\Lib\contextlib.py", line 162, in __exit__
+    self.gen.throw(value)
+    ~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\httpx\_transports\default.py", line 118, in map_httpcore_exceptions
+    raise mapped_exc(message) from exc
+httpx.ConnectError: [Errno 11001] getaddrinfo failed
+2026-04-23 22:27:56 | INFO     | haltedb | --- Phase 2: Incremental Orders Sync ---
+2026-04-23 22:27:56 | ERROR    | haltedb | Phase 2: Incremental Orders Sync failed
+Traceback (most recent call last):
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 2115, in _run_phase
+    await runner(session)
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 479, in run_incremental_orders_sync
+    meta = await get_sync_meta(session)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\crud.py", line 137, in get_sync_meta
+    result = await session.execute(select(SyncMeta).where(SyncMeta.id == 1))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\ext\asyncio\session.py", line 463, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3273, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 145, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3297, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\impl.py", line 308, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 961, in connect
+    await_only(creator_fn(*arg, **kw)),
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connection.py", line 2421, in connect
+    return await connect_utils._connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<20 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1075, in _connect
+    raise last_error or exceptions.TargetServerAttributeNotMatched(
+    ...<2 lines>...
+    )
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1049, in _connect
+    conn = await _connect_addr(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 886, in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 931, in __connect_addr
+    tr, pr = await connector
+             ^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 802, in _create_ssl_connection
+    tr, pr = await loop.create_connection(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        host, port)
+        ^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1112, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        (host, port), family=family,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        type=socket.SOCK_STREAM, proto=proto, flags=flags, loop=self)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1495, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                  proto=proto, flags=flags)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 934, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "C:\Python313\Lib\socket.py", line 975, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+2026-04-23 22:27:56 | INFO     | haltedb | --- Phase 3: Product Specifications Sync ---
+2026-04-23 22:27:56 | ERROR    | haltedb | Phase 3: Product Specifications Sync failed
+Traceback (most recent call last):
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 2115, in _run_phase
+    await runner(session)
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 514, in run_product_specs_sync
+    result = await session.execute(sa_text("""
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    """))
+    ^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\ext\asyncio\session.py", line 463, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3273, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 145, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3297, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\impl.py", line 308, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 961, in connect
+    await_only(creator_fn(*arg, **kw)),
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connection.py", line 2421, in connect
+    return await connect_utils._connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<20 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1075, in _connect
+    raise last_error or exceptions.TargetServerAttributeNotMatched(
+    ...<2 lines>...
+    )
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1049, in _connect
+    conn = await _connect_addr(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 886, in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 931, in __connect_addr
+    tr, pr = await connector
+             ^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 802, in _create_ssl_connection
+    tr, pr = await loop.create_connection(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        host, port)
+        ^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1112, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        (host, port), family=family,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        type=socket.SOCK_STREAM, proto=proto, flags=flags, loop=self)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1495, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                  proto=proto, flags=flags)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 934, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "C:\Python313\Lib\socket.py", line 975, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+2026-04-23 22:27:56 | INFO     | haltedb | --- Phase 4: Shipment Cost Sync ---
+2026-04-23 22:27:56 | ERROR    | haltedb | Phase 4: Shipment Cost Sync failed
+Traceback (most recent call last):
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 2115, in _run_phase
+    await runner(session)
+  File "C:\Users\prana\OneDrive\Desktop\HalteDB\sp_api.py", line 1104, in run_shipment_sync
+    orders_result = await session.execute(sa_text(f"""
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<34 lines>...
+    """), {"limit": SHIPMENT_SYNC_BATCH_SIZE})
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\ext\asyncio\session.py", line 463, in execute
+    result = await greenlet_spawn(
+             ^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2365, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2241, in _execute_internal
+    conn = self._connection_for_bind(bind)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 2110, in _connection_for_bind
+    return trans._connection_for_bind(engine, execution_options)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<string>", line 2, in _connection_for_bind
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\orm\session.py", line 1189, in _connection_for_bind
+    conn = bind.connect()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3273, in connect
+    return self._connection_cls(self)
+           ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 145, in __init__
+    self._dbapi_connection = engine.raw_connection()
+                             ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\base.py", line 3297, in raw_connection
+    return self.pool.connect()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 449, in connect
+    return _ConnectionFairy._checkout(self)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
+    fairy = _ConnectionRecord.checkout(pool)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 713, in checkout
+    rec = pool._do_get()
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\impl.py", line 308, in _do_get
+    return self._create_connection()
+           ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 390, in _create_connection
+    return _ConnectionRecord(self)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 675, in __init__
+    self.__connect()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 901, in __connect
+    with util.safe_reraise():
+         ~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\pool\base.py", line 897, in __connect
+    self.dbapi_connection = connection = pool._invoke_creator(self)
+                                         ~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\create.py", line 646, in connect
+    return dialect.connect(*cargs, **cparams)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\engine\default.py", line 625, in connect
+    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\dialects\postgresql\asyncpg.py", line 961, in connect
+    await_only(creator_fn(*arg, **kw)),
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\sqlalchemy\util\_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+            ^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connection.py", line 2421, in connect
+    return await connect_utils._connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<20 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1075, in _connect
+    raise last_error or exceptions.TargetServerAttributeNotMatched(
+    ...<2 lines>...
+    )
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 1049, in _connect
+    conn = await _connect_addr(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 886, in _connect_addr
+    return await __connect_addr(params, True, *args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 931, in __connect_addr
+    tr, pr = await connector
+             ^^^^^^^^^^^^^^^
+  File "C:\Users\prana\AppData\Roaming\Python\Python313\site-packages\asyncpg\connect_utils.py", line 802, in _create_ssl_connection
+    tr, pr = await loop.create_connection(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        host, port)
+        ^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1112, in create_connection
+    infos = await self._ensure_resolved(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        (host, port), family=family,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        type=socket.SOCK_STREAM, proto=proto, flags=flags, loop=self)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 1495, in _ensure_resolved
+    return await loop.getaddrinfo(host, port, family=family, type=type,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                  proto=proto, flags=flags)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\asyncio\base_events.py", line 934, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python313\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "C:\Python313\Lib\socket.py", line 975, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+2026-04-23 22:27:56 | INFO     | haltedb | === FULL SYNC COMPLETE ===
