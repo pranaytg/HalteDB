@@ -30,7 +30,6 @@ export async function GET(req: NextRequest) {
           WHEN se.rate_source = 'sp_api_finance'
             AND se.amazon_shipping_cost IS NOT NULL
             AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
-          WHEN se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
           ELSE NULL
         END as amazon_shipping_cost,
         CASE
@@ -38,7 +37,6 @@ export async function GET(req: NextRequest) {
           WHEN se.rate_source = 'sp_api_finance'
             AND se.amazon_shipping_cost IS NOT NULL
             AND se.amazon_shipping_cost > 0 THEN 'actual'
-          WHEN se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0 THEN 'estimated'
           ELSE NULL
         END as amazon_cost_source,
         se.delhivery_cost, se.bluedart_cost, se.dtdc_cost, se.xpressbees_cost, se.ekart_cost,
@@ -78,7 +76,6 @@ export async function GET(req: NextRequest) {
             WHEN se.rate_source = 'sp_api_finance'
               AND se.amazon_shipping_cost IS NOT NULL
               AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
-            WHEN se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
             ELSE NULL
           END
         )::numeric, 2) as avg_amazon_cost,
@@ -95,7 +92,6 @@ export async function GET(req: NextRequest) {
               WHEN se.rate_source = 'sp_api_finance'
                 AND se.amazon_shipping_cost IS NOT NULL
                 AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
-              WHEN se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0 THEN se.amazon_shipping_cost
               ELSE NULL
             END,
             0

@@ -53,13 +53,13 @@ function addDateRangeConditions(
   let index = params.length + 1;
 
   if (startDate) {
-    conditions.push(`${column} >= $${index++}::timestamp`);
+    conditions.push(`${column} >= ($${index++}::date AT TIME ZONE 'Asia/Kolkata')`);
     params.push(startDate);
   }
 
   if (endDate) {
-    conditions.push(`${column} <= $${index++}::timestamp`);
-    params.push(`${endDate} 23:59:59`);
+    conditions.push(`${column} < (($${index++}::date + INTERVAL '1 day') AT TIME ZONE 'Asia/Kolkata')`);
+    params.push(endDate);
   }
 }
 

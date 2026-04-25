@@ -173,6 +173,10 @@ export default function ProfitabilityPage() {
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState("");
 
+  // ── Amazon Finance manual sync ──
+  const [financeSyncing, setFinanceSyncing] = useState(false);
+  const [financeSyncMsg, setFinanceSyncMsg] = useState<string | null>(null);
+
   const buildParams = useCallback(() => {
     const p = new URLSearchParams();
     if (skuFilter) p.set("sku", skuFilter);
@@ -230,6 +234,54 @@ export default function ProfitabilityPage() {
   }, [fetchOverview, fetchOrders, fetchSku]);
 
   useEffect(() => { if (isAuthorized) fetchAll(); }, [isAuthorized]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Poll sync status while a manual Amazon Finance sync is running.
+  useEffect(() => {
+    if (!financeSyncing) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/amazon-finance/sync`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (data?.running === false) {
+          setFinanceSyncing(false);
+          const last = data.last_result;
+          if (last?.status === "completed") {
+            setFinanceSyncMsg(
+              `Synced ${last.orders_scanned} orders · ${last.fee_updates} fees + ${last.shipping_updates} shipping updated`,
+            );
+            fetchAll();
+          } else if (last?.status === "failed") {
+            setFinanceSyncMsg(`Sync failed: ${last.error || "unknown error"}`);
+          }
+        }
+      } catch { /* ignore transient errors */ }
+    };
+    const id = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [financeSyncing, fetchAll]);
+
+  const triggerFinanceSync = async () => {
+    if (financeSyncing) return;
+    setFinanceSyncMsg(null);
+    try {
+      const res = await fetch(`/api/amazon-finance/sync?days=15`, { method: "POST" });
+      const data = await res.json();
+      if (data?.status === "accepted") {
+        setFinanceSyncing(true);
+        setFinanceSyncMsg(`Sync started for the last ${data.days} day(s) — this takes a few minutes.`);
+      } else if (data?.status === "skipped") {
+        setFinanceSyncing(true);
+        setFinanceSyncMsg("A sync is already running — waiting for it to finish.");
+      } else {
+        setFinanceSyncMsg(data?.error || "Failed to start sync.");
+      }
+    } catch (e) {
+      setFinanceSyncMsg(`Failed to reach backend: ${(e as Error).message}`);
+    }
+  };
 
   const applyFilters = () => {
     setPage(0);
@@ -337,7 +389,22 @@ export default function ProfitabilityPage() {
             Per-order profit breakdown · Revenue − COGS − Amazon Fee − Shipping − Marketing
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {financeSyncMsg && (
+            <span style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 320, textAlign: "right" }}>
+              {financeSyncMsg}
+            </span>
+          )}
+          <button
+            className="btn btn-secondary"
+            onClick={triggerFinanceSync}
+            disabled={financeSyncing}
+            title="Pull Amazon Finance referral fees + shipping actuals for the last 15 days"
+          >
+            {financeSyncing
+              ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Syncing Amazon Finance...</>
+              : "↻ Sync Amazon Finance (15d)"}
+          </button>
           <button className="btn btn-secondary" onClick={fetchAll} disabled={loading}>
             {loading ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Refreshing...</> : "↻ Refresh"}
           </button>

@@ -47,12 +47,12 @@ export async function GET(req: NextRequest) {
       params.push(`%${category}%`);
     }
     if (startDate) {
-      conditions.push(`o.purchase_date >= $${pIdx++}`);
+      conditions.push(`o.purchase_date >= ($${pIdx++}::date AT TIME ZONE 'Asia/Kolkata')`);
       params.push(startDate);
     }
     if (endDate) {
-      conditions.push(`o.purchase_date <= $${pIdx++}`);
-      params.push(`${endDate} 23:59:59`);
+      conditions.push(`o.purchase_date < (($${pIdx++}::date + INTERVAL '1 day') AT TIME ZONE 'Asia/Kolkata')`);
+      params.push(endDate);
     }
     if (status) {
       conditions.push(`o.order_status ILIKE $${pIdx++}`);
@@ -61,21 +61,21 @@ export async function GET(req: NextRequest) {
 
     const WHERE = conditions.join(" AND ");
 
-    // Shipping cost resolution priority:
-    //   Amazon-fulfilled: SP-API actual only (shipping_price or amazon_shipping_cost) → 0
-    //   Merchant-fulfilled: seller-paid → Shiprocket cheapest → 0
+    // Shipping cost resolution — API-sourced values only; no rate-card fallback.
+    //   Amazon-fulfilled: o.shipping_price (SP-API) → se.amazon_shipping_cost if rate_source='sp_api_finance' → 0
+    //   Merchant-fulfilled: o.shipping_price → se.cheapest_cost if rate_source='shiprocket' → 0
     const SHIPPING_EXPR = `
       CASE
         WHEN LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
           OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
         THEN COALESCE(
           NULLIF(o.shipping_price, 0),
-          NULLIF(se.amazon_shipping_cost, 0),
+          CASE WHEN se.rate_source = 'sp_api_finance' THEN NULLIF(se.amazon_shipping_cost, 0) END,
           0
         )
         ELSE COALESCE(
           NULLIF(o.shipping_price, 0),
-          NULLIF(se.cheapest_cost, 0),
+          CASE WHEN se.rate_source = 'shiprocket' THEN NULLIF(se.cheapest_cost, 0) END,
           0
         )
       END

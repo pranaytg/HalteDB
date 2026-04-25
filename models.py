@@ -203,7 +203,7 @@ class ShipmentEstimate(Base):
     dtdc_etd = Column(String, nullable=True)
     xpressbees_etd = Column(String, nullable=True)
     ekart_etd = Column(String, nullable=True)
-    rate_source = Column(String, nullable=True)  # "shiprocket" or "fallback"
+    rate_source = Column(String, nullable=True)  # "shiprocket" | "sp_api_finance" | "sp_api_pending" | "shiprocket_failed"
     estimated_at = Column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (

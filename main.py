@@ -243,6 +243,74 @@ async def trigger_orders_sync(
     return {"status": "accepted", "message": "Incremental orders sync started."}
 
 
+# Shared state for the Amazon Finance manual sync job.
+_finance_sync_running: bool = False
+_finance_sync_last_result: dict[str, object] | None = None
+
+
+async def _run_amazon_finance_backfill(days: int, delay: float) -> None:
+    """Run tasks.backfill_amazon_finance_actuals.main, then recalc profitability so
+    orders.profit reflects the new fee/shipping values."""
+    global _finance_sync_running, _finance_sync_last_result
+    try:
+        from tasks.backfill_amazon_finance_actuals import main as run_backfill
+
+        summary = await run_backfill(days=days, delay=delay, limit=None)
+
+        # Recalc profitability so Sales page + reports reflect the new actuals.
+        recalc_count = 0
+        if (summary or {}).get("fee_updates", 0) or (summary or {}).get("shipping_updates", 0):
+            async with SessionLocal() as recalc_session:
+                recalc_count = await recalculate_profitability_all(recalc_session)
+            logger.info(f"Profitability recalc after Finance sync: {recalc_count} rows")
+
+        _finance_sync_last_result = {
+            "status": "completed",
+            "days": days,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "profit_recalc_rows": recalc_count,
+            **(summary or {}),
+        }
+        logger.info(f"Amazon Finance sync done: {summary}")
+    except Exception as exc:
+        logger.exception("Amazon Finance sync failed")
+        _finance_sync_last_result = {
+            "status": "failed",
+            "days": days,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+            "error": str(exc),
+        }
+    finally:
+        _finance_sync_running = False
+
+
+@app.post("/sync-amazon-finance")
+async def trigger_amazon_finance_sync(background_tasks: BackgroundTasks, days: int = 15):
+    """Pulls SP-API Finance actuals (referral + shipping) for the last `days` days,
+    overwriting rate-card estimates. Runs in background because each API call has a
+    ~2s rate-limit delay; typical 15-day run takes a few minutes."""
+    global _finance_sync_running
+    if _finance_sync_running:
+        return {"status": "skipped", "message": "An Amazon Finance sync is already running."}
+
+    days = max(1, min(days, 365))
+    _finance_sync_running = True
+    background_tasks.add_task(_run_amazon_finance_backfill, days, 2.1)
+    return {
+        "status": "accepted",
+        "message": f"Amazon Finance sync started for the last {days} day(s).",
+        "days": days,
+    }
+
+
+@app.get("/sync-amazon-finance/status")
+async def amazon_finance_sync_status():
+    return {
+        "running": _finance_sync_running,
+        "last_result": _finance_sync_last_result,
+    }
+
+
 @app.post("/recalculate-profitability")
 async def trigger_profitability_recalc(background_tasks: BackgroundTasks):
     """Recomputes orders.profit for ALL orders using the current formula (includes

@@ -37,20 +37,26 @@ fetch_amazon_order_financial_breakdown = local_sp_api.fetch_amazon_order_financi
 
 
 SELECT_ORDERS_SQL = """
-SELECT amazon_order_id, sku
-FROM orders
-WHERE item_price > 0
+SELECT o.amazon_order_id, o.sku
+FROM orders o
+LEFT JOIN shipment_estimates se
+  ON se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+WHERE o.item_price > 0
   AND (
-    LOWER(COALESCE(fulfillment_channel, '')) LIKE '%amazon%'
-    OR LOWER(COALESCE(fulfillment_channel, '')) LIKE '%afn%'
+    LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+    OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
   )
-  AND COALESCE(amazon_fee, 0) <= 0
-  AND purchase_date >= NOW() - ($1::int * INTERVAL '1 day')
-ORDER BY purchase_date ASC NULLS LAST
+  AND o.purchase_date >= NOW() - ($1::int * INTERVAL '1 day')
+  AND (
+    COALESCE(o.amazon_fee, 0) <= 0
+    OR COALESCE(o.shipping_price, 0) <= 0
+    OR COALESCE(se.rate_source, '') <> 'sp_api_finance'
+  )
+ORDER BY o.purchase_date ASC NULLS LAST
 """
 
 
-async def main(days: int, delay: float, limit: int | None) -> None:
+async def main(days: int, delay: float, limit: int | None) -> dict[str, int]:
     load_dotenv()
     database_url = os.getenv("SUPABASE_URL")
     if not database_url:
@@ -74,7 +80,7 @@ async def main(days: int, delay: float, limit: int | None) -> None:
             order_map = {order_id: order_map[order_id] for order_id in order_ids}
         print(f"Amazon orders queued for Finance backfill: {len(order_ids)} (rows: {len(rows)})")
         if not order_ids:
-            return
+            return {"orders_scanned": 0, "shipping_updates": 0, "fee_updates": 0, "no_data_orders": 0}
 
         access_token = await get_amazon_access_token()
         shipping_updates = 0
@@ -97,7 +103,7 @@ async def main(days: int, delay: float, limit: int | None) -> None:
                             """
                             UPDATE orders
                             SET shipping_price = $1
-                            WHERE amazon_order_id = $2 AND sku = $3 AND COALESCE(shipping_price, 0) <= 0
+                            WHERE amazon_order_id = $2 AND sku = $3
                             """,
                             shipping,
                             order_id,
@@ -140,13 +146,20 @@ async def main(days: int, delay: float, limit: int | None) -> None:
 
                 if index < len(order_ids) - 1 and delay > 0:
                     await asyncio.sleep(delay)
+
+        return {
+            "orders_scanned": len(order_ids),
+            "shipping_updates": shipping_updates,
+            "fee_updates": fee_updates,
+            "no_data_orders": no_data,
+        }
     finally:
         await conn.close()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--days", type=int, default=90, help="Backfill orders from the last N days.")
+    parser.add_argument("--days", type=int, default=15, help="Backfill orders from the last N days.")
     parser.add_argument("--delay", type=float, default=2.1, help="Delay between Finance API requests.")
     parser.add_argument("--limit", type=int, default=None, help="Optional max distinct Amazon order IDs.")
     args = parser.parse_args()

@@ -1,0 +1,82 @@
+Fetched 177 SKU rows across 170 distinct Amazon orders.
+[20/170] orders scanned
+[40/170] orders scanned
+[60/170] orders scanned
+[80/170] orders scanned
+[100/170] orders scanned
+[120/170] orders scanned
+[140/170] orders scanned
+[160/170] orders scanned
+[170/170] orders scanned
+
+======================================================================
+DETAILED MISMATCHES (first 80)
+======================================================================
+FEE_MISSING   406-9875919-3205950 sku=LG0851 sp_ref=7664.27 db_fee=0.00
+SHIP_DIFFER   406-9875919-3205950 sku=LG0851 sp_ship=473.20 effective_db=19.00 (db=19.00, se=19.00)
+FEE_MISSING   407-4460354-6696319 sku=HM0737 1 sp_ref=31.86 db_fee=0.00
+SHIP_DIFFER   407-4460354-6696319 sku=HM0737 1 sp_ship=69.62 effective_db=92.04 (db=0.00, se=92.04)
+FEE_MISSING   171-4774035-0655531 sku=LG1123 sp_ref=217.78 db_fee=0.00
+SHIP_DIFFER   171-4774035-0655531 sku=LG1123 sp_ship=69.62 effective_db=40.00 (db=40.00, se=40.00)
+FEE_MISSING   405-5552131-4581107 sku=LG1113 sp_ref=301.74 db_fee=0.00
+SHIP_DIFFER   405-5552131-4581107 sku=LG1113 sp_ship=69.62 effective_db=73.16 (db=0.00, se=73.16)
+FEE_MISSING   407-7383181-0981153 sku=HM0737 1 sp_ref=132.58 db_fee=0.00
+SHIP_DIFFER   407-7383181-0981153 sku=HM0737 1 sp_ship=69.62 effective_db=19.00 (db=19.00, se=19.00)
+FEE_MISSING   408-3173496-6828361 sku=HM0492 sp_ref=31.86 db_fee=0.00
+SHIP_DIFFER   408-3173496-6828361 sku=HM0492 sp_ship=69.62 effective_db=92.04 (db=0.00, se=92.04)
+FEE_MISSING   405-9221055-8471524 sku=LG0994 sp_ref=715.55 db_fee=0.00
+SHIP_DIFFER   405-9221055-8471524 sku=LG0994 sp_ship=165.20 effective_db=56.64 (db=0.00, se=56.64)
+FEE_MISSING   407-8660682-3928326 sku=LG1034 sp_ref=63.72 db_fee=0.00
+SHIP_DIFFER   407-8660682-3928326 sku=LG1034 sp_ship=110.92 effective_db=56.64 (db=0.00, se=56.64)
+FEE_MISSING   402-7896332-9989951 sku=LG0897 sp_ref=378.43 db_fee=0.00
+SHIP_DIFFER   402-7896332-9989951 sku=LG0897 sp_ship=135.70 effective_db=181.72 (db=0.00, se=181.72)
+FEE_MISSING   406-6428009-3897957 sku=LG0740 sp_ref=582.57 db_fee=0.00
+SHIP_DIFFER   406-6428009-3897957 sku=LG0740 sp_ship=102.37 effective_db=181.72 (db=0.00, se=181.72)
+FEE_MISSING   406-6428009-3897957 sku=LG0897 sp_ref=378.43 db_fee=0.00
+SHIP_DIFFER   406-6428009-3897957 sku=LG0897 sp_ship=92.33 effective_db=181.72 (db=0.00, se=181.72)
+FEE_MISSING   404-1419238-6048312 sku=CA0150 sp_ref=2281.46 db_fee=0.00
+SHIP_DIFFER   404-1419238-6048312 sku=CA0150 sp_ship=337.07 effective_db=899.16 (db=0.00, se=899.16)
+FEE_MISSING   402-3177766-7101969 sku=HM0522 sp_ref=31.86 db_fee=0.00
+SHIP_DIFFER   402-3177766-7101969 sku=HM0522 sp_ship=69.62 effective_db=73.16 (db=0.00, se=73.16)
+FEE_MISSING   405-1775844-6547525 sku=HM0732 sp_ref=271.64 db_fee=0.00
+SHIP_DIFFER   405-1775844-6547525 sku=HM0732 sp_ship=90.86 effective_db=87.32 (db=0.00, se=87.32)
+FEE_MISSING   405-1775844-6547525 sku=HM0737 1 sp_ref=132.58 db_fee=0.00
+SHIP_DIFFER   405-1775844-6547525 sku=HM0737 1 sp_ship=69.62 effective_db=56.64 (db=0.00, se=56.64)
+FEE_MISSING   405-5661604-3561908 sku=HM0492 sp_ref=31.86 db_fee=0.00
+SHIP_DIFFER   405-5661604-3561908 sku=HM0492 sp_ship=69.62 effective_db=92.04 (db=0.00, se=92.04)
+FEE_MISSING   405-1934271-6425904 sku=HM0492 sp_ref=31.86 db_fee=0.00
+SHIP_DIFFER   405-1934271-6425904 sku=HM0492 sp_ship=69.62 effective_db=56.64 (db=0.00, se=56.64)
+FEE_MISSING   402-7422719-1177152 sku=HM0492 sp_ref=31.86 db_fee=0.00
+SHIP_DIFFER   402-7422719-1177152 sku=HM0492 sp_ship=69.62 effective_db=92.04 (db=0.00, se=92.04)
+FEE_MISSING   408-6339643-8284351 sku=HM0492 sp_ref=31.86 db_fee=0.00
+SHIP_DIFFER   408-6339643-8284351 sku=HM0492 sp_ship=69.62 effective_db=92.04 (db=0.00, se=92.04)
+FEE_MISSING   171-6775860-3251567 sku=HM0755 sp_ref=41.30 db_fee=0.00
+SHIP_DIFFER   171-6775860-3251567 sku=HM0755 sp_ship=57.82 effective_db=56.64 (db=0.00, se=56.64)
+FEE_MISSING   407-9728546-6790727 sku=HM0345 sp_ref=31.86 db_fee=0.00
+SHIP_MISSING  407-9728546-6790727 sku=HM0345 sp_ship=69.62 db_ship=0.00 se_ship=0.00 rate_source=fallback
+FEE_MISSING   403-1805253-4754735 sku=HM0638 sp_ref=208.57 db_fee=0.00
+SHIP_MISSING  403-1805253-4754735 sku=HM0638 sp_ship=69.62 db_ship=0.00 se_ship=0.00 rate_source=fallback
+FEE_MISSING   403-7103497-2202718 sku=HM0719 sp_ref=186.40 db_fee=0.00
+SHIP_MISSING  403-7103497-2202718 sku=HM0719 sp_ship=69.62 db_ship=0.00 se_ship=0.00 rate_source=fallback
+
+======================================================================
+SUMMARY  (total SKU rows audited: 177)
+======================================================================
+Amazon Fee (referral):
+  DB missing but SP-API has it       : 23
+  Values differ > Rs.0.50            : 0
+  DB has fee, SP-API empty           : 0
+  Both empty (Amazon not settled yet): 153
+  Match                              : 1
+
+Shipping (Amazon-fulfilled):
+  DB missing but SP-API has it       : 3
+  Values differ > Rs.0.50            : 20
+  DB has shipping, SP-API empty      : 124
+  Both empty (not settled yet)       : 29
+  Match                              : 1
+
+Rate source distribution in audited rows:
+  fallback            : 147
+  sp_api_pending      : 29
+  sp_api_finance      : 1

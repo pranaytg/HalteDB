@@ -901,7 +901,8 @@ async def recalculate_profitability_for_orders(session: AsyncSession, order_ids:
         THEN COALESCE(
           NULLIF(o.shipping_price, 0),
           NULLIF((
-            SELECT NULLIF(se.amazon_shipping_cost, 0)
+            SELECT CASE WHEN se.rate_source = 'sp_api_finance'
+                        THEN NULLIF(se.amazon_shipping_cost, 0) END
             FROM shipment_estimates se
             WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
             LIMIT 1
@@ -911,7 +912,8 @@ async def recalculate_profitability_for_orders(session: AsyncSession, order_ids:
         ELSE COALESCE(
           NULLIF(o.shipping_price, 0),
           NULLIF((
-            SELECT se.cheapest_cost
+            SELECT CASE WHEN se.rate_source = 'shiprocket'
+                        THEN se.cheapest_cost END
             FROM shipment_estimates se
             WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
             LIMIT 1
@@ -998,7 +1000,8 @@ async def recalculate_profitability_all(session: AsyncSession) -> int:
         THEN COALESCE(
           NULLIF(o.shipping_price, 0),
           NULLIF((
-            SELECT NULLIF(se.amazon_shipping_cost, 0)
+            SELECT CASE WHEN se.rate_source = 'sp_api_finance'
+                        THEN NULLIF(se.amazon_shipping_cost, 0) END
             FROM shipment_estimates se
             WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
             LIMIT 1
@@ -1008,7 +1011,8 @@ async def recalculate_profitability_all(session: AsyncSession) -> int:
         ELSE COALESCE(
           NULLIF(o.shipping_price, 0),
           NULLIF((
-            SELECT se.cheapest_cost
+            SELECT CASE WHEN se.rate_source = 'shiprocket'
+                        THEN se.cheapest_cost END
             FROM shipment_estimates se
             WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
             LIMIT 1

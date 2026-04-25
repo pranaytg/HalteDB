@@ -12,6 +12,7 @@ interface CogsEntry {
   halte_selling_price: number | null;
   amazon_selling_price: number | null;
   selling_price: number | null;
+  brand: string | null;
 }
 
 const fmtCur = (v: number) =>
@@ -25,6 +26,7 @@ export default function CogsPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [brandFilter, setBrandFilter] = useState("");
   const [refreshingPrices, setRefreshingPrices] = useState(false);
 
   // Add COGS form state
@@ -158,9 +160,15 @@ export default function CogsPage() {
     }
   };
 
-  const filteredCogs = cogs.filter((c) =>
-    c.sku.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const brandOptions = Array.from(
+    new Set(cogs.map((c) => c.brand).filter((b): b is string => !!b && b.trim() !== ""))
+  ).sort((a, b) => a.localeCompare(b));
+
+  const filteredCogs = cogs.filter((c) => {
+    const matchesSearch = c.sku.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesBrand = !brandFilter || (c.brand ?? "") === brandFilter;
+    return matchesSearch && matchesBrand;
+  });
 
   if (loading) {
     return (
@@ -271,13 +279,26 @@ export default function CogsPage() {
               {refreshingPrices ? "Fetching..." : "↻ Refresh Amazon Prices"}
             </button>
           </div>
-          <input
-            className="filter-input search-input"
-            type="text"
-            placeholder="Search SKU..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <select
+              className="filter-input"
+              value={brandFilter}
+              onChange={(e) => setBrandFilter(e.target.value)}
+              title="Filter by brand"
+            >
+              <option value="">All Brands</option>
+              {brandOptions.map((b) => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+            <input
+              className="filter-input search-input"
+              type="text"
+              placeholder="Search SKU..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
         </div>
         <div className="table-container" style={{ maxHeight: 600, overflowY: "auto" }}>
           <table>

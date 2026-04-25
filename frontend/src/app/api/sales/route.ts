@@ -41,11 +41,11 @@ export async function GET(req: NextRequest) {
       params.push(sku);
     }
     if (startDate) {
-      conditions.push(`o.purchase_date >= $${paramIdx++}::timestamptz`);
+      conditions.push(`o.purchase_date >= ($${paramIdx++}::date AT TIME ZONE 'Asia/Kolkata')`);
       params.push(startDate);
     }
     if (endDate) {
-      conditions.push(`o.purchase_date < ($${paramIdx++}::date + INTERVAL '1 day')`);
+      conditions.push(`o.purchase_date < (($${paramIdx++}::date + INTERVAL '1 day') AT TIME ZONE 'Asia/Kolkata')`);
       params.push(endDate);
     }
     if (month) {

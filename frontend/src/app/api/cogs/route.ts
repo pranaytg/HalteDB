@@ -5,10 +5,10 @@ export async function GET() {
   try {
     const query = `
       SELECT c.id, c.sku, c.cogs_price, c.amazon_price, c.last_updated,
-             ec.halte_selling_price, ec.amazon_selling_price
+             ec.halte_selling_price, ec.amazon_selling_price, ec.brand
       FROM cogs c
       LEFT JOIN LATERAL (
-        SELECT halte_selling_price, amazon_selling_price, selling_price
+        SELECT halte_selling_price, amazon_selling_price, selling_price, brand
         FROM estimated_cogs
         WHERE estimated_cogs.sku = c.sku
            OR estimated_cogs.sku LIKE c.sku || ' %'
