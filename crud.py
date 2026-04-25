@@ -2,7 +2,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import text, select
-from models import Inventory, Order, SyncMeta
+from models import Inventory, Order, SyncMeta, InboundShipment
 from datetime import datetime, timezone
 
 logger = logging.getLogger("haltedb")
@@ -30,6 +30,48 @@ async def upsert_inventory_batch(session: AsyncSession, batch: list[dict]):
     )
 
     await session.execute(upsert_stmt)
+    await session.commit()
+
+
+async def upsert_inbound_shipments_batch(session: AsyncSession, batch: list[dict]):
+    """Upsert inbound shipments by shipment_id (PK)."""
+    if not batch:
+        return
+
+    unique = {row["shipment_id"]: row for row in batch}
+    clean_batch = list(unique.values())
+
+    stmt = insert(InboundShipment).values(clean_batch)
+    update_dict = {
+        "shipment_name": stmt.excluded.shipment_name,
+        "destination_fc": stmt.excluded.destination_fc,
+        "shipment_status": stmt.excluded.shipment_status,
+        "label_prep_type": stmt.excluded.label_prep_type,
+        "box_contents_source": stmt.excluded.box_contents_source,
+        "booked_date": stmt.excluded.booked_date,
+        "ship_from_city": stmt.excluded.ship_from_city,
+        "ship_from_state": stmt.excluded.ship_from_state,
+    }
+    upsert_stmt = stmt.on_conflict_do_update(
+        index_elements=['shipment_id'],
+        set_=update_dict,
+    )
+    await session.execute(upsert_stmt)
+    await session.commit()
+
+
+async def prune_inbound_shipments_not_in(session: AsyncSession, active_ids: list[str]):
+    """Delete shipments no longer returned by SP-API (closed/cancelled).
+
+    Only runs when we received at least one shipment from Amazon — guards
+    against wiping the table on a transient API failure.
+    """
+    if not active_ids:
+        return
+    await session.execute(
+        text("DELETE FROM inbound_shipments WHERE shipment_id <> ALL(:ids)"),
+        {"ids": active_ids},
+    )
     await session.commit()
 
 

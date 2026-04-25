@@ -56,9 +56,9 @@ function recalc(row) {
   const costPriceHalte = finalPrice + margin1Amount;
   const margin2Amount = (costPriceHalte + marketingCost) * (margin2Pct / 100);
   const sellingPrice = costPriceHalte + marketingCost + margin2Amount;
-  const mspWithGst = sellingPrice * (1 + gstPercent / 100);
-  const halteSP = mspWithGst * 1.05;
-  const amazonSP = mspWithGst * 1.2;
+  const mspWithGst = sellingPrice;
+  const halteSP = sellingPrice * 1.05;
+  const amazonSP = sellingPrice * 1.2;
   const profitability = margin1Amount + margin2Amount;
 
   return {

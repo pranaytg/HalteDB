@@ -53,6 +53,30 @@ interface WarehousePrediction {
   total_restock_needed: number;
 }
 
+interface InboundShipmentsSummary {
+  total: number;
+  working: number;
+  shipped: number;
+  in_transit: number;
+  delivered: number;
+  checked_in: number;
+  receiving: number;
+  latest_booked: string | null;
+  earliest_active_booked: string | null;
+  last_synced: string | null;
+}
+
+interface InboundFcRow { destination_fc: string; count: number; }
+interface InboundShipmentRow {
+  shipment_id: string;
+  shipment_name: string;
+  destination_fc: string;
+  shipment_status: string;
+  booked_date: string | null;
+  ship_from_city: string | null;
+  ship_from_state: string | null;
+}
+
 const COLORS = ["#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#14b8a6"];
 
 export default function InventoryPage() {
@@ -63,6 +87,10 @@ export default function InventoryPage() {
   const [grandTotal, setGrandTotal] = useState<GrandTotal | null>(null);
   const [skuPredictions, setSkuPredictions] = useState<SkuPrediction[]>([]);
   const [warehousePredictions, setWarehousePredictions] = useState<WarehousePrediction[]>([]);
+  const [inboundSummary, setInboundSummary] = useState<InboundShipmentsSummary | null>(null);
+  const [inboundByFc, setInboundByFc] = useState<InboundFcRow[]>([]);
+  const [inboundShipments, setInboundShipments] = useState<InboundShipmentRow[]>([]);
+  const [showInboundDetail, setShowInboundDetail] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -72,14 +100,18 @@ export default function InventoryPage() {
     Promise.all([
       fetch("/api/inventory").then((r) => r.json()),
       fetch("/api/inventory/predictions").then((r) => r.json()),
+      fetch("/api/inbound-shipments").then((r) => r.json()).catch(() => ({})),
     ])
-      .then(([inv, pred]) => {
+      .then(([inv, pred, inb]) => {
         setOverall(inv.overall || []);
         setWarehouseSummary(inv.warehouseSummary || []);
         setWarehouseBreakdown(inv.warehouseBreakdown || []);
         setGrandTotal(inv.grandTotal || null);
         setSkuPredictions(pred.skuPredictions || []);
         setWarehousePredictions(pred.warehousePredictions || []);
+        setInboundSummary(inb.summary || null);
+        setInboundByFc(inb.byFc || []);
+        setInboundShipments(inb.shipments || []);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -249,25 +281,128 @@ export default function InventoryPage() {
         <>
           {/* Warehouse summary cards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
-            {warehouseSummary.map((w, i) => (
-              <div key={w.warehouse} className="card" style={{ padding: "12px 14px" }}>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Warehouse</div>
-                <div style={{ fontWeight: 700, fontSize: 14, color: COLORS[i % COLORS.length], marginBottom: 8 }}>{w.warehouse}</div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                  <span style={{ color: "var(--text-muted)" }}>SKUs</span>
-                  <span style={{ fontWeight: 600 }}>{parseInt(w.total_skus)}</span>
+            {warehouseSummary.map((w, i) => {
+              if (w.warehouse === "INBOUND") {
+                const s = inboundSummary;
+                const fmtDate = (d: string | null) => {
+                  if (!d) return "—";
+                  const dt = new Date(d);
+                  return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+                };
+                const active = s ? s.working + s.shipped + s.in_transit + s.receiving : 0;
+                return (
+                  <div
+                    key={w.warehouse}
+                    className="card"
+                    onClick={() => setShowInboundDetail(v => !v)}
+                    style={{
+                      padding: "12px 14px",
+                      gridColumn: "span 2",
+                      cursor: "pointer",
+                      border: "1px solid rgba(99, 102, 241, 0.4)",
+                      background: "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.04))",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>FBA Inbound Pipeline</div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: COLORS[i % COLORS.length] }}>INBOUND</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 22, fontWeight: 700, color: "#a5b4fc", lineHeight: 1 }}>
+                          {s ? s.total : 0}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>shipments</div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, fontSize: 10, marginBottom: 6 }}>
+                      {s && s.in_transit > 0 && <span style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", padding: "2px 6px", borderRadius: 4 }}>{s.in_transit} In Transit</span>}
+                      {s && s.receiving > 0 && <span style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", padding: "2px 6px", borderRadius: 4 }}>{s.receiving} Receiving</span>}
+                      {s && s.shipped > 0 && <span style={{ background: "rgba(6,182,212,0.15)", color: "#22d3ee", padding: "2px 6px", borderRadius: 4 }}>{s.shipped} Shipped</span>}
+                      {s && s.working > 0 && <span style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc", padding: "2px 6px", borderRadius: 4 }}>{s.working} Working</span>}
+                      {s && s.delivered > 0 && <span style={{ background: "rgba(148,163,184,0.15)", color: "#cbd5e1", padding: "2px 6px", borderRadius: 4 }}>{s.delivered} Delivered</span>}
+                      {s && s.checked_in > 0 && <span style={{ background: "rgba(148,163,184,0.15)", color: "#cbd5e1", padding: "2px 6px", borderRadius: 4 }}>{s.checked_in} Checked In</span>}
+                      {(!s || s.total === 0) && <span style={{ color: "var(--text-muted)" }}>No active shipments</span>}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-muted)", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 6 }}>
+                      <span>Active: <span style={{ color: "#e2e8f0", fontWeight: 600 }}>{active}</span></span>
+                      <span>Latest booked: <span style={{ color: "#e2e8f0", fontWeight: 600 }}>{fmtDate(s?.latest_booked || null)}</span></span>
+                      <span style={{ color: "#a5b4fc" }}>{showInboundDetail ? "Hide ▲" : "Details ▼"}</span>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div key={w.warehouse} className="card" style={{ padding: "12px 14px" }}>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Warehouse</div>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: COLORS[i % COLORS.length], marginBottom: 8 }}>{w.warehouse}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                    <span style={{ color: "var(--text-muted)" }}>SKUs</span>
+                    <span style={{ fontWeight: 600 }}>{parseInt(w.total_skus)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                    <span style={{ color: "var(--text-muted)" }}>Fulfillable</span>
+                    <span style={{ fontWeight: 600, color: "#10b981" }}>{parseInt(w.total_fulfillable).toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                    <span style={{ color: "var(--text-muted)" }}>Reserved</span>
+                    <span style={{ fontWeight: 600 }}>{parseInt(w.total_reserved).toLocaleString()}</span>
+                  </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                  <span style={{ color: "var(--text-muted)" }}>Fulfillable</span>
-                  <span style={{ fontWeight: 600, color: "#10b981" }}>{parseInt(w.total_fulfillable).toLocaleString()}</span>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                  <span style={{ color: "var(--text-muted)" }}>Reserved</span>
-                  <span style={{ fontWeight: 600 }}>{parseInt(w.total_reserved).toLocaleString()}</span>
+              );
+            })}
+          </div>
+
+          {/* INBOUND detail panel — collapses by default */}
+          {showInboundDetail && inboundShipments.length > 0 && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Active Inbound Shipments</div>
+                  <div className="card-subtitle">
+                    {inboundShipments.length} shipments
+                    {inboundByFc.length > 0 && (
+                      <> &middot; {inboundByFc.map(f => `${f.count} → ${f.destination_fc}`).join(", ")}</>
+                    )}
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
+              <div className="table-container" style={{ maxHeight: 400, overflowY: "auto" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Shipment ID</th><th>Name</th><th>Destination FC</th>
+                      <th>Status</th><th>Booked</th><th>From</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inboundShipments.map((sh) => {
+                      const statusColor =
+                        sh.shipment_status === "IN_TRANSIT" ? "badge-warning" :
+                        sh.shipment_status === "RECEIVING" ? "badge-success" :
+                        sh.shipment_status === "DELIVERED" ? "badge-success" :
+                        sh.shipment_status === "WORKING" ? "badge-default" :
+                        "badge-default";
+                      return (
+                        <tr key={sh.shipment_id}>
+                          <td style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 600 }}>{sh.shipment_id}</td>
+                          <td style={{ fontSize: 11 }}>{sh.shipment_name}</td>
+                          <td style={{ fontWeight: 600, color: "var(--accent-hover)" }}>{sh.destination_fc}</td>
+                          <td><span className={`badge ${statusColor}`}>{sh.shipment_status}</span></td>
+                          <td style={{ fontSize: 11 }}>
+                            {sh.booked_date ? new Date(sh.booked_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "—"}
+                          </td>
+                          <td style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                            {[sh.ship_from_city, sh.ship_from_state].filter(Boolean).join(", ") || "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Pivot Table: SKU × Warehouse */}
           <div className="card">

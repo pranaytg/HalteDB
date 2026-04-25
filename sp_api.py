@@ -13,6 +13,8 @@ from sqlalchemy import text as sa_text
 from crud import (
     upsert_orders_batch,
     upsert_inventory_batch,
+    upsert_inbound_shipments_batch,
+    prune_inbound_shipments_not_in,
     get_sync_meta,
     update_orders_sync_time,
     update_inventory_sync_time,
@@ -205,6 +207,107 @@ async def run_inventory_sync_job(session: AsyncSession):
     # Update sync timestamp
     await update_inventory_sync_time(session, datetime.now(timezone.utc))
     logger.info("Inventory sync complete!")
+
+
+# ============================================
+# Inbound Shipments Sync (FBA Inbound Shipments API)
+# ============================================
+
+import re as _re
+
+_SHIPMENT_DATE_RE = _re.compile(r"\((\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{2})\)")
+
+
+def _parse_booked_date(shipment_name: str | None):
+    """Extract booking date from ShipmentName like 'FBA STA (23/03/2026 06:47)-BLR8'."""
+    if not shipment_name:
+        return None
+    m = _SHIPMENT_DATE_RE.search(shipment_name)
+    if not m:
+        return None
+    try:
+        d, mo, y, h, mi = (int(x) for x in m.groups())
+        return datetime(y, mo, d, h, mi, tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+async def run_inbound_shipments_sync(session: AsyncSession, lookback_days: int = 90):
+    """Pulls active FBA inbound shipments (last `lookback_days` of activity) into
+    the `inbound_shipments` table. Independent from the existing inventory sync."""
+    endpoint = os.getenv("SP_API_ENDPOINT", "").strip('"').strip("'")
+    if not endpoint:
+        raise ValueError("Missing SP_API_ENDPOINT in environment")
+
+    marketplace_id = os.getenv("SP_API_MARKETPLACE_ID")
+    if not marketplace_id:
+        raise ValueError("Missing SP_API_MARKETPLACE_ID in environment")
+
+    access_token = await get_amazon_access_token()
+    headers = {"x-amz-access-token": access_token}
+
+    last_updated_after = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).isoformat()
+    statuses = "WORKING,SHIPPED,IN_TRANSIT,DELIVERED,CHECKED_IN,RECEIVING"
+
+    url = f"{endpoint}/fba/inbound/v0/shipments"
+    params = {
+        "ShipmentStatusList": statuses,
+        "QueryType": "SHIPMENT",
+        "MarketplaceId": marketplace_id,
+        "LastUpdatedAfter": last_updated_after,
+    }
+
+    logger.info("Fetching FBA inbound shipments (last %d days)...", lookback_days)
+    all_shipments: list[dict] = []
+    next_token: str | None = None
+
+    async with httpx.AsyncClient(timeout=60.0, headers=headers) as client:
+        while True:
+            if next_token:
+                # SP-API spec: when paginating, only QueryType=NEXT_TOKEN + NextToken are needed
+                p = {
+                    "QueryType": "NEXT_TOKEN",
+                    "MarketplaceId": marketplace_id,
+                    "NextToken": next_token,
+                }
+            else:
+                p = params
+
+            r = await client.get(url, params=p)
+            if r.status_code == 429:
+                logger.warning("Inbound shipments rate-limited, sleeping 5s...")
+                await asyncio.sleep(5)
+                continue
+            r.raise_for_status()
+            data = r.json().get("payload", {})
+            shipments = data.get("ShipmentData") or []
+            all_shipments.extend(shipments)
+            next_token = data.get("NextToken")
+            if not next_token:
+                break
+
+    logger.info("Got %d inbound shipments from Amazon", len(all_shipments))
+
+    batch = []
+    for s in all_shipments:
+        addr = s.get("ShipFromAddress") or {}
+        batch.append({
+            "shipment_id": s.get("ShipmentId"),
+            "shipment_name": s.get("ShipmentName"),
+            "destination_fc": s.get("DestinationFulfillmentCenterId"),
+            "shipment_status": s.get("ShipmentStatus"),
+            "label_prep_type": s.get("LabelPrepType"),
+            "box_contents_source": s.get("BoxContentsSource"),
+            "booked_date": _parse_booked_date(s.get("ShipmentName")),
+            "ship_from_city": addr.get("City"),
+            "ship_from_state": addr.get("StateOrProvinceCode"),
+        })
+
+    if batch:
+        await upsert_inbound_shipments_batch(session, batch)
+        await prune_inbound_shipments_not_in(session, [b["shipment_id"] for b in batch])
+
+    logger.info("Inbound shipments sync complete!")
 
 
 # ============================================
@@ -2125,6 +2228,7 @@ async def run_full_sync(session: AsyncSession):
     await _run_phase("--- Phase 2: Incremental Orders Sync ---", run_incremental_orders_sync)
     await _run_phase("--- Phase 3: Product Specifications Sync ---", run_product_specs_sync)
     await _run_phase("--- Phase 4: Shipment Cost Sync ---", run_shipment_sync)
+    await _run_phase("--- Phase 5: Inbound Shipments Sync ---", run_inbound_shipments_sync)
 
     logger.info("=== FULL SYNC COMPLETE ===")
 

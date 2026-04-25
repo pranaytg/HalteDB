@@ -25,9 +25,9 @@ function recalc(row: Record<string, number | string | null>) {
   const costPriceHalte = finalPrice + margin1Amount;
   const margin2Amount  = (costPriceHalte + marketingCost) * (margin2Pct / 100);
   const sellingPrice   = costPriceHalte + marketingCost + margin2Amount;
-  const mspWithGst     = sellingPrice * (1 + gstPercent / 100);
-  const halteSP        = mspWithGst * 1.05;
-  const amazonSP       = mspWithGst * 1.20;
+  const mspWithGst     = sellingPrice;
+  const halteSP        = sellingPrice * 1.05;
+  const amazonSP       = sellingPrice * 1.20;
 
   // Profitability = Amazon Selling Price - COGS - Amazon Fee - Shipping - Marketing
   const amazonFee      = amazonSP * (amazonFeePct / 100);

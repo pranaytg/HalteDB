@@ -127,9 +127,9 @@ class EstimatedCogs(Base):
     margin2_amount = Column(Float, default=0.0)
     selling_price = Column(Float, default=0.0)          # cost_price_halte + marketing_cost + margin2_amount
 
-    msp_with_gst = Column(Float, default=0.0)           # selling_price * (1 + gst_percent/100)
-    halte_selling_price = Column(Float, default=0.0)    # msp_with_gst * 1.05
-    amazon_selling_price = Column(Float, default=0.0)   # msp_with_gst * 1.20
+    msp_with_gst = Column(Float, default=0.0)           # = selling_price (GST already applied at base; no second pass)
+    halte_selling_price = Column(Float, default=0.0)    # selling_price * 1.05
+    amazon_selling_price = Column(Float, default=0.0)   # selling_price * 1.20
 
     profitability = Column(Float, default=0.0)          # Amazon SP - COGS - Amazon Fee - Shipping - Marketing
     amazon_fee_percent = Column(Float, default=15.0)    # Amazon referral fee percentage
@@ -174,6 +174,26 @@ class ProductSpecification(Base):
     volumetric_weight_kg = Column(Float, nullable=True)      # L*W*H / 5000
     chargeable_weight_kg = Column(Float, nullable=True)      # max(weight, volumetric)
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class InboundShipment(Base):
+    """Amazon FBA inbound shipments — items in transit to FCs.
+
+    Sourced from SP-API /fba/inbound/v0/shipments. Independent of the
+    `inventory` table; this represents shipments themselves, not balances.
+    """
+    __tablename__ = "inbound_shipments"
+
+    shipment_id = Column(String, primary_key=True)
+    shipment_name = Column(String, nullable=True)
+    destination_fc = Column(String, index=True, nullable=True)
+    shipment_status = Column(String, index=True, nullable=True)
+    label_prep_type = Column(String, nullable=True)
+    box_contents_source = Column(String, nullable=True)
+    booked_date = Column(DateTime(timezone=True), nullable=True)  # parsed from ShipmentName
+    ship_from_city = Column(String, nullable=True)
+    ship_from_state = Column(String, nullable=True)
+    last_synced = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class ShipmentEstimate(Base):

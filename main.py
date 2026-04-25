@@ -32,6 +32,7 @@ from sp_api import (
     get_powerbi_sales_sync_status,
     run_shipment_sync_full,
     recalculate_profitability_all,
+    run_inbound_shipments_sync,
 )
 from crud import get_sync_meta
 
@@ -224,6 +225,23 @@ async def trigger_inventory_sync(
 
     background_tasks.add_task(_run)
     return {"status": "accepted", "message": "Inventory sync started."}
+
+
+@app.post("/sync-inbound-shipments")
+async def trigger_inbound_shipments_sync(
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_db),
+):
+    """Triggers FBA inbound-shipments sync (active shipments in transit / receiving)."""
+    async def _run():
+        try:
+            async with SessionLocal() as sync_session:
+                await run_inbound_shipments_sync(sync_session)
+        except Exception as e:
+            logger.error(f"Inbound shipments sync failed: {e}")
+
+    background_tasks.add_task(_run)
+    return {"status": "accepted", "message": "Inbound shipments sync started."}
 
 
 @app.post("/sync-orders")
