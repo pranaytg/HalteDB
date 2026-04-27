@@ -236,6 +236,110 @@ export async function PUT(req: NextRequest) {
       });
     }
 
+    /* ── Mass Update with filters ── */
+    if (action === "mass_update") {
+      const ALLOWED_FIELDS: Record<string, "number"> = {
+        import_price: "number",
+        custom_duty: "number",
+        conversion_rate: "number",
+        gst_percent: "number",
+        shipping_cost: "number",
+        margin1_percent: "number",
+        marketing_cost: "number",
+        margin2_percent: "number",
+        amazon_fee_percent: "number",
+      };
+
+      const field = String(body.field || "");
+      if (!ALLOWED_FIELDS[field]) {
+        return NextResponse.json({ error: `Field "${field}" is not updatable in bulk` }, { status: 400 });
+      }
+
+      const rawValue = body.value;
+      const value = Number(rawValue);
+      const isDryRun = !!body.dry_run;
+
+      // Value is only required for the actual write — dry run just counts matches
+      if (!isDryRun) {
+        if (rawValue === "" || rawValue == null || !Number.isFinite(value)) {
+          return NextResponse.json({ error: "Valid numeric value required" }, { status: 400 });
+        }
+        if (value < 0) {
+          return NextResponse.json({ error: "Value cannot be negative" }, { status: 400 });
+        }
+        if (field.endsWith("_percent") && value > 1000) {
+          return NextResponse.json({ error: "Percentage value seems too large" }, { status: 400 });
+        }
+        if (field === "conversion_rate" && value <= 0) {
+          return NextResponse.json({ error: "Conversion rate must be > 0" }, { status: 400 });
+        }
+      }
+
+      // Build WHERE clause from optional filters
+      const filters = body.filters || {};
+      const where: string[] = [];
+      const params: (string | number)[] = [];
+      let p = 1;
+
+      if (filters.brand) { where.push(`brand = $${p++}`); params.push(String(filters.brand)); }
+      if (filters.category) { where.push(`category = $${p++}`); params.push(String(filters.category)); }
+      if (filters.currency) { where.push(`UPPER(import_currency) = $${p++}`); params.push(String(filters.currency).toUpperCase()); }
+      if (filters.sku_contains) { where.push(`sku ILIKE $${p++}`); params.push(`%${String(filters.sku_contains)}%`); }
+
+      // Skip INR rows when updating conversion_rate (rate is forced to 1 anyway)
+      if (field === "conversion_rate") {
+        where.push(`UPPER(import_currency) <> 'INR'`);
+      }
+
+      const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+      const matchingRows = await pool.query(
+        `SELECT * FROM estimated_cogs ${whereSql}`, params
+      );
+
+      if (matchingRows.rows.length === 0) {
+        return NextResponse.json({ error: "No SKUs match the selected filters" }, { status: 400 });
+      }
+
+      // Dry-run mode: return count + list of matching SKUs (no value needed)
+      if (isDryRun) {
+        return NextResponse.json({
+          matched: matchingRows.rows.length,
+          skus: matchingRows.rows.map(r => r.sku),
+          message: `${matchingRows.rows.length} SKU(s) would be updated`,
+        });
+      }
+
+      let updated = 0;
+      for (const row of matchingRows.rows) {
+        const newRow = { ...row, [field]: value };
+        const calcs = recalc(newRow);
+        await pool.query(
+          `UPDATE estimated_cogs SET
+            ${field}=$1,
+            import_price_inr=$2, gst_amount=$3, final_price=$4,
+            margin1_amount=$5, cost_price_halte=$6,
+            margin2_amount=$7, selling_price=$8,
+            msp_with_gst=$9, halte_selling_price=$10, amazon_selling_price=$11,
+            profitability=$12, last_updated=NOW()
+          WHERE id=$13`,
+          [
+            value,
+            calcs.import_price_inr, calcs.gst_amount, calcs.final_price,
+            calcs.margin1_amount, calcs.cost_price_halte,
+            calcs.margin2_amount, calcs.selling_price,
+            calcs.msp_with_gst, calcs.halte_selling_price, calcs.amazon_selling_price,
+            calcs.profitability, row.id,
+          ]
+        );
+        updated++;
+      }
+
+      return NextResponse.json({
+        message: `Mass updated ${field} = ${value} on ${updated} SKU(s)`,
+        updated,
+      });
+    }
+
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
     console.error("EstimatedCogs PUT error:", error);

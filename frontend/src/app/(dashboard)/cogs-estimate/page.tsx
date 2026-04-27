@@ -83,6 +83,17 @@ export default function CogsEstimatePage() {
   const [massCurrency, setMassCurrency] = useState("USD");
   const [massRate, setMassRate] = useState("83");
 
+  // Mass update with filters
+  const [showMassUpdate, setShowMassUpdate] = useState(false);
+  const [muBrand, setMuBrand] = useState("");
+  const [muCategory, setMuCategory] = useState("");
+  const [muCurrency, setMuCurrency] = useState("");
+  const [muSkuContains, setMuSkuContains] = useState("");
+  const [muField, setMuField] = useState("margin1_percent");
+  const [muValue, setMuValue] = useState("");
+  const [muPreview, setMuPreview] = useState<{ count: number; skus: string[] } | null>(null);
+  const [muPreviewing, setMuPreviewing] = useState(false);
+
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
@@ -180,6 +191,83 @@ export default function CogsEstimatePage() {
     finally { setSaving(false); }
   };
 
+  /* ── Mass Update with filters ── */
+  const MASS_UPDATE_FIELDS = [
+    { key: "margin1_percent", label: "Margin 1 %" },
+    { key: "margin2_percent", label: "Margin 2 %" },
+    { key: "gst_percent", label: "GST %" },
+    { key: "amazon_fee_percent", label: "Amazon Fee %" },
+    { key: "custom_duty", label: "Custom Duty (₹)" },
+    { key: "shipping_cost", label: "Shipping (₹)" },
+    { key: "marketing_cost", label: "Marketing (₹)" },
+    { key: "conversion_rate", label: "Conversion Rate (skips INR)" },
+    { key: "import_price", label: "Import Price" },
+  ];
+
+  const buildMassUpdateBody = (dryRun: boolean) => ({
+    action: "mass_update",
+    field: muField,
+    value: dryRun ? undefined : parseFloat(muValue),
+    dry_run: dryRun,
+    filters: {
+      brand: muBrand || undefined,
+      category: muCategory || undefined,
+      currency: muCurrency || undefined,
+      sku_contains: muSkuContains.trim() || undefined,
+    },
+  });
+
+  const validateMassUpdate = () => {
+    const v = parseFloat(muValue);
+    if (muValue === "" || !Number.isFinite(v)) { showToast("Enter a valid numeric value", "error"); return false; }
+    if (v < 0) { showToast("Value cannot be negative", "error"); return false; }
+    return true;
+  };
+
+  const handleMassPreview = async () => {
+    setMuPreviewing(true);
+    setMuPreview(null);
+    try {
+      const res = await fetch("/api/cogs-estimate", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildMassUpdateBody(true)),
+      });
+      const data = await res.json();
+      if (res.ok) setMuPreview({ count: data.matched ?? 0, skus: data.skus || [] });
+      else showToast(data.error || "Preview failed", "error");
+    } catch { showToast("Network error", "error"); }
+    finally { setMuPreviewing(false); }
+  };
+
+  const handleMassUpdate = async () => {
+    if (!validateMassUpdate()) return;
+    const fieldLabel = MASS_UPDATE_FIELDS.find(f => f.key === muField)?.label || muField;
+    const filterDesc = [
+      muBrand && `Brand=${muBrand}`,
+      muCategory && `Category=${muCategory}`,
+      muCurrency && `Currency=${muCurrency}`,
+      muSkuContains && `SKU contains "${muSkuContains}"`,
+    ].filter(Boolean).join(", ") || "ALL SKUs";
+    if (!confirm(`Set ${fieldLabel} = ${muValue} for ${filterDesc}?\n\nThis will recalculate all derived fields.`)) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/cogs-estimate", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildMassUpdateBody(false)),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message, "success");
+        setMuPreview(null);
+        setMuValue("");
+        await fetchItems();
+      } else showToast(data.error || "Failed", "error");
+    } catch { showToast("Network error", "error"); }
+    finally { setSaving(false); }
+  };
+
   /* ── Sync to COGS ── */
   const handleSyncCogs = async () => {
     if (!confirm("This will sync Halte SP & Amazon SP from COGS Estimate to the COGS table. Continue?")) return;
@@ -253,6 +341,8 @@ export default function CogsEstimatePage() {
   };
 
   const uniqueBrands = Array.from(new Set(items.map(i => i.brand).filter(Boolean) as string[])).sort();
+  const uniqueCategories = Array.from(new Set(items.map(i => i.category).filter(Boolean) as string[])).sort();
+  const uniqueCurrencies = Array.from(new Set(items.map(i => i.import_currency).filter(Boolean) as string[])).sort();
 
   const filtered = items.filter(i => {
     const matchesBrand = !brandFilter || i.brand === brandFilter;
@@ -336,6 +426,9 @@ export default function CogsEstimatePage() {
         <button className="btn btn-primary" style={{ background: "var(--warning)" }} onClick={() => setShowCurrency(!showCurrency)}>
           💱 Mass Currency Update
         </button>
+        <button className="btn btn-primary" style={{ background: "#0ea5e9" }} onClick={() => setShowMassUpdate(!showMassUpdate)}>
+          {showMassUpdate ? "✕ Close Mass Update" : "🛠 Mass Update"}
+        </button>
         <button className="btn btn-success" onClick={handleSyncCogs} disabled={syncing || items.length === 0}>
           {syncing ? "Syncing..." : "Sync to COGS"}
         </button>
@@ -377,6 +470,86 @@ export default function CogsEstimatePage() {
               {saving ? "Updating..." : "Update All SKUs"}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Mass Update Panel */}
+      {showMassUpdate && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-header">
+            <div className="card-title">🛠 Mass Update with Filters</div>
+          </div>
+          <div style={{ padding: "0 0 16px", fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
+            Pick filters to narrow which SKUs are affected, choose a field, and set a value. Leave a filter empty to ignore it. Click <strong>Preview</strong> to see how many SKUs will match before applying.
+          </div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", paddingBottom: 12 }}>
+            <div className="filter-group">
+              <span className="filter-label">Brand</span>
+              <select className="filter-select" value={muBrand} onChange={e => { setMuBrand(e.target.value); setMuPreview(null); }} style={{ minWidth: 140 }}>
+                <option value="">Any brand</option>
+                {uniqueBrands.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+            <div className="filter-group">
+              <span className="filter-label">Category</span>
+              <select className="filter-select" value={muCategory} onChange={e => { setMuCategory(e.target.value); setMuPreview(null); }} style={{ minWidth: 140 }}>
+                <option value="">Any category</option>
+                {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="filter-group">
+              <span className="filter-label">Currency</span>
+              <select className="filter-select" value={muCurrency} onChange={e => { setMuCurrency(e.target.value); setMuPreview(null); }} style={{ minWidth: 100 }}>
+                <option value="">Any</option>
+                {uniqueCurrencies.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="filter-group">
+              <span className="filter-label">SKU contains</span>
+              <input className="filter-input" type="text" value={muSkuContains}
+                onChange={e => { setMuSkuContains(e.target.value); setMuPreview(null); }}
+                placeholder="(optional)" style={{ width: 160 }} />
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", paddingBottom: 12 }}>
+            <div className="filter-group">
+              <span className="filter-label">Field to update</span>
+              <select className="filter-select" value={muField} onChange={e => { setMuField(e.target.value); setMuPreview(null); }} style={{ minWidth: 200 }}>
+                {MASS_UPDATE_FIELDS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+              </select>
+            </div>
+            <div className="filter-group">
+              <span className="filter-label">New value</span>
+              <input className="filter-input" type="number" step="0.01" value={muValue}
+                onChange={e => { setMuValue(e.target.value); setMuPreview(null); }}
+                placeholder="e.g. 20" style={{ width: 120 }} />
+            </div>
+            <button className="btn btn-ghost" onClick={handleMassPreview} disabled={muPreviewing || saving}>
+              {muPreviewing ? "Checking..." : "🔍 Preview match"}
+            </button>
+            <button className="btn btn-primary" onClick={handleMassUpdate} disabled={saving || muPreviewing}>
+              {saving ? "Applying..." : "✓ Apply Mass Update"}
+            </button>
+            {muPreview !== null && (
+              <span style={{ fontSize: 13, fontWeight: 600, color: muPreview.count > 0 ? "var(--success)" : "var(--danger)" }}>
+                {muPreview.count} SKU{muPreview.count === 1 ? "" : "s"} match
+              </span>
+            )}
+          </div>
+          {muPreview !== null && muPreview.count > 0 && (
+            <div style={{
+              border: "1px solid var(--border)", borderRadius: 6, padding: 10,
+              maxHeight: 180, overflowY: "auto", fontSize: 12, fontFamily: "monospace",
+              background: "var(--bg-secondary, rgba(0,0,0,0.03))", marginBottom: 8,
+            }}>
+              <div style={{ fontWeight: 600, marginBottom: 6, fontFamily: "inherit" }}>
+                SKUs that will be updated:
+              </div>
+              {muPreview.skus.map(s => (
+                <div key={s} style={{ padding: "1px 0" }}>{s}</div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -528,9 +701,9 @@ export default function CogsEstimatePage() {
           <div><strong>Final Price</strong> = Import Price ₹ + Custom Duty + GST Amount + Shipping</div>
           <div><strong>Cost Price Halte</strong> = Final Price + Margin 1 Amount</div>
           <div><strong>Selling Price</strong> = Cost Price Halte + Marketing + Margin 2 Amount</div>
-          <div><strong>MSP (with GST)</strong> = Selling Price × (1 + GST%)</div>
-          <div><strong>Halte Selling Price</strong> = MSP × 1.05 (+5%)</div>
-          <div><strong>Amazon Selling Price</strong> = MSP × 1.20 (+20%)</div>
+          <div><strong>MSP</strong> = Selling Price</div>
+          <div><strong>Halte Selling Price</strong> = Selling Price × 1.05 (+5%)</div>
+          <div><strong>Amazon Selling Price</strong> = Selling Price × 1.20 (+20%)</div>
           <div><strong>Profitability (per unit)</strong> = Amazon SP − COGS − Amazon Fee − Shipping − Marketing</div>
           <div style={{ marginTop: 12, color: "var(--accent)" }}>
             <strong>🔄 Sync to COGS</strong> → Sets COGS price = Final Price (actual COGS), then recalculates order profit as: Selling Price − COGS − Amazon Fee (%) − Shipping − Marketing. Returns: −2 × Shipping.
