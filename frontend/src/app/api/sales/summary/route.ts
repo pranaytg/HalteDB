@@ -61,8 +61,8 @@ export async function GET(req: NextRequest) {
         conditions.push(`LOWER(orders.ship_city) IN (${placeholders})`); params.push(...cities);
       }
     }
-    if (startDate) { conditions.push(`orders.purchase_date >= ($${idx++}::date AT TIME ZONE 'Asia/Kolkata')`); params.push(startDate); }
-    if (endDate) { conditions.push(`orders.purchase_date < (($${idx++}::date + INTERVAL '1 day') AT TIME ZONE 'Asia/Kolkata')`); params.push(endDate); }
+    if (startDate) { conditions.push(`(orders.purchase_date AT TIME ZONE 'Asia/Kolkata')::date >= $${idx++}::date`); params.push(startDate); }
+    if (endDate) { conditions.push(`(orders.purchase_date AT TIME ZONE 'Asia/Kolkata')::date <= $${idx++}::date`); params.push(endDate); }
 
     /* ── Tier filter: resolve tier → city list ── */
     if (tier) {

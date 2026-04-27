@@ -67,11 +67,11 @@ export async function GET(req: NextRequest) {
       params.push(month);
     }
     if (startDate) {
-      where += ` AND purchase_date >= ($${idx++}::date AT TIME ZONE 'Asia/Kolkata')`;
+      where += ` AND (purchase_date AT TIME ZONE 'Asia/Kolkata')::date >= $${idx++}::date`;
       params.push(startDate);
     }
     if (endDate) {
-      where += ` AND purchase_date < (($${idx++}::date + INTERVAL '1 day') AT TIME ZONE 'Asia/Kolkata')`;
+      where += ` AND (purchase_date AT TIME ZONE 'Asia/Kolkata')::date <= $${idx++}::date`;
       params.push(endDate);
     }
 
