@@ -31,7 +31,10 @@ from shiprocket import (
 logger = logging.getLogger("haltedb")
 
 SHIPMENT_SYNC_BATCH_SIZE = int(os.getenv("SHIPMENT_SYNC_BATCH_SIZE", "150"))
-AMAZON_FINANCE_LOOKUP_LIMIT = int(os.getenv("AMAZON_FINANCE_LOOKUP_LIMIT", "25"))
+# Phase 4 (run_shipment_sync) no longer calls the Finance API; Phase 6
+# (run_amazon_finance_actuals_sync) is the sole owner of Finance lookups.
+# Keep this constant at 0 so legacy code paths skip Amazon Finance calls.
+AMAZON_FINANCE_LOOKUP_LIMIT = int(os.getenv("AMAZON_FINANCE_LOOKUP_LIMIT", "0"))
 AMAZON_FINANCE_LOOKUP_DELAY_SECONDS = float(os.getenv("AMAZON_FINANCE_LOOKUP_DELAY_SECONDS", "2.1"))
 AMAZON_FINANCE_LOOKUP_MAX_RETRIES = int(os.getenv("AMAZON_FINANCE_LOOKUP_MAX_RETRIES", "3"))
 AMAZON_FINANCE_LOOKUP_BACKOFF_MULTIPLIER = float(os.getenv("AMAZON_FINANCE_LOOKUP_BACKOFF_MULTIPLIER", "2.0"))
@@ -442,7 +445,12 @@ def _normalize_city(raw: str | None) -> str | None:
 # Orders Fetch (Date Range Report)
 # ============================================
 
-async def fetch_orders_date_range(session: AsyncSession, start_time: datetime, end_time: datetime):
+async def fetch_orders_date_range(
+    session: AsyncSession,
+    start_time: datetime,
+    end_time: datetime,
+    by_last_update: bool = True,
+):
     endpoint = os.getenv("SP_API_ENDPOINT")
     if not endpoint:
         raise ValueError("Missing SP_API_ENDPOINT in environment")
@@ -451,7 +459,14 @@ async def fetch_orders_date_range(session: AsyncSession, start_time: datetime, e
     access_token = await get_amazon_access_token()
     headers = {"x-amz-access-token": access_token}
 
-    report_type = "GET_FLAT_FILE_ALL_ORDERS_DATA_BY_ORDER_DATE_GENERAL"
+    # BY_LAST_UPDATE catches status changes (Pending → Shipped/Cancelled) on older
+    # orders. BY_ORDER_DATE only returns orders whose PURCHASE date is in range,
+    # which freezes the status of any order older than the lookback window.
+    report_type = (
+        "GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL"
+        if by_last_update
+        else "GET_FLAT_FILE_ALL_ORDERS_DATA_BY_ORDER_DATE_GENERAL"
+    )
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         logger.info(f"Requesting Orders from {start_time.strftime('%Y-%m-%d')} to {end_time.strftime('%Y-%m-%d')}...")
@@ -574,27 +589,29 @@ async def fetch_orders_date_range(session: AsyncSession, start_time: datetime, e
 # Incremental Orders Sync (Since Last Sync)
 # ============================================
 
+ORDERS_SYNC_LOOKBACK_DAYS = int(os.getenv("ORDERS_SYNC_LOOKBACK_DAYS", "30"))
+
+
 async def run_incremental_orders_sync(session: AsyncSession):
     """
-    Fetches orders since the last sync. If first run, fetches last 2 days.
-    Updates sync_meta.last_orders_sync on success.
+    Fetches orders updated since the last sync (BY_LAST_UPDATE report). The
+    lookback window is wide enough that any order whose status changes within
+    ~30 days of placement gets re-synced — so Pending → Shipped/Cancelled
+    transitions don't freeze the row at its purchase-day status.
     """
     meta = await get_sync_meta(session)
 
     now = datetime.now(timezone.utc).replace(microsecond=0)
 
+    lookback_start = now - timedelta(days=ORDERS_SYNC_LOOKBACK_DAYS)
     if meta.last_orders_sync:
-        # Always look back at least 3 days so status changes
-        # (Pending → Shipped, Cancelled, etc.) on recent orders get re-synced.
-        lookback_start = now - timedelta(days=3)
         start_time = min(meta.last_orders_sync - timedelta(hours=1), lookback_start)
     else:
-        # First run: fetch last 3 days
-        start_time = now - timedelta(days=3)
+        start_time = lookback_start
 
-    logger.info(f"Incremental orders sync: {start_time.isoformat()} → {now.isoformat()}")
+    logger.info(f"Incremental orders sync: {start_time.isoformat()} → {now.isoformat()} (BY_LAST_UPDATE)")
 
-    await fetch_orders_date_range(session, start_time, now)
+    await fetch_orders_date_range(session, start_time, now, by_last_update=True)
 
     # Update the sync timestamp
     await update_orders_sync_time(session, now)
@@ -1041,15 +1058,7 @@ async def recalculate_profitability_for_orders(session: AsyncSession, order_ids:
       CASE
         WHEN o.amazon_fee IS NOT NULL AND o.amazon_fee > 0
           THEN o.amazon_fee
-        ELSE o.item_price * COALESCE(
-          (
-            SELECT ec.amazon_fee_percent
-            FROM estimated_cogs ec
-            WHERE ec.sku = o.sku
-            LIMIT 1
-          ),
-          15
-        ) / 100
+        ELSE 0
       END
     """
     marketing_expr = """
@@ -1079,6 +1088,8 @@ async def recalculate_profitability_for_orders(session: AsyncSession, order_ids:
         profit = CASE
           WHEN o.order_status IN ('Cancelled', 'Returned') THEN
             -2 * ({shipping_expr})
+          WHEN o.amazon_fee IS NULL OR o.amazon_fee <= 0 THEN
+            NULL
           ELSE
             o.item_price
             - ({cogs_expr})
@@ -1135,10 +1146,7 @@ async def recalculate_profitability_all(session: AsyncSession) -> int:
       CASE
         WHEN o.amazon_fee IS NOT NULL AND o.amazon_fee > 0
           THEN o.amazon_fee
-        ELSE o.item_price * COALESCE(
-          (SELECT ec.amazon_fee_percent FROM estimated_cogs ec WHERE ec.sku = o.sku LIMIT 1),
-          15
-        ) / 100
+        ELSE 0
       END
     """
     marketing_expr = """
@@ -1158,6 +1166,8 @@ async def recalculate_profitability_all(session: AsyncSession) -> int:
         profit = CASE
           WHEN o.order_status IN ('Cancelled', 'Returned') THEN
             -2 * ({shipping_expr})
+          WHEN o.amazon_fee IS NULL OR o.amazon_fee <= 0 THEN
+            NULL
           ELSE
             o.item_price
             - ({cogs_expr})
@@ -2209,6 +2219,107 @@ async def _fetch_amazon_prices(identifiers: list[str], item_type: str, param_nam
     return results
 
 
+AMAZON_FINANCE_AUTO_BACKFILL_DAYS = int(os.getenv("AMAZON_FINANCE_AUTO_BACKFILL_DAYS", "30"))
+
+
+async def run_amazon_finance_actuals_sync(session: AsyncSession, days: int | None = None):
+    """Pulls SP-API Finance actuals (referral fee + outbound shipping) for every
+    Amazon-fulfilled order in the last `days` window that is still missing either
+    value. No per-batch cap — runs to completion so dashboards reflect API data
+    as soon as Amazon settles each order."""
+    days = days or AMAZON_FINANCE_AUTO_BACKFILL_DAYS
+
+    rows = (await session.execute(sa_text("""
+        SELECT o.amazon_order_id, o.sku
+        FROM orders o
+        LEFT JOIN shipment_estimates se
+          ON se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+        WHERE o.item_price > 0
+          AND (
+            LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+            OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
+          )
+          AND o.order_status NOT IN ('Cancelled', 'Pending')
+          AND o.purchase_date >= NOW() - (:days::int * INTERVAL '1 day')
+          AND (
+            COALESCE(o.amazon_fee, 0) <= 0
+            OR COALESCE(o.shipping_price, 0) <= 0
+            OR COALESCE(se.rate_source, '') <> 'sp_api_finance'
+          )
+        ORDER BY o.purchase_date ASC NULLS LAST
+    """), {"days": days})).all()
+
+    order_map: dict[str, list[str]] = defaultdict(list)
+    for row in rows:
+        order_map[str(row[0])].append(str(row[1]))
+
+    if not order_map:
+        logger.info("Finance actuals sync: no eligible Amazon orders need a refresh.")
+        return
+
+    order_ids = list(order_map.keys())
+    logger.info(
+        "Finance actuals sync: looking up %s order(s) (%s rows) over the last %s days.",
+        len(order_ids), len(rows), days,
+    )
+
+    access_token = await get_amazon_access_token()
+    shipping_updates = 0
+    fee_updates = 0
+    no_data = 0
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        for index, order_id in enumerate(order_ids):
+            breakdown = await fetch_amazon_order_financial_breakdown(client, access_token, order_id)
+            had_any = False
+
+            for sku in order_map[order_id]:
+                entry = breakdown.get(sku, {})
+                shipping = float(entry.get("shipping") or 0.0)
+                referral = float(entry.get("referral") or 0.0)
+
+                if shipping > 0:
+                    had_any = True
+                    await session.execute(sa_text("""
+                        UPDATE orders SET shipping_price = :shipping
+                        WHERE amazon_order_id = :order_id AND sku = :sku
+                    """), {"shipping": shipping, "order_id": order_id, "sku": sku})
+                    await session.execute(sa_text("""
+                        UPDATE shipment_estimates
+                        SET amazon_shipping_cost = :shipping,
+                            rate_source = 'sp_api_finance',
+                            estimated_at = NOW()
+                        WHERE amazon_order_id = :order_id AND sku = :sku
+                    """), {"shipping": shipping, "order_id": order_id, "sku": sku})
+                    shipping_updates += 1
+
+                if referral > 0:
+                    had_any = True
+                    await session.execute(sa_text("""
+                        UPDATE orders SET amazon_fee = :fee
+                        WHERE amazon_order_id = :order_id AND sku = :sku
+                    """), {"fee": referral, "order_id": order_id, "sku": sku})
+                    fee_updates += 1
+
+            if not had_any:
+                no_data += 1
+
+            if (index + 1) % 50 == 0 or index == len(order_ids) - 1:
+                await session.commit()
+                logger.info(
+                    "Finance actuals sync [%s/%s] shipping=%s fee=%s pending=%s",
+                    index + 1, len(order_ids), shipping_updates, fee_updates, no_data,
+                )
+
+            if index < len(order_ids) - 1:
+                await asyncio.sleep(AMAZON_FINANCE_LOOKUP_DELAY_SECONDS)
+
+    await session.commit()
+
+    if shipping_updates or fee_updates:
+        await recalculate_profitability_all(session)
+
+
 async def run_full_sync(session: AsyncSession):
     """
     Runs inventory sync, incremental orders sync, and product specs sync.
@@ -2229,6 +2340,7 @@ async def run_full_sync(session: AsyncSession):
     await _run_phase("--- Phase 3: Product Specifications Sync ---", run_product_specs_sync)
     await _run_phase("--- Phase 4: Shipment Cost Sync ---", run_shipment_sync)
     await _run_phase("--- Phase 5: Inbound Shipments Sync ---", run_inbound_shipments_sync)
+    await _run_phase("--- Phase 6: Amazon Finance Actuals Sync ---", run_amazon_finance_actuals_sync)
 
     logger.info("=== FULL SYNC COMPLETE ===")
 

@@ -503,7 +503,7 @@ export default function ShipmentPage() {
                           const badge = getRateSourceBadge(e.rate_source);
                           if (!badge) {
                             return (
-                              <span style={{ fontSize: 9, color: "var(--text-muted)" }}>\u2014</span>
+                              <span style={{ fontSize: 9, color: "var(--text-muted)" }}>{"\u2014"}</span>
                             );
                           }
                           return (
@@ -596,7 +596,7 @@ export default function ShipmentPage() {
             display: "flex", justifyContent: "space-between", alignItems: "center",
           }}>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              Showing {page * PAGE_SIZE + 1}\u2013{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+              Showing {page * PAGE_SIZE + 1}{"\u2013"}{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
             </span>
             <div style={{ display: "flex", gap: 4 }}>
               <button className="btn btn-ghost btn-sm" disabled={page === 0}
@@ -684,7 +684,7 @@ function SortTh({ field, label, sortField, sortDir, onClick, color }: {
 }
 
 function CostCell({ cost, isMin, etd }: { cost: number | null; isMin: boolean; etd: string }) {
-  if (cost == null) return <td style={{ ...td, textAlign: "center", color: "var(--text-muted)" }}>\u2014</td>;
+  if (cost == null) return <td style={{ ...td, textAlign: "center", color: "var(--text-muted)" }}>{"\u2014"}</td>;
   return (
     <td style={{
       ...td, textAlign: "center",
