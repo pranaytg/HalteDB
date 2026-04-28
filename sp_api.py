@@ -2240,7 +2240,7 @@ async def run_amazon_finance_actuals_sync(session: AsyncSession, days: int | Non
             OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
           )
           AND o.order_status NOT IN ('Cancelled', 'Pending')
-          AND o.purchase_date >= NOW() - (:days::int * INTERVAL '1 day')
+          AND o.purchase_date >= NOW() - (CAST(:days AS INTEGER) * INTERVAL '1 day')
           AND (
             COALESCE(o.amazon_fee, 0) <= 0
             OR COALESCE(o.shipping_price, 0) <= 0
