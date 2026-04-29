@@ -1216,6 +1216,13 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
               OR COALESCE(se.amazon_shipping_cost, 0) <= 0
             )
           )
+          OR (
+            NOT (
+              LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+              OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
+            )
+            AND se.rate_source = 'shiprocket_failed'
+          )
         )"""
     )
     orders_result = await session.execute(sa_text(f"""
