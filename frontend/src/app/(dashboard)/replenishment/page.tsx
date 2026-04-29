@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import * as XLSX from "xlsx";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend
@@ -241,6 +242,55 @@ export default function ReplenishmentPage() {
     URL.revokeObjectURL(url);
   };
 
+  // ── Excel Export (Order List: SKU × Warehouse × Quantity) ──
+
+  const exportOrderListXLSX = () => {
+    const rows: Record<string, string | number>[] = [];
+    skuRecs
+      .filter((r) => r.reorder_qty > 0)
+      .forEach((r) => {
+        const allocations = Object.entries(r.warehouse_allocation).filter(([, qty]) => qty > 0);
+        if (allocations.length === 0) {
+          rows.push({
+            SKU: r.sku,
+            "Article No": r.article_number || "",
+            ASIN: r.asin || "",
+            Warehouse: "(unassigned)",
+            Quantity: r.reorder_qty,
+            Urgency: r.urgency,
+          });
+          return;
+        }
+        allocations
+          .sort(([, a], [, b]) => b - a)
+          .forEach(([wh, qty]) => {
+            rows.push({
+              SKU: r.sku,
+              "Article No": r.article_number || "",
+              ASIN: r.asin || "",
+              Warehouse: wh,
+              Quantity: qty,
+              Urgency: r.urgency,
+            });
+          });
+      });
+
+    if (rows.length === 0) {
+      alert("No SKUs currently need to be ordered.");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(rows, {
+      header: ["SKU", "Article No", "ASIN", "Warehouse", "Quantity", "Urgency"],
+    });
+    ws["!cols"] = [
+      { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 10 }, { wch: 10 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Order List");
+    XLSX.writeFile(wb, `order_list_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   // ── Sort handler ─────────────────────────────────────
 
   const handleSort = (field: string) => {
@@ -302,6 +352,14 @@ export default function ReplenishmentPage() {
           </button>
           <button className="btn" onClick={exportCSV} style={{ fontSize: 13, background: "rgba(99,102,241,0.15)", color: "#a5b4fc", border: "1px solid rgba(99,102,241,0.3)" }}>
             📥 Export CSV
+          </button>
+          <button
+            className="btn"
+            onClick={exportOrderListXLSX}
+            title="Export Excel: only SKUs needing reorder, with quantity per warehouse"
+            style={{ fontSize: 13, background: "rgba(16,185,129,0.15)", color: "#6ee7b7", border: "1px solid rgba(16,185,129,0.3)" }}
+          >
+            📦 Export Order List (Excel)
           </button>
         </div>
       </div>
