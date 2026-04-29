@@ -77,6 +77,7 @@ export async function GET(req: NextRequest) {
           amazon_selling_price,
           amazon_fee_percent,
           profitability,
+          profit_percent,
           last_updated
         FROM estimated_cogs
         ${whereClause}
@@ -112,6 +113,7 @@ export async function GET(req: NextRequest) {
       "Amazon Selling Price (INR)": row.amazon_selling_price == null ? null : Number(row.amazon_selling_price),
       "Amazon Fee %": row.amazon_fee_percent == null ? null : Number(row.amazon_fee_percent),
       "Profitability (INR)": row.profitability == null ? null : Number(row.profitability),
+      "Profit %": row.profit_percent == null ? null : Number(row.profit_percent),
       "Last Updated": formatTimestamp(row.last_updated),
     }));
 
@@ -143,6 +145,7 @@ export async function GET(req: NextRequest) {
         "Amazon Selling Price (INR)",
         "Amazon Fee %",
         "Profitability (INR)",
+        "Profit %",
         "Last Updated",
       ]),
       "COGS Estimate",

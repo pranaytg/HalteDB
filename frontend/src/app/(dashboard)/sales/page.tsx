@@ -58,12 +58,18 @@ export default function SalesPage() {
   const [cityDropdownOpen, setCityDropdownOpen] = useState(false);
   const [citySearch, setCitySearch] = useState("");
   const cityDropdownRef = useRef<HTMLDivElement>(null);
+  const [skuDropdownOpen, setSkuDropdownOpen] = useState(false);
+  const [skuSearch, setSkuSearch] = useState("");
+  const skuDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close city dropdown on outside click
+  // Close city/sku dropdowns on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (cityDropdownRef.current && !cityDropdownRef.current.contains(e.target as Node)) {
         setCityDropdownOpen(false);
+      }
+      if (skuDropdownRef.current && !skuDropdownRef.current.contains(e.target as Node)) {
+        setSkuDropdownOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -120,8 +126,12 @@ export default function SalesPage() {
   })) || [], [summary]);
 
   const topSkus = useMemo(() => (summary?.bySku || [])
-    .map((s: any) => ({ name: s.sku, revenue: Number(s.total_revenue), orders: Number(s.total_orders) }))
+    .map((s: any) => ({ name: s.sku, revenue: Number(s.total_revenue), orders: Number(s.total_orders), units: Number(s.total_units) }))
     .sort((a: any, b: any) => b.revenue - a.revenue).slice(0, 15), [summary]);
+
+  const topSkusByUnits = useMemo(() => (summary?.bySku || [])
+    .map((s: any) => ({ name: s.sku, units: Number(s.total_units), orders: Number(s.total_orders), revenue: Number(s.total_revenue) }))
+    .sort((a: any, b: any) => b.units - a.units).slice(0, 15), [summary]);
 
   const stateData = useMemo(() => (geo?.byState || [])
     .map((s: any) => ({ name: s.state, revenue: Number(s.total_revenue), orders: Number(s.total_orders), profit: Number(s.total_profit) }))
@@ -168,6 +178,25 @@ export default function SalesPage() {
   };
 
   const selectedCities = useMemo(() => filters.city ? filters.city.split(",").filter(Boolean) : [], [filters.city]);
+  const selectedSkus = useMemo(() => filters.sku ? filters.sku.split(",").filter(Boolean) : [], [filters.sku]);
+
+  const toggleSku = (sku: string) => {
+    setFilters(f => {
+      const current = f.sku ? f.sku.split(",").filter(Boolean) : [];
+      const idx = current.findIndex(s => s.toLowerCase() === sku.toLowerCase());
+      const next = idx >= 0 ? current.filter((_, i) => i !== idx) : [...current, sku];
+      return { ...f, sku: next.join(",") };
+    });
+    setPage(0);
+  };
+
+  const removeSku = (sku: string) => {
+    setFilters(f => {
+      const current = f.sku ? f.sku.split(",").filter(Boolean) : [];
+      return { ...f, sku: current.filter(s => s.toLowerCase() !== sku.toLowerCase()).join(",") };
+    });
+    setPage(0);
+  };
 
   const toggleCity = (city: string) => {
     setFilters(f => {
@@ -211,13 +240,80 @@ export default function SalesPage() {
       {/* ═══════════════════ FILTER BAR ═══════════════════ */}
       <div className="card" style={{ marginBottom: 16, padding: "12px 16px" }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ position: "relative" }}>
-            <input className="filter-input" list="sku-list" placeholder="🔍 Search SKU..."
-              value={filters.sku} onChange={e => { setFilters(f => ({ ...f, sku: e.target.value })); setPage(0); }}
-              style={{ width: 160, fontSize: 12 }} />
-            <datalist id="sku-list">
-              {(summary?.filters?.skus || []).map((s: string) => <option key={s} value={s} />)}
-            </datalist>
+          <div style={{ position: "relative" }} ref={skuDropdownRef}>
+            <div
+              className="filter-input"
+              onClick={() => setSkuDropdownOpen(o => !o)}
+              style={{ width: 180, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", userSelect: "none" }}
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {selectedSkus.length === 0 ? "🔍 Search SKUs..." : `🔍 ${selectedSkus.length} SKU${selectedSkus.length === 1 ? "" : "s"} selected`}
+              </span>
+              <span style={{ fontSize: 10, marginLeft: 4 }}>{skuDropdownOpen ? "▲" : "▼"}</span>
+            </div>
+            {skuDropdownOpen && (
+              <div style={{
+                position: "absolute", top: "100%", left: 0, zIndex: 50, width: 240,
+                background: "var(--card-bg, #1e293b)", border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 8, marginTop: 4, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", maxHeight: 280, display: "flex", flexDirection: "column",
+              }}>
+                <div style={{ padding: "6px 8px", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", gap: 6, alignItems: "center" }}>
+                  <input
+                    className="filter-input"
+                    placeholder="Search SKUs..."
+                    value={skuSearch}
+                    onChange={e => setSkuSearch(e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                    style={{ width: "100%", fontSize: 12 }}
+                    autoFocus
+                  />
+                  {selectedSkus.length > 0 && (
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={e => { e.stopPropagation(); setFilters(f => ({ ...f, sku: "" })); setPage(0); }}
+                      style={{ fontSize: 10, padding: "2px 6px" }}
+                      title="Clear all"
+                    >✕</button>
+                  )}
+                </div>
+                <div style={{ overflowY: "auto", maxHeight: 230, padding: "4px 0" }}>
+                  {(() => {
+                    const allSkus: string[] = summary?.filters?.skus || [];
+                    const search = skuSearch.toLowerCase();
+                    const filtered = search ? allSkus.filter(s => s.toLowerCase().includes(search)) : allSkus;
+                    const selected = filtered.filter(s => selectedSkus.some(x => x.toLowerCase() === s.toLowerCase()));
+                    const unselected = filtered.filter(s => !selectedSkus.some(x => x.toLowerCase() === s.toLowerCase()));
+                    const sorted = [...selected, ...unselected];
+                    if (sorted.length === 0) return <div style={{ padding: "8px 12px", fontSize: 11, color: "var(--text-muted)" }}>No SKUs found</div>;
+                    return sorted.map(s => {
+                      const isSelected = selectedSkus.some(x => x.toLowerCase() === s.toLowerCase());
+                      return (
+                        <div
+                          key={s}
+                          onClick={() => toggleSku(s)}
+                          style={{
+                            padding: "5px 12px", fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", gap: 8,
+                            background: isSelected ? "rgba(99,102,241,0.15)" : "transparent",
+                          }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = isSelected ? "rgba(99,102,241,0.25)" : "rgba(255,255,255,0.05)"; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = isSelected ? "rgba(99,102,241,0.15)" : "transparent"; }}
+                        >
+                          <span style={{
+                            width: 14, height: 14, borderRadius: 3, border: "1.5px solid",
+                            borderColor: isSelected ? "#6366f1" : "rgba(255,255,255,0.25)",
+                            background: isSelected ? "#6366f1" : "transparent",
+                            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, color: "#fff", flexShrink: 0,
+                          }}>
+                            {isSelected && "✓"}
+                          </span>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s}</span>
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
           <select className="filter-select" value={filters.brand} onChange={e => { setFilters(f => ({ ...f, brand: e.target.value })); setPage(0); }}>
             <option value="">All Brands</option>
@@ -321,7 +417,7 @@ export default function SalesPage() {
         </div>
         {activeFilterCount > 0 && (
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-            {filters.sku && <span className="badge badge-accent" onClick={() => setFilter("sku", filters.sku)} style={{ cursor: "pointer" }}>SKU: {filters.sku} ✕</span>}
+            {selectedSkus.map(s => <span key={s} className="badge badge-accent" onClick={() => removeSku(s)} style={{ cursor: "pointer" }}>SKU: {s} ✕</span>)}
             {filters.brand && <span className="badge badge-accent" onClick={() => setFilter("brand", filters.brand)} style={{ cursor: "pointer" }}>Brand: {filters.brand} ✕</span>}
             {filters.year && <span className="badge badge-accent" onClick={() => setFilter("year", filters.year)} style={{ cursor: "pointer" }}>Year: {filters.year} ✕</span>}
             {filters.tier && <span className="badge badge-accent" onClick={() => setFilter("tier", filters.tier)} style={{ cursor: "pointer" }}>Tier: {filters.tier} ✕</span>}
@@ -398,9 +494,9 @@ export default function SalesPage() {
                   <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
                     formatter={(v: any) => fmtCur(Number(v))} />
                   <Bar dataKey="revenue" radius={[0, 4, 4, 0]} cursor="pointer"
-                    onClick={(d: any) => setFilter("sku", d.name)}>
-                    {topSkus.map((_: any, i: number) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} opacity={filters.sku && filters.sku !== topSkus[i]?.name ? 0.3 : 1} />
+                    onClick={(d: any) => toggleSku(d.name)}>
+                    {topSkus.map((s: any, i: number) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} opacity={selectedSkus.length > 0 && !selectedSkus.some(x => x.toLowerCase() === s.name?.toLowerCase()) ? 0.3 : 1} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -416,13 +512,54 @@ export default function SalesPage() {
                     paddingAngle={2} dataKey="revenue" nameKey="name"
                     label={({ name, percent }: any) => `${name} (${((percent || 0) * 100).toFixed(1)}%)`}
                     labelLine={{ strokeWidth: 1 }} cursor="pointer"
-                    onClick={(d: any) => setFilter("sku", d.name)}>
-                    {topSkus.slice(0, 10).map((_: any, i: number) => (
-                      <Cell key={i} fill={COLORS[i % COLORS.length]} opacity={filters.sku && filters.sku !== topSkus[i]?.name ? 0.3 : 1} />
+                    onClick={(d: any) => toggleSku(d.name)}>
+                    {topSkus.slice(0, 10).map((s: any, i: number) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} opacity={selectedSkus.length > 0 && !selectedSkus.some(x => x.toLowerCase() === s.name?.toLowerCase()) ? 0.3 : 1} />
                     ))}
                   </Pie>
                   <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
                     formatter={(v: any) => fmtCur(Number(v))} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Units Bar + Units Donut — 2 columns */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+            <div className="card">
+              <div className="card-header"><div className="card-title">Total Units by SKU</div><div className="card-subtitle">Click bar to filter</div></div>
+              <ResponsiveContainer width="100%" height={380}>
+                <BarChart data={topSkusByUnits} layout="vertical" margin={{ left: 70 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(255,255,255,0.06)" />
+                  <XAxis type="number" tickFormatter={(v: number) => fmtNum(v)} tick={{ fontSize: 10 }} />
+                  <YAxis type="category" dataKey="name" width={65} tick={{ fontSize: 10 }} />
+                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
+                    formatter={(v: any) => `${fmtNum(Number(v))} units`} />
+                  <Bar dataKey="units" radius={[0, 4, 4, 0]} cursor="pointer"
+                    onClick={(d: any) => toggleSku(d.name)}>
+                    {topSkusByUnits.map((s: any, i: number) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} opacity={selectedSkus.length > 0 && !selectedSkus.some(x => x.toLowerCase() === s.name?.toLowerCase()) ? 0.3 : 1} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="card">
+              <div className="card-header"><div className="card-title">Units Distribution by SKU</div></div>
+              <ResponsiveContainer width="100%" height={380}>
+                <PieChart>
+                  <Pie data={topSkusByUnits.slice(0, 10)} cx="50%" cy="50%" innerRadius={70} outerRadius={130}
+                    paddingAngle={2} dataKey="units" nameKey="name"
+                    label={({ name, percent }: any) => `${name} (${((percent || 0) * 100).toFixed(1)}%)`}
+                    labelLine={{ strokeWidth: 1 }} cursor="pointer"
+                    onClick={(d: any) => toggleSku(d.name)}>
+                    {topSkusByUnits.slice(0, 10).map((s: any, i: number) => (
+                      <Cell key={i} fill={COLORS[i % COLORS.length]} opacity={selectedSkus.length > 0 && !selectedSkus.some(x => x.toLowerCase() === s.name?.toLowerCase()) ? 0.3 : 1} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
+                    formatter={(v: any) => `${fmtNum(Number(v))} units`} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -657,7 +794,7 @@ export default function SalesPage() {
                   <tr key={i}>
                     <td style={{ fontSize: 11, fontFamily: "monospace" }}>{o.amazon_order_id}</td>
                     <td style={{ fontSize: 11 }}>{o.purchase_date ? new Date(o.purchase_date).toLocaleDateString("en-IN") : "—"}</td>
-                    <td style={{ fontWeight: 600, cursor: "pointer", color: "var(--accent-hover)" }} onClick={() => setFilter("sku", o.sku)}>{o.sku}</td>
+                    <td style={{ fontWeight: 600, cursor: "pointer", color: "var(--accent-hover)" }} onClick={() => toggleSku(o.sku)}>{o.sku}</td>
                     <td>{o.quantity}</td>
                     <td>{fmtCur(Number(o.item_price || 0))}</td>
                     <td>{o.cogs_price ? fmtCur(Number(o.cogs_price)) : "—"}</td>

@@ -38,7 +38,17 @@ export async function GET(req: NextRequest) {
     const params: (string | number)[] = [];
     let idx = 1;
 
-    if (sku) { conditions.push(`${NORM_SKU} = UPPER($${idx++})`); params.push(sku); }
+    if (sku) {
+      const skus = sku.split(",").map(s => s.trim()).filter(Boolean);
+      if (skus.length === 1) {
+        conditions.push(`${NORM_SKU} = UPPER($${idx++})`);
+        params.push(skus[0]);
+      } else if (skus.length > 1) {
+        const placeholders = skus.map(() => `UPPER($${idx++})`).join(",");
+        conditions.push(`${NORM_SKU} IN (${placeholders})`);
+        params.push(...skus);
+      }
+    }
     if (brand) { conditions.push(`LOWER(ec.brand) = LOWER($${idx++})`); params.push(brand); }
     if (year) { conditions.push(`EXTRACT(YEAR FROM orders.purchase_date) = $${idx++}`); params.push(parseInt(year)); }
     if (month) { conditions.push(`TO_CHAR(orders.purchase_date, 'YYYY-MM') = $${idx++}`); params.push(month); }

@@ -132,6 +132,7 @@ class EstimatedCogs(Base):
     amazon_selling_price = Column(Float, default=0.0)   # selling_price * 1.20
 
     profitability = Column(Float, default=0.0)          # Amazon SP - COGS - Amazon Fee - Shipping - Marketing
+    profit_percent = Column(Float, default=0.0)         # profitability / amazon_selling_price * 100
     amazon_fee_percent = Column(Float, default=15.0)    # Amazon referral fee percentage
 
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

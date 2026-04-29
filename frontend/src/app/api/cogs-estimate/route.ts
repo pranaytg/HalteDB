@@ -4,7 +4,7 @@ import pool from "@/lib/db";
 /* ──────────────────────────────────────────────────────────
    Recalculate all derived fields server-side
    ────────────────────────────────────────────────────────── */
-function recalc(row: Record<string, number | string | null>) {
+function recalc(row: Record<string, number | string | null | undefined>) {
   const importPrice    = Number(row.import_price) || 0;
   const currency       = String(row.import_currency || "USD").toUpperCase();
   // INR items need no conversion — enforce rate = 1
@@ -27,28 +27,38 @@ function recalc(row: Record<string, number | string | null>) {
   const sellingPrice   = costPriceHalte + marketingCost + margin2Amount;
   const mspWithGst     = sellingPrice;
   const halteSP        = sellingPrice * 1.05;
-  const amazonSP       = sellingPrice * 1.20;
+
+  // Amazon SP is manual: use the value supplied by the caller when valid,
+  // otherwise default to Halte SP + 15%.
+  const providedAmazonSp = Number(row.amazon_selling_price);
+  const amazonSP = (Number.isFinite(providedAmazonSp) && providedAmazonSp > 0)
+    ? providedAmazonSp
+    : halteSP * 1.15;
 
   // Profitability = Amazon Selling Price - COGS - Amazon Fee - Shipping - Marketing
   const amazonFee      = amazonSP * (amazonFeePct / 100);
   const profitability  = amazonSP - finalPrice - amazonFee - shippingCost - marketingCost;
+  // Profit % on Amazon Selling Price
+  const profitPercent  = amazonSP > 0 ? (profitability / amazonSP) * 100 : 0;
 
   return {
-    import_price_inr:      round2(importPriceInr),
-    gst_amount:            round2(gstAmount),
-    final_price:           round2(finalPrice),
-    margin1_amount:        round2(margin1Amount),
-    cost_price_halte:      round2(costPriceHalte),
-    margin2_amount:        round2(margin2Amount),
-    selling_price:         round2(sellingPrice),
-    msp_with_gst:          round2(mspWithGst),
-    halte_selling_price:   round2(halteSP),
-    amazon_selling_price:  round2(amazonSP),
-    profitability:         round2(profitability),
+    import_price_inr:      roundInt(importPriceInr),
+    gst_amount:            roundInt(gstAmount),
+    final_price:           roundInt(finalPrice),
+    margin1_amount:        roundInt(margin1Amount),
+    cost_price_halte:      roundInt(costPriceHalte),
+    margin2_amount:        roundInt(margin2Amount),
+    selling_price:         roundInt(sellingPrice),
+    msp_with_gst:          roundInt(mspWithGst),
+    halte_selling_price:   roundInt(halteSP),
+    amazon_selling_price:  roundInt(amazonSP),
+    profitability:         roundInt(profitability),
+    profit_percent:        round1(profitPercent),
   };
 }
 
-function round2(n: number) { return Math.round(n * 100) / 100; }
+function roundInt(n: number) { return Math.round(n); }
+function round1(n: number) { return Math.round(n * 10) / 10; }
 
 /* ──────────────────────────────────────────────────────────
    GET — list all estimated_cogs entries
@@ -82,9 +92,9 @@ export async function POST(req: NextRequest) {
         margin1_percent, margin1_amount, cost_price_halte,
         marketing_cost, margin2_percent, margin2_amount, selling_price,
         msp_with_gst, halte_selling_price, amazon_selling_price, profitability,
-        amazon_fee_percent, last_updated
+        amazon_fee_percent, profit_percent, last_updated
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,NOW()
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,NOW()
       )
       ON CONFLICT (sku) DO UPDATE SET
         article_number=$2, brand=$3, category=$4,
@@ -93,7 +103,7 @@ export async function POST(req: NextRequest) {
         margin1_percent=$14, margin1_amount=$15, cost_price_halte=$16,
         marketing_cost=$17, margin2_percent=$18, margin2_amount=$19, selling_price=$20,
         msp_with_gst=$21, halte_selling_price=$22, amazon_selling_price=$23, profitability=$24,
-        amazon_fee_percent=$25, last_updated=NOW()
+        amazon_fee_percent=$25, profit_percent=$26, last_updated=NOW()
       RETURNING *
     `;
 
@@ -126,6 +136,7 @@ export async function POST(req: NextRequest) {
       calcs.amazon_selling_price,
       calcs.profitability,
       Number(body.amazon_fee_percent) || 15,
+      calcs.profit_percent,
     ];
 
     const result = await pool.query(query, params);
@@ -169,15 +180,15 @@ export async function PUT(req: NextRequest) {
             margin1_amount=$5, cost_price_halte=$6,
             margin2_amount=$7, selling_price=$8,
             msp_with_gst=$9, halte_selling_price=$10, amazon_selling_price=$11,
-            profitability=$12, last_updated=NOW()
-          WHERE id=$13
+            profitability=$12, profit_percent=$13, last_updated=NOW()
+          WHERE id=$14
         `, [
           conversionRate,
           calcs.import_price_inr, calcs.gst_amount, calcs.final_price,
           calcs.margin1_amount, calcs.cost_price_halte,
           calcs.margin2_amount, calcs.selling_price,
           calcs.msp_with_gst, calcs.halte_selling_price, calcs.amazon_selling_price,
-          calcs.profitability, row.id,
+          calcs.profitability, calcs.profit_percent, row.id,
         ]);
         updated++;
       }
@@ -218,14 +229,14 @@ export async function PUT(req: NextRequest) {
             margin1_amount=$4, cost_price_halte=$5,
             margin2_amount=$6, selling_price=$7,
             msp_with_gst=$8, halte_selling_price=$9, amazon_selling_price=$10,
-            profitability=$11, last_updated=NOW()
-          WHERE id=$12
+            profitability=$11, profit_percent=$12, last_updated=NOW()
+          WHERE id=$13
         `, [
           calcs.import_price_inr, calcs.gst_amount, calcs.final_price,
           calcs.margin1_amount, calcs.cost_price_halte,
           calcs.margin2_amount, calcs.selling_price,
           calcs.msp_with_gst, calcs.halte_selling_price, calcs.amazon_selling_price,
-          calcs.profitability, row.id,
+          calcs.profitability, calcs.profit_percent, row.id,
         ]);
         updated++;
       }
@@ -248,6 +259,7 @@ export async function PUT(req: NextRequest) {
         marketing_cost: "number",
         margin2_percent: "number",
         amazon_fee_percent: "number",
+        amazon_selling_price: "number",
       };
 
       const field = String(body.field || "");
@@ -320,15 +332,15 @@ export async function PUT(req: NextRequest) {
             margin1_amount=$5, cost_price_halte=$6,
             margin2_amount=$7, selling_price=$8,
             msp_with_gst=$9, halte_selling_price=$10, amazon_selling_price=$11,
-            profitability=$12, last_updated=NOW()
-          WHERE id=$13`,
+            profitability=$12, profit_percent=$13, last_updated=NOW()
+          WHERE id=$14`,
           [
             value,
             calcs.import_price_inr, calcs.gst_amount, calcs.final_price,
             calcs.margin1_amount, calcs.cost_price_halte,
             calcs.margin2_amount, calcs.selling_price,
             calcs.msp_with_gst, calcs.halte_selling_price, calcs.amazon_selling_price,
-            calcs.profitability, row.id,
+            calcs.profitability, calcs.profit_percent, row.id,
           ]
         );
         updated++;

@@ -55,8 +55,15 @@ export async function GET(req: NextRequest) {
       }
     }
     if (sku) {
-      where += ` AND sku = $${idx++}`;
-      params.push(sku);
+      const skus = sku.split(",").map(s => s.trim()).filter(Boolean);
+      if (skus.length === 1) {
+        where += ` AND sku = $${idx++}`;
+        params.push(skus[0]);
+      } else if (skus.length > 1) {
+        const placeholders = skus.map(() => `$${idx++}`).join(",");
+        where += ` AND sku IN (${placeholders})`;
+        params.push(...skus);
+      }
     }
     if (year) {
       where += ` AND EXTRACT(YEAR FROM purchase_date) = $${idx++}`;

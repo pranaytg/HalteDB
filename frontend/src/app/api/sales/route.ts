@@ -37,8 +37,15 @@ export async function GET(req: NextRequest) {
     let paramIdx = 1;
 
     if (sku) {
-      conditions.push(`${normalizedSkuExpr("o.sku")} = UPPER($${paramIdx++})`);
-      params.push(sku);
+      const skus = sku.split(",").map(s => s.trim()).filter(Boolean);
+      if (skus.length === 1) {
+        conditions.push(`${normalizedSkuExpr("o.sku")} = UPPER($${paramIdx++})`);
+        params.push(skus[0]);
+      } else if (skus.length > 1) {
+        const placeholders = skus.map(() => `UPPER($${paramIdx++})`).join(",");
+        conditions.push(`${normalizedSkuExpr("o.sku")} IN (${placeholders})`);
+        params.push(...skus);
+      }
     }
     if (startDate) {
       conditions.push(`(o.purchase_date AT TIME ZONE 'Asia/Kolkata')::date >= $${paramIdx++}::date`);

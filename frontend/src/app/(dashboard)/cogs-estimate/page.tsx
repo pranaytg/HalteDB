@@ -31,6 +31,7 @@ interface EstItem {
   amazon_selling_price: number;
   amazon_fee_percent: number;
   profitability: number;
+  profit_percent: number;
   last_updated: string;
 }
 
@@ -47,10 +48,12 @@ const EDITABLE_FIELDS = [
   { key: "margin1_percent", label: "Margin 1 %", type: "number" },
   { key: "marketing_cost", label: "Marketing (₹)", type: "number" },
   { key: "margin2_percent", label: "Margin 2 %", type: "number" },
+  { key: "amazon_selling_price", label: "Amazon SP (₹)", type: "number" },
   { key: "amazon_fee_percent", label: "Amazon Fee %", type: "number" },
 ] as const;
 
-const fmtCur = (v: number) => `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
+const fmtCur = (v: number) => `₹${Math.round(v).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+const fmtPct = (v: number) => `${(Math.round(v * 10) / 10).toFixed(1)}%`;
 
 export default function CogsEstimatePage() {
   const [items, setItems] = useState<EstItem[]>([]);
@@ -71,7 +74,7 @@ export default function CogsEstimatePage() {
   const [addForm, setAddForm] = useState<Record<string, any>>({
     sku: "", article_number: "", brand: "", category: "", import_price: 0, import_currency: "USD",
     custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0,
-    margin1_percent: 0, marketing_cost: 0, margin2_percent: 0, amazon_fee_percent: 15,
+    margin1_percent: 0, marketing_cost: 0, margin2_percent: 0, amazon_selling_price: 0, amazon_fee_percent: 15,
   });
 
   // Edit
@@ -131,7 +134,7 @@ export default function CogsEstimatePage() {
       if (!res.ok) { const d = await res.json(); showToast(d.error || "Failed", "error"); return; }
       showToast(`Added ${addForm.sku}`, "success");
       setShowAdd(false);
-      setAddForm({ sku: "", article_number: "", brand: "", category: "", import_price: 0, import_currency: "USD", custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0, margin1_percent: 0, marketing_cost: 0, margin2_percent: 0, amazon_fee_percent: 15 });
+      setAddForm({ sku: "", article_number: "", brand: "", category: "", import_price: 0, import_currency: "USD", custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0, margin1_percent: 0, marketing_cost: 0, margin2_percent: 0, amazon_selling_price: 0, amazon_fee_percent: 15 });
       await fetchItems();
     } catch { showToast("Network error", "error"); }
     finally { setSaving(false); }
@@ -197,6 +200,7 @@ export default function CogsEstimatePage() {
     { key: "margin2_percent", label: "Margin 2 %" },
     { key: "gst_percent", label: "GST %" },
     { key: "amazon_fee_percent", label: "Amazon Fee %" },
+    { key: "amazon_selling_price", label: "Amazon Selling Price (₹)" },
     { key: "custom_duty", label: "Custom Duty (₹)" },
     { key: "shipping_cost", label: "Shipping (₹)" },
     { key: "marketing_cost", label: "Marketing (₹)" },
@@ -624,6 +628,7 @@ export default function CogsEstimatePage() {
                 <th>Halte SP</th>
                 <th>Amazon SP</th>
                 <th>Profit/Unit</th>
+                <th>Profit %</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -660,10 +665,22 @@ export default function CogsEstimatePage() {
                     <td>{fmtCur(row.margin2_amount || 0)}</td>
                     <td style={{ fontWeight: 600 }}>{fmtCur(row.selling_price || 0)}</td>
                     <td style={{ color: "#8b5cf6", fontWeight: 600 }}>{fmtCur(row.halte_selling_price || 0)}</td>
-                    <td style={{ color: "#f59e0b", fontWeight: 600 }}>{fmtCur(row.amazon_selling_price || 0)}</td>
+                    <td style={{ color: "#f59e0b", fontWeight: 600 }}>
+                      {isEditing ? (
+                        <input className="filter-input" type="number" step="1" style={{ width: 90 }}
+                          value={editForm.amazon_selling_price ?? ""}
+                          onChange={e => setEditForm(f => ({ ...f, amazon_selling_price: e.target.value }))}
+                          placeholder="auto" />
+                      ) : fmtCur(row.amazon_selling_price || 0)}
+                    </td>
                     <td>
                       <span style={{ fontWeight: 700, color: (row.profitability || 0) >= 0 ? "var(--success)" : "var(--danger)" }}>
                         {fmtCur(row.profitability || 0)}
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{ fontWeight: 700, color: (row.profit_percent || 0) >= 0 ? "var(--success)" : "var(--danger)" }}>
+                        {fmtPct(row.profit_percent || 0)}
                       </span>
                     </td>
                     <td>
@@ -683,7 +700,7 @@ export default function CogsEstimatePage() {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={23} style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
+                <tr><td colSpan={24} style={{ textAlign: "center", padding: 40, color: "var(--text-muted)" }}>
                   No COGS estimates yet. Click &quot;Add SKU&quot; to get started.
                 </td></tr>
               )}
@@ -703,8 +720,9 @@ export default function CogsEstimatePage() {
           <div><strong>Selling Price</strong> = Cost Price Halte + Marketing + Margin 2 Amount</div>
           <div><strong>MSP</strong> = Selling Price</div>
           <div><strong>Halte Selling Price</strong> = Selling Price × 1.05 (+5%)</div>
-          <div><strong>Amazon Selling Price</strong> = Selling Price × 1.20 (+20%)</div>
+          <div><strong>Amazon Selling Price</strong> = manual entry (defaults to Halte SP × 1.15 / +15% when blank)</div>
           <div><strong>Profitability (per unit)</strong> = Amazon SP − COGS − Amazon Fee − Shipping − Marketing</div>
+          <div><strong>Profit %</strong> = Profitability ÷ Amazon SP × 100</div>
           <div style={{ marginTop: 12, color: "var(--accent)" }}>
             <strong>🔄 Sync to COGS</strong> → Sets COGS price = Final Price (actual COGS), then recalculates order profit as: Selling Price − COGS − Amazon Fee (%) − Shipping − Marketing. Returns: −2 × Shipping.
           </div>
