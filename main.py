@@ -23,6 +23,8 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.pool import NullPool
 from datetime import datetime, timezone
 
+from pydantic import BaseModel
+
 from sp_api import (
     run_full_sync,
     run_inventory_sync_job,
@@ -34,6 +36,7 @@ from sp_api import (
     recalculate_profitability_all,
     run_inbound_shipments_sync,
 )
+from shiprocket import get_shipping_rates_with_source
 from crud import get_sync_meta
 
 # ============================================
@@ -361,6 +364,40 @@ async def trigger_shipment_full_sync(background_tasks: BackgroundTasks):
 
     background_tasks.add_task(_run)
     return {"status": "accepted", "message": "Shipment full sync + profitability recalc started."}
+
+
+class ShippingRateRequest(BaseModel):
+    origin_pin: str
+    dest_pin: str
+    weight_kg: float
+    length_cm: float | None = None
+    width_cm: float | None = None
+    height_cm: float | None = None
+
+
+@app.post("/shipping-rates")
+async def fetch_shipping_rates(req: ShippingRateRequest):
+    """Returns Shiprocket carrier quotes for a single origin→destination pair.
+
+    Centralised here so the Next.js frontend doesn't authenticate with
+    Shiprocket independently — Shiprocket invalidates a token whenever the
+    same account logs in elsewhere, so dual-side auth produces a constant
+    flap. With this endpoint the backend is the only token holder.
+    """
+    dims: dict[str, float] | None = None
+    if req.length_cm or req.width_cm or req.height_cm:
+        dims = {}
+        if req.length_cm:
+            dims["length"] = req.length_cm
+        if req.width_cm:
+            dims["breadth"] = req.width_cm
+        if req.height_cm:
+            dims["height"] = req.height_cm
+
+    rates, source = await get_shipping_rates_with_source(
+        req.origin_pin, req.dest_pin, req.weight_kg, dims
+    )
+    return {"rates": rates, "source": source}
 
 
 @app.post("/sync-product-specs")

@@ -42,7 +42,18 @@ export async function GET(req: NextRequest) {
         se.delhivery_cost, se.bluedart_cost, se.dtdc_cost, se.xpressbees_cost, se.ekart_cost,
         se.cheapest_provider, se.cheapest_cost,
         se.delhivery_etd, se.bluedart_etd, se.dtdc_etd, se.xpressbees_etd, se.ekart_etd,
-        se.estimated_at, se.rate_source,
+        se.estimated_at,
+        CASE
+          WHEN (
+            LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+            OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
+          ) AND (
+            (o.shipping_price IS NOT NULL AND o.shipping_price > 0)
+            OR (se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0)
+          )
+          THEN 'sp_api_finance'
+          ELSE se.rate_source
+        END as rate_source,
         ps.product_name,
         ps.weight_kg as actual_weight_kg,
         ps.volumetric_weight_kg,

@@ -440,7 +440,7 @@ async def get_shipping_rates_with_source(
     dest_pin: str,
     weight_kg: float,
     dims: dict | None = None,
-) -> tuple[dict, str]:
+) -> tuple[dict[str, dict[str, object]], str]:
     """Fetch shipping rates along with their source."""
     safe_origin_pin = normalize_pincode(origin_pin)
     safe_dest_pin = normalize_pincode(dest_pin)

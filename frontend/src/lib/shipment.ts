@@ -1,55 +1,14 @@
 /**
  * Shared shipment calculation logic — used by both bulk and single estimate routes.
+ *
+ * Shiprocket quotes are fetched via the Python backend (POST /shipping-rates).
+ * Authenticating from both sides with the same Shiprocket account caused
+ * constant token invalidation (Shiprocket kicks out a token whenever the
+ * same account logs in elsewhere), so the backend is now the single auth
+ * source — the frontend never talks to Shiprocket directly.
  */
 
-// ═══════════════════════════════════════════════════
-// Shiprocket Live API
-// ═══════════════════════════════════════════════════
-
-let cachedToken: string | null = null;
-let tokenExpiresAt = 0;
-
-export async function getShiprocketToken(): Promise<string | null> {
-  if (cachedToken && Date.now() < tokenExpiresAt) return cachedToken;
-
-  const email = process.env.SHIPROCKET_EMAIL;
-  const password = process.env.SHIPROCKET_PASSWORD;
-  if (!email || !password) {
-    console.warn("[Shiprocket] No credentials found in env");
-    return null;
-  }
-
-  try {
-    const res = await fetch("https://apiv2.shiprocket.in/v1/external/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
-    if (!res.ok) {
-      console.warn(`[Shiprocket] Auth failed: ${res.status}`);
-      return null;
-    }
-    const data = await res.json();
-    if (!data.token) return null;
-
-    cachedToken = data.token;
-    tokenExpiresAt = Date.now() + 9 * 24 * 60 * 60 * 1000; // 9 days
-    console.log("[Shiprocket] Token acquired");
-    return cachedToken;
-  } catch (e) {
-    console.warn("[Shiprocket] Auth error:", e);
-    return null;
-  }
-}
-
-// Canonical carrier keys used throughout the app
-const CARRIER_PATTERNS: Record<string, string> = {
-  delhivery: "delhivery",
-  bluedart: "blue dart",
-  dtdc: "dtdc",
-  xpressbees: "xpressbees",
-  ekart: "ekart",
-};
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
 /** Canonical display name for each carrier key */
 export const CARRIER_LABELS: Record<string, string> = {
@@ -59,16 +18,6 @@ export const CARRIER_LABELS: Record<string, string> = {
   dtdc: "DTDC",
   xpressbees: "Xpressbees",
   ekart: "Ekart",
-};
-
-// Multiple name patterns per carrier — handles Shiprocket API variants
-const CARRIER_MULTI_PATTERNS: Record<string, string[]> = {
-  amazon:      ["amazon shipping", "amazon prepaid", "amazon"],
-  delhivery:  ["delhivery"],
-  bluedart:   ["blue dart", "bluedart"],
-  dtdc:       ["dtdc"],
-  xpressbees: ["xpressbees", "expressbees"],
-  ekart:      ["ekart", "e-kart"],
 };
 
 export interface ShiprocketDimensions {
@@ -94,12 +43,6 @@ export async function fetchShiprocketRates(
   originPin: string, destPin: string, weightKg: number,
   dims?: ShiprocketDimensions
 ): Promise<{ rates: Record<string, { cost: number; etd: string }>; source: "shiprocket" } | null> {
-  const token = await getShiprocketToken();
-  if (!token) {
-    console.warn("[Shiprocket] Skipping rate fetch — no auth token");
-    return null;
-  }
-
   const safeWeight = Math.max(weightKg || 0.5, 0.1);
   const sanitizedOriginPin = normalizePincode(originPin);
   const sanitizedDestPin = normalizePincode(destPin);
@@ -109,71 +52,36 @@ export async function fetchShiprocketRates(
   }
 
   try {
-    const paramObj: Record<string, string> = {
-      pickup_postcode: sanitizedOriginPin,
-      delivery_postcode: sanitizedDestPin,
-      weight: String(safeWeight),
-      cod: "0",
-      declared_value: "500",
+    const body: Record<string, string | number> = {
+      origin_pin: sanitizedOriginPin,
+      dest_pin: sanitizedDestPin,
+      weight_kg: safeWeight,
     };
-    // Pass dimensions when available — improves accuracy and avoids rejections
-    if (dims?.length) paramObj.length = String(Math.ceil(dims.length));
-    if (dims?.breadth) paramObj.breadth = String(Math.ceil(dims.breadth));
-    if (dims?.height) paramObj.height = String(Math.ceil(dims.height));
+    if (dims?.length) body.length_cm = dims.length;
+    if (dims?.breadth) body.width_cm = dims.breadth;
+    if (dims?.height) body.height_cm = dims.height;
 
-    const params = new URLSearchParams(paramObj);
-    const res = await fetch(
-      `https://apiv2.shiprocket.in/v1/external/courier/serviceability/?${params}`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
+    const res = await fetch(`${BACKEND_URL}/shipping-rates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.warn(`[Shiprocket] Rates API failed: ${res.status} — ${body.slice(0, 200)}`);
-      return null;
-    }
-    const data = await res.json();
-
-    // Handle API-level errors (HTTP 200 but status field indicates error)
-    if (data?.status && data.status !== 200 && data.status !== "200") {
-      console.warn(`[Shiprocket] API returned non-success status: ${data.status} — ${data.message || ""}`);
+      console.warn(`[Shiprocket] Backend /shipping-rates failed: ${res.status}`);
       return null;
     }
 
-    const companies: Record<string, unknown>[] = data?.data?.available_courier_companies || [];
-    if (companies.length === 0) {
-      console.warn(`[Shiprocket] No courier companies returned for ${originPin}→${destPin} weight=${safeWeight}`);
+    const data = await res.json() as {
+      rates?: Record<string, { cost: number; etd: string }>;
+      source?: string;
+    };
+
+    if (data.source !== "shiprocket" || !data.rates || Object.keys(data.rates).length === 0) {
       return null;
     }
-
-    const rates: Record<string, { cost: number; etd: string }> = {};
-
-    for (const courier of companies) {
-      const name = ((courier.courier_name as string) || "").toLowerCase().replace(/[^a-z\s]/g, "");
-      for (const [key, patterns] of Object.entries(CARRIER_MULTI_PATTERNS)) {
-        if (patterns.some(p => name.includes(p))) {
-          // Try multiple field names for rate (API has changed over time)
-          const cost = parseFloat(
-            String(courier.rate || courier.freight_charge || courier.total_charges || "0")
-          );
-          const etd = String(courier.estimated_delivery_days || courier.etd || "");
-          if (cost > 0 && (!rates[key] || cost < rates[key].cost)) {
-            rates[key] = {
-              cost: roundCost(cost),
-              etd: etd ? `${etd} days` : "N/A",
-            };
-          }
-        }
-      }
-    }
-
-    if (Object.keys(rates).length === 0) {
-      console.warn(`[Shiprocket] No matching carriers in response (got ${companies.length} total). Names: ${companies.slice(0,5).map(c => c.courier_name).join(", ")}`);
-      return null;
-    }
-
-    return { rates, source: "shiprocket" };
+    return { rates: data.rates, source: "shiprocket" };
   } catch (e) {
-    console.warn("[Shiprocket] Rates error:", e);
+    console.warn("[Shiprocket] Backend rates error:", e);
     return null;
   }
 }
