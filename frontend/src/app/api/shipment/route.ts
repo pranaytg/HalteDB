@@ -49,7 +49,11 @@ export async function GET(req: NextRequest) {
             OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
           ) AND (
             (o.shipping_price IS NOT NULL AND o.shipping_price > 0)
-            OR (se.amazon_shipping_cost IS NOT NULL AND se.amazon_shipping_cost > 0)
+            OR (
+              se.rate_source = 'sp_api_finance'
+              AND se.amazon_shipping_cost IS NOT NULL
+              AND se.amazon_shipping_cost > 0
+            )
           )
           THEN 'sp_api_finance'
           ELSE se.rate_source

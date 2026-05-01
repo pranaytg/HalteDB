@@ -1275,7 +1275,7 @@ async def run_shipment_sync(session: AsyncSession, missing_only: bool = False):
             and row.get("amazon_order_id") not in amazon_order_ids
         ):
             amazon_order_ids.append(row["amazon_order_id"])
-        if len(amazon_order_ids) >= AMAZON_FINANCE_LOOKUP_LIMIT:
+        if AMAZON_FINANCE_LOOKUP_LIMIT > 0 and len(amazon_order_ids) >= AMAZON_FINANCE_LOOKUP_LIMIT:
             break
 
     finance_breakdown: dict[str, dict[str, dict[str, float]]] = {}
