@@ -129,7 +129,8 @@ class EstimatedCogs(Base):
 
     msp_with_gst = Column(Float, default=0.0)           # = selling_price (GST already applied at base; no second pass)
     halte_selling_price = Column(Float, default=0.0)    # selling_price * 1.05
-    amazon_selling_price = Column(Float, default=0.0)   # selling_price * 1.20
+    amazon_markup_percent = Column(Float, default=15.0) # extra markup applied on top of Halte SP
+    amazon_selling_price = Column(Float, default=0.0)   # halte_selling_price * (1 + amazon_markup_percent/100)
 
     profitability = Column(Float, default=0.0)          # Amazon SP - COGS - Amazon Fee - Shipping - Marketing
     profit_percent = Column(Float, default=0.0)         # profitability / amazon_selling_price * 100
