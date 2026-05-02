@@ -30,7 +30,10 @@ export default function ProductSpecsPage() {
   const [specs, setSpecs] = useState<ProductSpec[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
-  
+
+  // Search
+  const [query, setQuery] = useState("");
+
   // Sorting
   const [sortField, setSortField] = useState<string>("sku");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -70,7 +73,12 @@ export default function ProductSpecsPage() {
     }
   };
 
-  const sorted = [...specs].sort((a: any, b: any) => {
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? specs.filter((s) => (s.sku || "").toLowerCase().includes(q))
+    : specs;
+
+  const sorted = [...filtered].sort((a: any, b: any) => {
     const aVal = a[sortField];
     const bVal = b[sortField];
     if (aVal === bVal) return 0;
@@ -151,11 +159,45 @@ export default function ProductSpecsPage() {
 
       {/* Specifications Table */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>📋 SKU Catalog Dimensions</h3>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {specs.length} items · Click headers to sort
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, justifyContent: "flex-end" }}>
+            <div style={{ position: "relative", width: 280, maxWidth: "100%" }}>
+              <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "var(--text-muted)", pointerEvents: "none" }}>🔍</span>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search SKU..."
+                style={{
+                  width: "100%",
+                  padding: "8px 30px 8px 32px",
+                  fontSize: 13,
+                  borderRadius: 6,
+                  border: "1px solid var(--border)",
+                  background: "var(--bg-primary)",
+                  color: "var(--text-primary)",
+                  outline: "none",
+                }}
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery("")}
+                  aria-label="Clear search"
+                  style={{
+                    position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+                    background: "transparent", border: "none", color: "var(--text-muted)",
+                    cursor: "pointer", fontSize: 14, padding: "2px 6px", lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+              {q ? `${filtered.length} of ${specs.length}` : `${specs.length} items`} · Click headers to sort
+            </span>
+          </div>
         </div>
 
         {loading ? (
@@ -170,6 +212,18 @@ export default function ProductSpecsPage() {
             <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
               Run the SP-API product spec sync from the backend to fetch initially.
             </p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ padding: 40, textAlign: "center" }}>
+            <p style={{ fontSize: 36, margin: "0 0 12px" }}>🔍</p>
+            <p style={{ color: "var(--text-muted)", marginBottom: 4 }}>No SKUs match &quot;{query}&quot;</p>
+            <button
+              className="btn btn-secondary btn-sm"
+              style={{ marginTop: 12, padding: "6px 12px", fontSize: 12 }}
+              onClick={() => setQuery("")}
+            >
+              Clear search
+            </button>
           </div>
         ) : (
           <div style={{ overflowX: "auto", maxHeight: "calc(100vh - 250px)", overflowY: "auto" }}>

@@ -60,6 +60,57 @@ async def upsert_inbound_shipments_batch(session: AsyncSession, batch: list[dict
     await session.commit()
 
 
+async def reset_and_upsert_inbound_quantities(
+    session: AsyncSession,
+    in_transit_by_sku_fc: dict[tuple[str, str], dict[str, int]],
+):
+    """Zero out all inventory.inbound_*_quantity then write fresh per-(SKU,FC) values
+    aggregated from active FBA inbound shipment items.
+
+    Buckets: working (status WORKING), shipped (SHIPPED/IN_TRANSIT), receiving (RECEIVING).
+    """
+    await session.execute(text("""
+        UPDATE inventory
+        SET inbound_working_quantity = 0,
+            inbound_shipped_quantity = 0,
+            inbound_receiving_quantity = 0
+        WHERE inbound_working_quantity > 0
+           OR inbound_shipped_quantity > 0
+           OR inbound_receiving_quantity > 0
+    """))
+
+    if not in_transit_by_sku_fc:
+        await session.commit()
+        return
+
+    batch = [
+        {
+            "sku": sku,
+            "fulfillment_center_id": fc,
+            "condition": "NewItem",
+            "fulfillable_quantity": 0,
+            "unfulfillable_quantity": 0,
+            "reserved_quantity": 0,
+            "inbound_working_quantity": buckets["working"],
+            "inbound_shipped_quantity": buckets["shipped"],
+            "inbound_receiving_quantity": buckets["receiving"],
+        }
+        for (sku, fc), buckets in in_transit_by_sku_fc.items()
+    ]
+
+    stmt = insert(Inventory).values(batch)
+    upsert_stmt = stmt.on_conflict_do_update(
+        index_elements=['sku', 'fulfillment_center_id', 'condition'],
+        set_={
+            "inbound_working_quantity": stmt.excluded.inbound_working_quantity,
+            "inbound_shipped_quantity": stmt.excluded.inbound_shipped_quantity,
+            "inbound_receiving_quantity": stmt.excluded.inbound_receiving_quantity,
+        },
+    )
+    await session.execute(upsert_stmt)
+    await session.commit()
+
+
 async def prune_inbound_shipments_not_in(session: AsyncSession, active_ids: list[str]):
     """Delete shipments no longer returned by SP-API (closed/cancelled).
 

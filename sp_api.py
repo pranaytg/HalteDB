@@ -15,6 +15,7 @@ from crud import (
     upsert_inventory_batch,
     upsert_inbound_shipments_batch,
     prune_inbound_shipments_not_in,
+    reset_and_upsert_inbound_quantities,
     get_sync_meta,
     update_orders_sync_time,
     update_inventory_sync_time,
@@ -309,6 +310,76 @@ async def run_inbound_shipments_sync(session: AsyncSession, lookback_days: int =
     if batch:
         await upsert_inbound_shipments_batch(session, batch)
         await prune_inbound_shipments_not_in(session, [b["shipment_id"] for b in batch])
+
+    # ── Fetch per-SKU items and aggregate into inventory.inbound_*_quantity ──
+    # Uses existing inventory columns (no schema change). Buckets by shipment status:
+    #   WORKING -> inbound_working_quantity
+    #   SHIPPED / IN_TRANSIT -> inbound_shipped_quantity
+    #   RECEIVING -> inbound_receiving_quantity
+    active_statuses = {"WORKING", "SHIPPED", "IN_TRANSIT", "RECEIVING"}
+    active_shipments = [
+        b for b in batch
+        if b.get("shipment_id") and b.get("destination_fc") and b.get("shipment_status") in active_statuses
+    ]
+    logger.info("Fetching items for %d active inbound shipments...", len(active_shipments))
+
+    in_transit_by_sku_fc: dict[tuple[str, str], dict[str, int]] = {}
+
+    async with httpx.AsyncClient(timeout=60.0, headers=headers) as client:
+        for sh in active_shipments:
+            sid = sh["shipment_id"]
+            fc = sh["destination_fc"]
+            status = sh["shipment_status"]
+            items_url = f"{endpoint}/fba/inbound/v0/shipments/{sid}/items"
+            next_token: str | None = None
+            while True:
+                params = {"MarketplaceId": marketplace_id}
+                if next_token:
+                    params["NextToken"] = next_token
+                    params["QueryType"] = "NEXT_TOKEN"
+                try:
+                    r = await client.get(items_url, params=params)
+                except Exception as e:
+                    logger.warning("Items fetch failed for %s: %s", sid, e)
+                    break
+                if r.status_code == 429:
+                    logger.warning("Inbound items rate-limited, sleeping 5s...")
+                    await asyncio.sleep(5)
+                    continue
+                if r.status_code >= 400:
+                    logger.warning("Items fetch HTTP %s for %s: %s", r.status_code, sid, r.text[:200])
+                    break
+                payload = r.json().get("payload", {})
+                for it in (payload.get("ItemData") or []):
+                    sku = it.get("SellerSKU")
+                    if not sku:
+                        continue
+                    qty_remaining = max(
+                        0,
+                        int(it.get("QuantityShipped") or 0) - int(it.get("QuantityReceived") or 0),
+                    )
+                    if qty_remaining <= 0:
+                        continue
+                    bucket_key = (
+                        "working" if status == "WORKING"
+                        else "receiving" if status == "RECEIVING"
+                        else "shipped"  # SHIPPED + IN_TRANSIT
+                    )
+                    buckets = in_transit_by_sku_fc.setdefault(
+                        (sku, fc), {"working": 0, "shipped": 0, "receiving": 0}
+                    )
+                    buckets[bucket_key] += qty_remaining
+                next_token = payload.get("NextToken")
+                if not next_token:
+                    break
+                await asyncio.sleep(0.2)
+            # SP-API limits this endpoint to ~2 req/sec; pause between shipments
+            await asyncio.sleep(0.6)
+
+    await reset_and_upsert_inbound_quantities(session, in_transit_by_sku_fc)
+    total_units = sum(sum(b.values()) for b in in_transit_by_sku_fc.values())
+    logger.info("Wrote in-transit quantities for %d (sku,fc) pairs (%d units total)",
+                len(in_transit_by_sku_fc), total_units)
 
     logger.info("Inbound shipments sync complete!")
 

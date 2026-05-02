@@ -60,6 +60,30 @@ interface WarehouseSummary {
   skus_total: number;
 }
 
+interface InboundShipmentsSummary {
+  total: number;
+  working: number;
+  shipped: number;
+  in_transit: number;
+  delivered: number;
+  checked_in: number;
+  receiving: number;
+  latest_booked: string | null;
+  earliest_active_booked: string | null;
+  last_synced: string | null;
+}
+
+interface InboundFcRow { destination_fc: string; count: number; }
+interface InboundShipmentRow {
+  shipment_id: string;
+  shipment_name: string;
+  destination_fc: string;
+  shipment_status: string;
+  booked_date: string | null;
+  ship_from_city: string | null;
+  ship_from_state: string | null;
+}
+
 // ── Constants ──────────────────────────────────────────
 
 const URGENCY_COLORS: Record<string, string> = {
@@ -98,6 +122,10 @@ export default function ReplenishmentPage() {
   const [skuRecs, setSkuRecs] = useState<SkuRecommendation[]>([]);
   const [warehouseSummary, setWarehouseSummary] = useState<WarehouseSummary[]>([]);
   const [generatedAt, setGeneratedAt] = useState<string>("");
+  const [inboundSummary, setInboundSummary] = useState<InboundShipmentsSummary | null>(null);
+  const [inboundByFc, setInboundByFc] = useState<InboundFcRow[]>([]);
+  const [inboundShipments, setInboundShipments] = useState<InboundShipmentRow[]>([]);
+  const [showInboundDetail, setShowInboundDetail] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [urgencyFilter, setUrgencyFilter] = useState<string>("ALL");
@@ -109,7 +137,10 @@ export default function ReplenishmentPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/inventory/replenishment");
+      const [res, inbRes] = await Promise.all([
+        fetch("/api/inventory/replenishment"),
+        fetch("/api/inbound-shipments").catch(() => null),
+      ]);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       setConfig(data.config);
@@ -117,6 +148,13 @@ export default function ReplenishmentPage() {
       setSkuRecs(data.skuRecommendations || []);
       setWarehouseSummary(data.warehouseSummary || []);
       setGeneratedAt(data.generated_at || "");
+
+      if (inbRes && inbRes.ok) {
+        const inb = await inbRes.json();
+        setInboundSummary(inb.summary || null);
+        setInboundByFc(inb.byFc || []);
+        setInboundShipments(inb.shipments || []);
+      }
     } catch (e: any) {
       setError(e.message || "Failed to load replenishment data");
     } finally {
@@ -177,11 +215,20 @@ export default function ReplenishmentPage() {
       ].filter((d) => d.value > 0)
     : [];
 
+  // Active shipments per destination FC (from inbound_shipments sync — same source as Inventory page)
+  const ACTIVE_SHIPMENT_STATUSES = new Set(["WORKING", "SHIPPED", "IN_TRANSIT", "RECEIVING"]);
+  const inTransitShipmentsByFc = inboundShipments.reduce<Record<string, number>>((acc, s) => {
+    if (!ACTIVE_SHIPMENT_STATUSES.has(s.shipment_status)) return acc;
+    if (!s.destination_fc) return acc;
+    acc[s.destination_fc] = (acc[s.destination_fc] || 0) + 1;
+    return acc;
+  }, {});
+
   // Warehouse chart data
   const whChartData = warehouseSummary.map((w) => ({
     warehouse: w.warehouse,
     current_stock: w.total_current_stock,
-    in_transit: w.total_in_transit,
+    in_transit: inTransitShipmentsByFc[w.warehouse] || 0,
     reorder_needed: w.total_reorder_needed,
   }));
 
@@ -730,6 +777,109 @@ export default function ReplenishmentPage() {
       {/* ═══════════════════ WAREHOUSE PLAN TAB ═══════════════════ */}
       {activeTab === "warehouse" && (
         <>
+          {/* FBA Inbound Pipeline (sync) */}
+          {inboundSummary && (() => {
+            const s = inboundSummary;
+            const fmtDate = (d: string | null) => {
+              if (!d) return "—";
+              const dt = new Date(d);
+              return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
+            };
+            const active = s.working + s.shipped + s.in_transit + s.receiving;
+            return (
+              <div style={{ marginBottom: 16 }}>
+                <div
+                  className="card"
+                  onClick={() => setShowInboundDetail(v => !v)}
+                  style={{
+                    padding: "12px 16px",
+                    cursor: "pointer",
+                    border: "1px solid rgba(99, 102, 241, 0.4)",
+                    background: "linear-gradient(135deg, rgba(99,102,241,0.08), rgba(139,92,246,0.04))",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                    <div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)" }}>FBA Inbound Pipeline</div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: "#a5b4fc" }}>INBOUND</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: "#a5b4fc", lineHeight: 1 }}>
+                        {s.total}
+                      </div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>shipments</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, fontSize: 10, marginBottom: 6 }}>
+                    {s.in_transit > 0 && <span style={{ background: "rgba(245,158,11,0.15)", color: "#fbbf24", padding: "2px 6px", borderRadius: 4 }}>{s.in_transit} In Transit</span>}
+                    {s.receiving > 0 && <span style={{ background: "rgba(16,185,129,0.15)", color: "#34d399", padding: "2px 6px", borderRadius: 4 }}>{s.receiving} Receiving</span>}
+                    {s.shipped > 0 && <span style={{ background: "rgba(6,182,212,0.15)", color: "#22d3ee", padding: "2px 6px", borderRadius: 4 }}>{s.shipped} Shipped</span>}
+                    {s.working > 0 && <span style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc", padding: "2px 6px", borderRadius: 4 }}>{s.working} Working</span>}
+                    {s.delivered > 0 && <span style={{ background: "rgba(148,163,184,0.15)", color: "#cbd5e1", padding: "2px 6px", borderRadius: 4 }}>{s.delivered} Delivered</span>}
+                    {s.checked_in > 0 && <span style={{ background: "rgba(148,163,184,0.15)", color: "#cbd5e1", padding: "2px 6px", borderRadius: 4 }}>{s.checked_in} Checked In</span>}
+                    {s.total === 0 && <span style={{ color: "var(--text-muted)" }}>No active shipments</span>}
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-muted)", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 6 }}>
+                    <span>Active: <span style={{ color: "#e2e8f0", fontWeight: 600 }}>{active}</span></span>
+                    <span>Latest booked: <span style={{ color: "#e2e8f0", fontWeight: 600 }}>{fmtDate(s.latest_booked)}</span></span>
+                    <span style={{ color: "#a5b4fc" }}>{showInboundDetail ? "Hide ▲" : "Details ▼"}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* INBOUND detail panel — collapses by default */}
+          {showInboundDetail && inboundShipments.length > 0 && (
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Active Inbound Shipments</div>
+                  <div className="card-subtitle">
+                    {inboundShipments.length} shipments
+                    {inboundByFc.length > 0 && (
+                      <> &middot; {inboundByFc.map(f => `${f.count} → ${f.destination_fc}`).join(", ")}</>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="table-container" style={{ maxHeight: 400, overflowY: "auto" }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Shipment ID</th><th>Name</th><th>Destination FC</th>
+                      <th>Status</th><th>Booked</th><th>From</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inboundShipments.map((sh) => {
+                      const statusColor =
+                        sh.shipment_status === "IN_TRANSIT" ? "badge-warning" :
+                        sh.shipment_status === "RECEIVING" ? "badge-success" :
+                        sh.shipment_status === "DELIVERED" ? "badge-success" :
+                        sh.shipment_status === "WORKING" ? "badge-default" :
+                        "badge-default";
+                      return (
+                        <tr key={sh.shipment_id}>
+                          <td style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 600 }}>{sh.shipment_id}</td>
+                          <td style={{ fontSize: 11 }}>{sh.shipment_name}</td>
+                          <td style={{ fontWeight: 600, color: "var(--accent-hover)" }}>{sh.destination_fc}</td>
+                          <td><span className={`badge ${statusColor}`}>{sh.shipment_status}</span></td>
+                          <td style={{ fontSize: 11 }}>
+                            {sh.booked_date ? new Date(sh.booked_date).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" }) : "—"}
+                          </td>
+                          <td style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                            {[sh.ship_from_city, sh.ship_from_state].filter(Boolean).join(", ") || "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Warehouse Summary Cards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16, marginBottom: 24 }}>
             {warehouseSummary.map((w, i) => (
@@ -752,7 +902,14 @@ export default function ReplenishmentPage() {
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span style={{ color: "var(--text-muted)" }}>In Transit</span>
-                    <span style={{ fontWeight: 600, color: "#8b5cf6" }}>{w.total_in_transit.toLocaleString()}</span>
+                    <span style={{ fontWeight: 600, color: "#8b5cf6" }}>
+                      {(inTransitShipmentsByFc[w.warehouse] || 0).toLocaleString()}
+                      {(inTransitShipmentsByFc[w.warehouse] || 0) > 0 && (
+                        <span style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 400, marginLeft: 4 }}>
+                          shipment{inTransitShipmentsByFc[w.warehouse] > 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                     <span style={{ color: "var(--text-muted)" }}>Reorder Needed</span>
