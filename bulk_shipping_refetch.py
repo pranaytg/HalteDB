@@ -373,6 +373,9 @@ async def main():
 
             breakdown = await fetch_finance_breakdown(client, token, order_id)
 
+            if (i + 1) % 25 == 0 or i == 0:
+                log(f"  [{i+1}/{len(order_id_list)}] queried (success so far: {sp_api_success}, no-data: {sp_api_no_data})")
+
             for o in order_map[order_id]:
                 sku = o["sku"]
                 entry = breakdown.get(sku, {})

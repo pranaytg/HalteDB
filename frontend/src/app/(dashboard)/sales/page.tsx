@@ -253,7 +253,7 @@ export default function SalesPage() {
             </div>
             {skuDropdownOpen && (
               <div style={{
-                position: "absolute", top: "100%", left: 0, zIndex: 50, width: 240,
+                position: "absolute", top: "100%", left: 0, zIndex: 1000, width: 240,
                 background: "var(--card-bg, #1e293b)", border: "1px solid rgba(255,255,255,0.12)",
                 borderRadius: 8, marginTop: 4, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", maxHeight: 280, display: "flex", flexDirection: "column",
               }}>
@@ -346,7 +346,7 @@ export default function SalesPage() {
             </div>
             {cityDropdownOpen && (
               <div style={{
-                position: "absolute", top: "100%", left: 0, zIndex: 50, width: 220,
+                position: "absolute", top: "100%", left: 0, zIndex: 1000, width: 220,
                 background: "var(--card-bg, #1e293b)", border: "1px solid rgba(255,255,255,0.12)",
                 borderRadius: 8, marginTop: 4, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", maxHeight: 260, display: "flex", flexDirection: "column",
               }}>

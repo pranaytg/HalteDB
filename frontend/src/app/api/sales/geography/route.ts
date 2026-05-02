@@ -6,14 +6,16 @@ import {
   stateMatchKeys,
   stateNormalizeSqlExpr,
 } from "@/lib/stateNormalize";
+import { normalizedSkuExpr, estimatedCogsLateralJoin } from "@/lib/skuNormalize";
 
-const NORM_STATE = stateNormalizeSqlExpr("ship_state");
+const NORM_STATE = stateNormalizeSqlExpr("orders.ship_state");
+const NORM_SKU = normalizedSkuExpr("orders.sku");
 
 // Matches Cancelled, CANCELLED, Returned, RETURNED, RTO, "Shipped - Returned to Seller", etc.
-const RETURN_LIKE = "LOWER(COALESCE(order_status, '')) ~ '(cancel|return|rto)'";
-const REVENUE_EXPR = `CASE WHEN ${RETURN_LIKE} THEN 0 ELSE item_price END`;
-const UNITS_EXPR = `CASE WHEN ${RETURN_LIKE} THEN 0 ELSE quantity END`;
-const PROFIT_EXPR = `CASE WHEN ${RETURN_LIKE} THEN -2 * COALESCE(shipping_price, 0) ELSE COALESCE(profit, 0) END`;
+const RETURN_LIKE = "LOWER(COALESCE(orders.order_status, '')) ~ '(cancel|return|rto)'";
+const REVENUE_EXPR = `CASE WHEN ${RETURN_LIKE} THEN 0 ELSE orders.item_price END`;
+const UNITS_EXPR = `CASE WHEN ${RETURN_LIKE} THEN 0 ELSE orders.quantity END`;
+const PROFIT_EXPR = `CASE WHEN ${RETURN_LIKE} THEN -2 * COALESCE(orders.shipping_price, 0) ELSE COALESCE(orders.profit, 0) END`;
 const ACTIVE_COUNT_EXPR = `COUNT(*) FILTER (WHERE NOT (${RETURN_LIKE}))`;
 
 export async function GET(req: NextRequest) {
@@ -23,13 +25,14 @@ export async function GET(req: NextRequest) {
     const city = searchParams.get("city");
     const tier = searchParams.get("tier"); // "Tier 1", "Tier 2", "Tier 3"
     const sku = searchParams.get("sku");
+    const brand = searchParams.get("brand");
     const year = searchParams.get("year");
     const month = searchParams.get("month"); // YYYY-MM
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
     /* ── Build WHERE clause ── */
-    let where = "WHERE ship_city IS NOT NULL AND ship_city != '' AND item_price > 0 AND amazon_order_id NOT LIKE 'ORD-%'";
+    let where = "WHERE orders.ship_city IS NOT NULL AND orders.ship_city != '' AND orders.item_price > 0 AND orders.amazon_order_id NOT LIKE 'ORD-%'";
     const params: (string | number)[] = [];
     let idx = 1;
 
@@ -46,39 +49,43 @@ export async function GET(req: NextRequest) {
     if (city) {
       const cities = city.split(",").map(c => c.trim()).filter(Boolean);
       if (cities.length === 1) {
-        where += ` AND LOWER(ship_city) = LOWER($${idx++})`;
+        where += ` AND LOWER(orders.ship_city) = LOWER($${idx++})`;
         params.push(cities[0]);
       } else if (cities.length > 1) {
         const placeholders = cities.map(() => `LOWER($${idx++})`).join(",");
-        where += ` AND LOWER(ship_city) IN (${placeholders})`;
+        where += ` AND LOWER(orders.ship_city) IN (${placeholders})`;
         params.push(...cities);
       }
     }
     if (sku) {
       const skus = sku.split(",").map(s => s.trim()).filter(Boolean);
       if (skus.length === 1) {
-        where += ` AND sku = $${idx++}`;
+        where += ` AND ${NORM_SKU} = UPPER($${idx++})`;
         params.push(skus[0]);
       } else if (skus.length > 1) {
-        const placeholders = skus.map(() => `$${idx++}`).join(",");
-        where += ` AND sku IN (${placeholders})`;
+        const placeholders = skus.map(() => `UPPER($${idx++})`).join(",");
+        where += ` AND ${NORM_SKU} IN (${placeholders})`;
         params.push(...skus);
       }
     }
+    if (brand) {
+      where += ` AND LOWER(ec.brand) = LOWER($${idx++})`;
+      params.push(brand);
+    }
     if (year) {
-      where += ` AND EXTRACT(YEAR FROM purchase_date) = $${idx++}`;
+      where += ` AND EXTRACT(YEAR FROM orders.purchase_date) = $${idx++}`;
       params.push(parseInt(year));
     }
     if (month) {
-      where += ` AND TO_CHAR(purchase_date, 'YYYY-MM') = $${idx++}`;
+      where += ` AND TO_CHAR(orders.purchase_date, 'YYYY-MM') = $${idx++}`;
       params.push(month);
     }
     if (startDate) {
-      where += ` AND (purchase_date AT TIME ZONE 'Asia/Kolkata')::date >= $${idx++}::date`;
+      where += ` AND (orders.purchase_date AT TIME ZONE 'Asia/Kolkata')::date >= $${idx++}::date`;
       params.push(startDate);
     }
     if (endDate) {
-      where += ` AND (purchase_date AT TIME ZONE 'Asia/Kolkata')::date <= $${idx++}::date`;
+      where += ` AND (orders.purchase_date AT TIME ZONE 'Asia/Kolkata')::date <= $${idx++}::date`;
       params.push(endDate);
     }
 
@@ -108,33 +115,35 @@ export async function GET(req: NextRequest) {
 
       // Build parameterized IN clause
       const placeholders = tierCities.map(() => `$${idx++}`).join(",");
-      where += ` AND ship_city IN (${placeholders})`;
+      where += ` AND orders.ship_city IN (${placeholders})`;
       params.push(...tierCities);
     }
 
+    const fromClause = `FROM orders ${estimatedCogsLateralJoin("orders")}`;
+
     /* ── By State ── */
     const byStateQuery = `
-      SELECT ship_state as state,
+      SELECT orders.ship_state as state,
              ${ACTIVE_COUNT_EXPR} as total_orders,
              COALESCE(SUM(${REVENUE_EXPR}), 0) as total_revenue,
              COALESCE(SUM(${PROFIT_EXPR}), 0) as total_profit,
              COALESCE(SUM(${UNITS_EXPR}), 0) as total_units
-      FROM orders ${where}
-      AND ship_state IS NOT NULL AND ship_state != ''
-      GROUP BY ship_state
+      ${fromClause} ${where}
+      AND orders.ship_state IS NOT NULL AND orders.ship_state != ''
+      GROUP BY orders.ship_state
       ORDER BY total_revenue DESC
     `;
     const byStateResult = await pool.query(byStateQuery, params);
 
     /* ── By City ── */
     const byCityQuery = `
-      SELECT ship_city as city, ship_state as state,
+      SELECT orders.ship_city as city, orders.ship_state as state,
              ${ACTIVE_COUNT_EXPR} as total_orders,
              COALESCE(SUM(${REVENUE_EXPR}), 0) as total_revenue,
              COALESCE(SUM(${PROFIT_EXPR}), 0) as total_profit,
              COALESCE(SUM(${UNITS_EXPR}), 0) as total_units
-      FROM orders ${where}
-      GROUP BY ship_city, ship_state
+      ${fromClause} ${where}
+      GROUP BY orders.ship_city, orders.ship_state
       ORDER BY total_revenue DESC
     `;
     const byCityResult = await pool.query(byCityQuery, params);
@@ -171,13 +180,13 @@ export async function GET(req: NextRequest) {
 
     /* ── By Tier (aggregated from current filtered results) ── */
     const allCitiesQuery = `
-      SELECT ship_city as city,
+      SELECT orders.ship_city as city,
              ${ACTIVE_COUNT_EXPR} as total_orders,
              COALESCE(SUM(${REVENUE_EXPR}), 0) as total_revenue,
              COALESCE(SUM(${PROFIT_EXPR}), 0) as total_profit,
              COALESCE(SUM(${UNITS_EXPR}), 0) as total_units
-      FROM orders ${where}
-      GROUP BY ship_city
+      ${fromClause} ${where}
+      GROUP BY orders.ship_city
     `;
     const allCitiesResult = await pool.query(allCitiesQuery, params);
 
