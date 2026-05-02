@@ -323,27 +323,52 @@ export async function PUT(req: NextRequest) {
       }
 
       let updated = 0;
+      // `amazon_markup_percent` is also a recalc output, so when the user
+      // mass-updates that field we must skip the recalc-driven setter to
+      // avoid a duplicate SET on the same column (Postgres rejects that).
+      const skipMarkupSetter = field === "amazon_markup_percent";
       for (const row of matchingRows.rows) {
         const newRow = { ...row, [field]: value };
         const calcs = recalc(newRow);
-        await pool.query(
-          `UPDATE estimated_cogs SET
-            ${field}=$1,
-            import_price_inr=$2, gst_amount=$3, final_price=$4,
-            margin1_amount=$5, cost_price_halte=$6,
-            margin2_amount=$7, selling_price=$8,
-            msp_with_gst=$9, halte_selling_price=$10, amazon_markup_percent=$11, amazon_selling_price=$12,
-            profitability=$13, profit_percent=$14, last_updated=NOW()
-          WHERE id=$15`,
-          [
-            value,
-            calcs.import_price_inr, calcs.gst_amount, calcs.final_price,
-            calcs.margin1_amount, calcs.cost_price_halte,
-            calcs.margin2_amount, calcs.selling_price,
-            calcs.msp_with_gst, calcs.halte_selling_price, calcs.amazon_markup_percent, calcs.amazon_selling_price,
-            calcs.profitability, calcs.profit_percent, row.id,
-          ]
-        );
+        if (skipMarkupSetter) {
+          await pool.query(
+            `UPDATE estimated_cogs SET
+              amazon_markup_percent=$1,
+              import_price_inr=$2, gst_amount=$3, final_price=$4,
+              margin1_amount=$5, cost_price_halte=$6,
+              margin2_amount=$7, selling_price=$8,
+              msp_with_gst=$9, halte_selling_price=$10, amazon_selling_price=$11,
+              profitability=$12, profit_percent=$13, last_updated=NOW()
+            WHERE id=$14`,
+            [
+              value,
+              calcs.import_price_inr, calcs.gst_amount, calcs.final_price,
+              calcs.margin1_amount, calcs.cost_price_halte,
+              calcs.margin2_amount, calcs.selling_price,
+              calcs.msp_with_gst, calcs.halte_selling_price, calcs.amazon_selling_price,
+              calcs.profitability, calcs.profit_percent, row.id,
+            ]
+          );
+        } else {
+          await pool.query(
+            `UPDATE estimated_cogs SET
+              ${field}=$1,
+              import_price_inr=$2, gst_amount=$3, final_price=$4,
+              margin1_amount=$5, cost_price_halte=$6,
+              margin2_amount=$7, selling_price=$8,
+              msp_with_gst=$9, halte_selling_price=$10, amazon_markup_percent=$11, amazon_selling_price=$12,
+              profitability=$13, profit_percent=$14, last_updated=NOW()
+            WHERE id=$15`,
+            [
+              value,
+              calcs.import_price_inr, calcs.gst_amount, calcs.final_price,
+              calcs.margin1_amount, calcs.cost_price_halte,
+              calcs.margin2_amount, calcs.selling_price,
+              calcs.msp_with_gst, calcs.halte_selling_price, calcs.amazon_markup_percent, calcs.amazon_selling_price,
+              calcs.profitability, calcs.profit_percent, row.id,
+            ]
+          );
+        }
         updated++;
       }
 
