@@ -241,42 +241,31 @@ export default function SalesPage() {
       <div className="card" style={{ marginBottom: 16, padding: "12px 16px" }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ position: "relative" }} ref={skuDropdownRef}>
-            <div
-              className="filter-input"
-              onClick={() => setSkuDropdownOpen(o => !o)}
-              style={{ width: 180, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", userSelect: "none" }}
-            >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {selectedSkus.length === 0 ? "🔍 Search SKUs..." : `🔍 ${selectedSkus.length} SKU${selectedSkus.length === 1 ? "" : "s"} selected`}
-              </span>
-              <span style={{ fontSize: 10, marginLeft: 4 }}>{skuDropdownOpen ? "▲" : "▼"}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, width: 180 }}>
+              <input
+                className="filter-input"
+                placeholder={selectedSkus.length === 0 ? "🔍 Search SKUs..." : `🔍 ${selectedSkus.length} selected`}
+                value={skuSearch}
+                onChange={e => { setSkuSearch(e.target.value); setSkuDropdownOpen(true); }}
+                onFocus={() => setSkuDropdownOpen(true)}
+                style={{ width: "100%", fontSize: 12 }}
+              />
+              {selectedSkus.length > 0 && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={e => { e.stopPropagation(); setFilters(f => ({ ...f, sku: "" })); setPage(0); }}
+                  style={{ fontSize: 10, padding: "2px 6px" }}
+                  title="Clear all"
+                >✕</button>
+              )}
             </div>
             {skuDropdownOpen && (
               <div style={{
                 position: "absolute", top: "100%", left: 0, zIndex: 1000, width: 240,
                 background: "var(--card-bg, #1e293b)", border: "1px solid rgba(255,255,255,0.12)",
-                borderRadius: 8, marginTop: 4, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", maxHeight: 280, display: "flex", flexDirection: "column",
+                borderRadius: 8, marginTop: 4, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", maxHeight: 260, display: "flex", flexDirection: "column",
               }}>
-                <div style={{ padding: "6px 8px", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", gap: 6, alignItems: "center" }}>
-                  <input
-                    className="filter-input"
-                    placeholder="Search SKUs..."
-                    value={skuSearch}
-                    onChange={e => setSkuSearch(e.target.value)}
-                    onClick={e => e.stopPropagation()}
-                    style={{ width: "100%", fontSize: 12 }}
-                    autoFocus
-                  />
-                  {selectedSkus.length > 0 && (
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      onClick={e => { e.stopPropagation(); setFilters(f => ({ ...f, sku: "" })); setPage(0); }}
-                      style={{ fontSize: 10, padding: "2px 6px" }}
-                      title="Clear all"
-                    >✕</button>
-                  )}
-                </div>
-                <div style={{ overflowY: "auto", maxHeight: 230, padding: "4px 0" }}>
+                <div style={{ overflowY: "auto", maxHeight: 260, padding: "4px 0" }}>
                   {(() => {
                     const allSkus: string[] = summary?.filters?.skus || [];
                     const search = skuSearch.toLowerCase();
@@ -334,34 +323,31 @@ export default function SalesPage() {
             {(geo?.filters?.states || []).map((s: string) => <option key={s} value={s}>{s}</option>)}
           </select>
           <div style={{ position: "relative" }} ref={cityDropdownRef}>
-            <div
-              className="filter-input"
-              onClick={() => setCityDropdownOpen(o => !o)}
-              style={{ width: 160, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "space-between", userSelect: "none" }}
-            >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {selectedCities.length === 0 ? "🏙️ Cities..." : `🏙️ ${selectedCities.length} selected`}
-              </span>
-              <span style={{ fontSize: 10, marginLeft: 4 }}>{cityDropdownOpen ? "▲" : "▼"}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, width: 160 }}>
+              <input
+                className="filter-input"
+                placeholder={selectedCities.length === 0 ? "🏙️ Cities..." : `🏙️ ${selectedCities.length} selected`}
+                value={citySearch}
+                onChange={e => { setCitySearch(e.target.value); setCityDropdownOpen(true); }}
+                onFocus={() => setCityDropdownOpen(true)}
+                style={{ width: "100%", fontSize: 12 }}
+              />
+              {selectedCities.length > 0 && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  onClick={e => { e.stopPropagation(); setFilters(f => ({ ...f, city: "" })); setPage(0); }}
+                  style={{ fontSize: 10, padding: "2px 6px" }}
+                  title="Clear all"
+                >✕</button>
+              )}
             </div>
             {cityDropdownOpen && (
               <div style={{
                 position: "absolute", top: "100%", left: 0, zIndex: 1000, width: 220,
                 background: "var(--card-bg, #1e293b)", border: "1px solid rgba(255,255,255,0.12)",
-                borderRadius: 8, marginTop: 4, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", maxHeight: 260, display: "flex", flexDirection: "column",
+                borderRadius: 8, marginTop: 4, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", maxHeight: 240, display: "flex", flexDirection: "column",
               }}>
-                <div style={{ padding: "6px 8px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-                  <input
-                    className="filter-input"
-                    placeholder="Search cities..."
-                    value={citySearch}
-                    onChange={e => setCitySearch(e.target.value)}
-                    onClick={e => e.stopPropagation()}
-                    style={{ width: "100%", fontSize: 12 }}
-                    autoFocus
-                  />
-                </div>
-                <div style={{ overflowY: "auto", maxHeight: 210, padding: "4px 0" }}>
+                <div style={{ overflowY: "auto", maxHeight: 240, padding: "4px 0" }}>
                   {(() => {
                     const allCities: string[] = geo?.filters?.cities || [];
                     const search = citySearch.toLowerCase();
