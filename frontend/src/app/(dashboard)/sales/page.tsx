@@ -633,7 +633,7 @@ export default function SalesPage() {
               <div className="card-header"><div className="card-title">Date-wise Summary</div></div>
               <div className="table-container" style={{ maxHeight: 300, overflowY: "auto" }}>
                 <table>
-                  <thead><tr><th>Month</th><th>Revenue</th><th>Profit</th><th>Orders</th><th>Units</th></tr></thead>
+                  <thead><tr><th>Month</th><th>Revenue</th><th>Profit</th><th>Orders</th><th>ASP</th></tr></thead>
                   <tbody>
                     {monthlyChart.map((m: any) => (
                       <tr key={m.month}>
@@ -787,7 +787,7 @@ export default function SalesPage() {
           <div className="table-container" style={{ maxHeight: 500, overflowY: "auto", overflowX: "auto" }}>
             <table style={{ fontSize: 12 }}>
               <thead>
-                <tr><th>Order ID</th><th>Date</th><th>SKU</th><th>Qty</th><th>Price</th><th>COGS</th><th>Profit</th><th>City</th><th>State</th><th>Channel</th></tr>
+                <tr><th>Order ID</th><th>Date</th><th>SKU</th><th>Qty</th><th>Price</th><th>Profit</th><th>City</th><th>State</th><th>Channel</th></tr>
               </thead>
               <tbody>
                 {(orders.orders || []).map((o: any, i: number) => (
@@ -797,7 +797,6 @@ export default function SalesPage() {
                     <td style={{ fontWeight: 600, cursor: "pointer", color: "var(--accent-hover)" }} onClick={() => toggleSku(o.sku)}>{o.sku}</td>
                     <td>{o.quantity}</td>
                     <td>{fmtCur(Number(o.item_price || 0))}</td>
-                    <td>{o.cogs_price ? fmtCur(Number(o.cogs_price)) : "—"}</td>
                     <td style={{ color: Number(o.profit || 0) >= 0 ? "var(--success)" : "var(--danger)", fontWeight: 600 }}>
                       {o.profit != null ? fmtCur(Number(o.profit)) : "—"}
                     </td>

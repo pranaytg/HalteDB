@@ -1,6 +1,8 @@
-Amazon orders queued for Finance backfill: 220 (rows: 232)
-[50/220] shipping_updates=24 fee_updates=24 no_data_orders=30
-[100/220] shipping_updates=48 fee_updates=48 no_data_orders=58
-[150/220] shipping_updates=48 fee_updates=48 no_data_orders=108
-[200/220] shipping_updates=48 fee_updates=48 no_data_orders=158
-[220/220] shipping_updates=48 fee_updates=48 no_data_orders=178
+Amazon orders queued for Finance backfill: 318 (rows: 335)
+[50/318] shipping_updates=52 fee_updates=52 no_data_orders=2
+[100/318] shipping_updates=97 fee_updates=97 no_data_orders=8
+[150/318] shipping_updates=131 fee_updates=131 no_data_orders=25
+[200/318] shipping_updates=139 fee_updates=139 no_data_orders=67
+[250/318] shipping_updates=139 fee_updates=139 no_data_orders=117
+[300/318] shipping_updates=139 fee_updates=139 no_data_orders=167
+[318/318] shipping_updates=139 fee_updates=139 no_data_orders=185
