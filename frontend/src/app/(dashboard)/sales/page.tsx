@@ -238,7 +238,7 @@ export default function SalesPage() {
       </div>
 
       {/* ═══════════════════ FILTER BAR ═══════════════════ */}
-      <div className="card" style={{ marginBottom: 16, padding: "12px 16px" }}>
+      <div className="card" style={{ marginBottom: 16, padding: "12px 16px", position: "relative", zIndex: 50 }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ position: "relative" }} ref={skuDropdownRef}>
             <div style={{ display: "flex", alignItems: "center", gap: 4, width: 180 }}>
@@ -261,7 +261,7 @@ export default function SalesPage() {
             </div>
             {skuDropdownOpen && (
               <div style={{
-                position: "absolute", top: "100%", left: 0, zIndex: 1000, width: 240,
+                position: "absolute", top: "100%", left: 0, zIndex: 9999, width: 240,
                 background: "var(--card-bg, #1e293b)", border: "1px solid rgba(255,255,255,0.12)",
                 borderRadius: 8, marginTop: 4, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", maxHeight: 260, display: "flex", flexDirection: "column",
               }}>
@@ -343,7 +343,7 @@ export default function SalesPage() {
             </div>
             {cityDropdownOpen && (
               <div style={{
-                position: "absolute", top: "100%", left: 0, zIndex: 1000, width: 220,
+                position: "absolute", top: "100%", right: 0, zIndex: 9999, width: 220,
                 background: "var(--card-bg, #1e293b)", border: "1px solid rgba(255,255,255,0.12)",
                 borderRadius: 8, marginTop: 4, boxShadow: "0 8px 24px rgba(0,0,0,0.4)", maxHeight: 240, display: "flex", flexDirection: "column",
               }}>
