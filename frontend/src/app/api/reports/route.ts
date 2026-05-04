@@ -473,7 +473,7 @@ async function appendInventoryReport(workbook: XLSX.WorkBook) {
 
 async function appendCogsReport(workbook: XLSX.WorkBook) {
   const cogsRes = await pool.query(`
-    SELECT c.id, c.sku, c.cogs_price, c.amazon_price, c.last_updated,
+    SELECT c.id, c.sku, c.cogs_price, c.halte_price, c.amazon_price, c.last_updated,
            ec.halte_selling_price, ec.amazon_selling_price
     FROM cogs c
     LEFT JOIN LATERAL (
@@ -495,6 +495,7 @@ async function appendCogsReport(workbook: XLSX.WorkBook) {
         SKU: row.sku,
         "COGS Price (INR)": row.cogs_price == null ? null : Number(row.cogs_price),
         "Halte Selling Price (INR)": row.halte_selling_price == null ? null : Number(row.halte_selling_price),
+        "Halte Price (INR)": row.halte_price == null ? null : Number(row.halte_price),
         "Amazon Selling Price (INR)": row.amazon_selling_price == null ? null : Number(row.amazon_selling_price),
         "Amazon Price (INR)": row.amazon_price == null ? null : Number(row.amazon_price),
         "Last Updated": row.last_updated

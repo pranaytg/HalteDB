@@ -2068,56 +2068,120 @@ async def get_powerbi_sales_sync_status(session: AsyncSession):
     }
 
 
+# Amazon SP-API GST MTR custom reports cap each request at 31 days; chunk
+# anything longer so larger windows still go through.
+GST_INVOICE_REPORT_MAX_CHUNK_DAYS = 30
+# Hard ceiling on how far back a single Sync click can backfill. Prevents
+# accidental multi-year refetches when the table has a stale latest date.
+GST_INVOICE_BACKFILL_CEILING_DAYS = 365
+# Overlap re-fetched on top of the latest synced invoice date, in case the
+# tail of the previous sync was incomplete.
+GST_INVOICE_OVERLAP_DAYS = 7
+
+
+async def _get_latest_invoice_date(session: AsyncSession):
+    await _ensure_powerbi_sales_table(session)
+    result = await session.execute(
+        sa_text('SELECT MAX("Invoice Date") FROM "PowerBISales"')
+    )
+    return result.scalar()
+
+
+def _iter_invoice_chunks(
+    start_time: datetime,
+    end_time: datetime,
+    max_chunk_days: int = GST_INVOICE_REPORT_MAX_CHUNK_DAYS,
+):
+    chunk_start = start_time
+    delta = timedelta(days=max_chunk_days)
+    while chunk_start < end_time:
+        chunk_end = min(chunk_start + delta, end_time)
+        yield chunk_start, chunk_end
+        chunk_start = chunk_end
+
+
 async def run_invoice_sync(session: AsyncSession):
     end_time = datetime.now(timezone.utc).replace(microsecond=0)
-    start_time = (end_time - timedelta(days=max(1, GST_INVOICE_LOOKBACK_DAYS - 1))).replace(
+    default_start = (end_time - timedelta(days=max(1, GST_INVOICE_LOOKBACK_DAYS - 1))).replace(
         hour=0,
         minute=0,
         second=0,
         microsecond=0,
     )
 
+    latest_in_db = await _get_latest_invoice_date(session)
+    if latest_in_db is not None:
+        if isinstance(latest_in_db, datetime):
+            latest_dt = (
+                latest_in_db
+                if latest_in_db.tzinfo
+                else latest_in_db.replace(tzinfo=timezone.utc)
+            )
+        else:
+            latest_dt = datetime.combine(
+                latest_in_db, datetime.min.time(), tzinfo=timezone.utc
+            )
+        gap_start = (latest_dt - timedelta(days=GST_INVOICE_OVERLAP_DAYS)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        floor_start = end_time - timedelta(days=GST_INVOICE_BACKFILL_CEILING_DAYS)
+        start_time = max(min(default_start, gap_start), floor_start)
+    else:
+        start_time = default_start
+
     sku_meta = await _load_invoice_sku_meta(session)
-    cleaned_rows: list[dict[str, object]] = []
+    all_rows: list[dict[str, object]] = []
     report_summaries: list[dict[str, object]] = []
     warnings: list[str] = []
-    seen_keys: set[tuple[str, str, str, str, str]] = set()
 
-    for report_type, business_hint in GST_INVOICE_REPORT_TYPES:
-        try:
-            report_rows = await _request_report_rows(report_type, start_time, end_time)
-            report_summaries.append({
-                "reportType": report_type,
-                "business": business_hint,
-                "rows": len(report_rows),
-            })
-            for raw_row in report_rows:
-                row = _build_powerbi_sales_row(raw_row, business_hint, sku_meta)
-                dedupe_key = (
-                    str(row.get("invoice_number") or ""),
-                    str(row.get("order_id") or ""),
-                    str(row.get("sku") or ""),
-                    str(row.get("transaction_type") or ""),
-                    str(row.get("business") or ""),
-                )
-                if dedupe_key in seen_keys:
-                    continue
-                seen_keys.add(dedupe_key)
-                cleaned_rows.append(row)
-        except Exception as exc:
-            warning = f"{report_type}: {exc}"
-            logger.warning("Invoice sync warning: %s", warning)
-            warnings.append(warning)
+    for chunk_start, chunk_end in _iter_invoice_chunks(start_time, end_time):
+        chunk_rows: list[dict[str, object]] = []
+        seen_keys: set[tuple[str, str, str, str, str]] = set()
+        chunk_warnings: list[str] = []
+        for report_type, business_hint in GST_INVOICE_REPORT_TYPES:
+            try:
+                report_rows = await _request_report_rows(report_type, chunk_start, chunk_end)
+                report_summaries.append({
+                    "reportType": report_type,
+                    "business": business_hint,
+                    "rows": len(report_rows),
+                    "startDate": chunk_start.date().isoformat(),
+                    "endDate": chunk_end.date().isoformat(),
+                })
+                for raw_row in report_rows:
+                    row = _build_powerbi_sales_row(raw_row, business_hint, sku_meta)
+                    dedupe_key = (
+                        str(row.get("invoice_number") or ""),
+                        str(row.get("order_id") or ""),
+                        str(row.get("sku") or ""),
+                        str(row.get("transaction_type") or ""),
+                        str(row.get("business") or ""),
+                    )
+                    if dedupe_key in seen_keys:
+                        continue
+                    seen_keys.add(dedupe_key)
+                    chunk_rows.append(row)
+            except Exception as exc:
+                warning = f"{report_type} {chunk_start.date()}–{chunk_end.date()}: {exc}"
+                logger.warning("Invoice sync warning: %s", warning)
+                chunk_warnings.append(warning)
 
-    if not cleaned_rows and warnings:
+        warnings.extend(chunk_warnings)
+        # Only replace the chunk window when every report for that chunk
+        # succeeded — otherwise a partial failure would silently delete the
+        # business rows we couldn't refetch.
+        if not chunk_warnings:
+            await _replace_powerbi_sales_window(session, chunk_rows, chunk_start, chunk_end)
+            all_rows.extend(chunk_rows)
+
+    if not all_rows and warnings:
         raise ValueError("; ".join(warnings))
 
-    await _replace_powerbi_sales_window(session, cleaned_rows, start_time, end_time)
     status = await get_powerbi_sales_sync_status(session)
     return {
         **status,
-        "message": f"Synced {len(cleaned_rows):,} invoice row(s) from Amazon GST reports.",
-        "syncedRows": len(cleaned_rows),
+        "message": f"Synced {len(all_rows):,} invoice row(s) from Amazon GST reports.",
+        "syncedRows": len(all_rows),
         "startDate": start_time.date().isoformat(),
         "endDate": end_time.date().isoformat(),
         "reports": report_summaries,

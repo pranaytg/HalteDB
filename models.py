@@ -45,6 +45,7 @@ class Cogs(Base):
     id = Column(Integer, primary_key=True, index=True)
     sku = Column(String, unique=True, index=True, nullable=False)
     cogs_price = Column(Float, nullable=False, default=0.0)
+    halte_price = Column(Float, nullable=True)
     last_updated = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
