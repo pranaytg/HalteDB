@@ -64,6 +64,7 @@ export default function CogsEstimatePage() {
   const [downloadingReport, setDownloadingReport] = useState(false);
   const [search, setSearch] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   // Security
@@ -313,6 +314,7 @@ export default function CogsEstimatePage() {
       const params = new URLSearchParams();
       if (search.trim()) params.set("search", search.trim());
       if (brandFilter) params.set("brand", brandFilter);
+      if (categoryFilter) params.set("category", categoryFilter);
 
       const query = params.toString();
       const res = await fetch(`/api/cogs-estimate/report${query ? `?${query}` : ""}`);
@@ -351,8 +353,9 @@ export default function CogsEstimatePage() {
 
   const filtered = items.filter(i => {
     const matchesBrand = !brandFilter || i.brand === brandFilter;
+    const matchesCategory = !categoryFilter || i.category === categoryFilter;
     const matchesSearch = !search || i.sku.toLowerCase().includes(search.toLowerCase());
-    return matchesBrand && matchesSearch;
+    return matchesBrand && matchesCategory && matchesSearch;
   });
 
   if (!isAuthorized) {
@@ -597,6 +600,10 @@ export default function CogsEstimatePage() {
             <select className="filter-select" value={brandFilter} onChange={e => setBrandFilter(e.target.value)} style={{ minWidth: 160 }}>
               <option value="">All Brands</option>
               {uniqueBrands.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <select className="filter-select" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} style={{ minWidth: 160 }}>
+              <option value="">All Categories</option>
+              {uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <input className="filter-input search-input" type="text" placeholder="Search by SKU..."
               value={search} onChange={e => setSearch(e.target.value)} style={{ minWidth: 200 }} />

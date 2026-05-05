@@ -1,7 +1,7 @@
 "use client";
 //abc
 
-import { useState, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 
 interface CogsEntry {
   id: number;
@@ -19,6 +19,7 @@ const fmtCur = (v: number) =>
   `₹${v.toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: 2 })}`;
 
 export default function CogsPage() {
+  const haltePriceInputRef = useRef<HTMLInputElement | null>(null);
   const [cogs, setCogs] = useState<CogsEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingSku, setEditingSku] = useState<string | null>(null);
@@ -28,6 +29,7 @@ export default function CogsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
   const [refreshingPrices, setRefreshingPrices] = useState(false);
+  const [uploadingHaltePrices, setUploadingHaltePrices] = useState(false);
 
   // Add COGS form state
   const [showAddForm, setShowAddForm] = useState(false);
@@ -67,6 +69,39 @@ export default function CogsPage() {
       showToast("Network error", "error");
     } finally {
       setRefreshingPrices(false);
+    }
+  };
+
+  const handleHaltePriceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingHaltePrices(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/cogs/halte-price", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.error || "Failed to upload Halte prices", "error");
+        return;
+      }
+
+      showToast(
+        `Updated ${data.updated} Halte prices. ${data.matched} SKUs matched, ${data.unmatched} unmatched.`,
+        "success"
+      );
+      await fetchCogs();
+    } catch {
+      showToast("Network error", "error");
+    } finally {
+      setUploadingHaltePrices(false);
+      e.target.value = "";
     }
   };
 
@@ -278,6 +313,21 @@ export default function CogsPage() {
             >
               {refreshingPrices ? "Fetching..." : "↻ Refresh Amazon Prices"}
             </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => haltePriceInputRef.current?.click()}
+              disabled={uploadingHaltePrices}
+              title="Upload an Excel feed with id and price columns"
+            >
+              {uploadingHaltePrices ? "Uploading..." : "Upload Halte Prices"}
+            </button>
+            <input
+              ref={haltePriceInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleHaltePriceUpload}
+              style={{ display: "none" }}
+            />
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <select

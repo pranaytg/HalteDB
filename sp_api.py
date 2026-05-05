@@ -6,7 +6,7 @@ import csv
 import io
 from collections import defaultdict
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 import zlib
 from sqlalchemy import text as sa_text
 
@@ -1806,26 +1806,34 @@ async def _get_restricted_data_token(
     client: httpx.AsyncClient,
     access_token: str,
     path: str,
+    method: str = "GET",
+    data_elements: list[str] | None = None,
 ) -> str:
     endpoint = os.getenv("SP_API_ENDPOINT", "https://sellingpartnerapi-eu.amazon.com").strip('"').strip("'")
+    resource: dict[str, object] = {"method": method, "path": path}
+    if data_elements:
+        resource["dataElements"] = list(data_elements)
     response = await client.post(
         f"{endpoint}/tokens/2021-03-01/restrictedDataToken",
         headers={
             "x-amz-access-token": access_token,
             "Content-Type": "application/json",
         },
-        json={
-            "restrictedResources": [
-                {
-                    "method": "GET",
-                    "path": path,
-                }
-            ]
-        },
+        json={"restrictedResources": [resource]},
     )
     if response.status_code >= 400:
         raise ValueError(f"Failed to get restricted data token: {response.status_code} {response.text[:250]}")
     return response.json()["restrictedDataToken"]
+
+
+# GST MTR reports contain buyer PII (name, GSTIN, address). Per Amazon SP-API,
+# the createReport call itself must be authorised with a Restricted Data Token
+# carrying the relevant dataElements — a regular LWA token returns 403.
+GST_REPORT_DATA_ELEMENTS = ["buyerInfo", "shippingAddress"]
+RESTRICTED_REPORT_TYPES = {
+    "GET_GST_MTR_B2B_CUSTOM",
+    "GET_GST_MTR_B2C_CUSTOM",
+}
 
 
 async def _request_report_rows(
@@ -1840,6 +1848,7 @@ async def _request_report_rows(
 
     access_token = await get_amazon_access_token()
     headers = {"x-amz-access-token": access_token, "Content-Type": "application/json"}
+    is_restricted = report_type in RESTRICTED_REPORT_TYPES
 
     async with httpx.AsyncClient(timeout=90.0) as client:
         create_payload = {
@@ -1855,8 +1864,17 @@ async def _request_report_rows(
             json=create_payload,
         )
         if response.status_code >= 400:
+            hint = ""
+            if is_restricted and response.status_code == 403:
+                hint = (
+                    " — Amazon returned 403 on a restricted GST report. The SP-API"
+                    " application most likely does not have the 'Tax Invoicing'"
+                    " role enabled, or the seller has not re-authorised the app"
+                    " since that role was added. Enable the role in Developer"
+                    " Central and reauthorise the seller."
+                )
             raise ValueError(
-                f"{report_type} request failed: {response.status_code} {response.text[:250]}"
+                f"{report_type} request failed: {response.status_code} {response.text[:250]}{hint}"
             )
 
         report_id = response.json()["reportId"]
@@ -1889,7 +1907,12 @@ async def _request_report_rows(
             return []
 
         document_path = f"/reports/2021-06-30/documents/{report_document_id}"
-        restricted_token = await _get_restricted_data_token(client, access_token, document_path)
+        restricted_token = await _get_restricted_data_token(
+            client,
+            access_token,
+            document_path,
+            data_elements=GST_REPORT_DATA_ELEMENTS if is_restricted else None,
+        )
         doc_res = await client.get(
             f"{endpoint}{document_path}",
             headers={"x-amz-access-token": restricted_token},
@@ -2100,34 +2123,50 @@ def _iter_invoice_chunks(
         chunk_start = chunk_end
 
 
-async def run_invoice_sync(session: AsyncSession):
-    end_time = datetime.now(timezone.utc).replace(microsecond=0)
-    default_start = (end_time - timedelta(days=max(1, GST_INVOICE_LOOKBACK_DAYS - 1))).replace(
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
+async def run_invoice_sync(
+    session: AsyncSession,
+    start_date: date | None = None,
+    end_date: date | None = None,
+):
+    now_utc = datetime.now(timezone.utc).replace(microsecond=0)
 
-    latest_in_db = await _get_latest_invoice_date(session)
-    if latest_in_db is not None:
-        if isinstance(latest_in_db, datetime):
-            latest_dt = (
-                latest_in_db
-                if latest_in_db.tzinfo
-                else latest_in_db.replace(tzinfo=timezone.utc)
-            )
-        else:
-            latest_dt = datetime.combine(
-                latest_in_db, datetime.min.time(), tzinfo=timezone.utc
-            )
-        gap_start = (latest_dt - timedelta(days=GST_INVOICE_OVERLAP_DAYS)).replace(
-            hour=0, minute=0, second=0, microsecond=0
+    if start_date is not None and end_date is not None:
+        if end_date < start_date:
+            raise ValueError("endDate must be on or after startDate")
+        start_time = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+        end_time = datetime.combine(
+            end_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc
         )
-        floor_start = end_time - timedelta(days=GST_INVOICE_BACKFILL_CEILING_DAYS)
-        start_time = max(min(default_start, gap_start), floor_start)
+        if end_time > now_utc:
+            end_time = now_utc
     else:
-        start_time = default_start
+        end_time = now_utc
+        default_start = (end_time - timedelta(days=max(1, GST_INVOICE_LOOKBACK_DAYS - 1))).replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        latest_in_db = await _get_latest_invoice_date(session)
+        if latest_in_db is not None:
+            if isinstance(latest_in_db, datetime):
+                latest_dt = (
+                    latest_in_db
+                    if latest_in_db.tzinfo
+                    else latest_in_db.replace(tzinfo=timezone.utc)
+                )
+            else:
+                latest_dt = datetime.combine(
+                    latest_in_db, datetime.min.time(), tzinfo=timezone.utc
+                )
+            gap_start = (latest_dt - timedelta(days=GST_INVOICE_OVERLAP_DAYS)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            floor_start = end_time - timedelta(days=GST_INVOICE_BACKFILL_CEILING_DAYS)
+            start_time = max(min(default_start, gap_start), floor_start)
+        else:
+            start_time = default_start
 
     sku_meta = await _load_invoice_sku_meta(session)
     all_rows: list[dict[str, object]] = []

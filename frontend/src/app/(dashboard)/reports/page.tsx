@@ -86,7 +86,7 @@ export default function ReportsPage() {
     inventory: { type: "inventory" },
     cogs: { type: "cogs" },
     profit: { type: "profit", startDate: "", endDate: "" },
-    amazonInvoices: { type: "amazonInvoices" },
+    amazonInvoices: { type: "amazonInvoices", startDate: "", endDate: "" },
   });
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
@@ -157,7 +157,21 @@ export default function ReportsPage() {
   const handleSyncInvoices = async () => {
     setSyncingInvoices(true);
     try {
-      const res = await fetch("/api/reports/invoices/sync", { method: "POST" });
+      const cfg = configs.amazonInvoices;
+      const body: { startDate?: string; endDate?: string } = {};
+      if (cfg.startDate) body.startDate = cfg.startDate;
+      if (cfg.endDate) body.endDate = cfg.endDate;
+      if ((body.startDate && !body.endDate) || (!body.startDate && body.endDate)) {
+        showToast("Provide both From and To dates, or leave both empty.", "error");
+        setSyncingInvoices(false);
+        return;
+      }
+
+      const res = await fetch("/api/reports/invoices/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -263,6 +277,32 @@ export default function ReportsPage() {
               </div>
 
               {isInvoiceCard && (
+                <>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                  <div className="filter-group">
+                    <label className="filter-label">Sync from</label>
+                    <input
+                      className="filter-input"
+                      type="date"
+                      value={cfg.startDate || ""}
+                      onChange={(e) => updateConfig(card.type, "startDate", e.target.value)}
+                      style={{ width: 140 }}
+                    />
+                  </div>
+                  <div className="filter-group">
+                    <label className="filter-label">Sync to</label>
+                    <input
+                      className="filter-input"
+                      type="date"
+                      value={cfg.endDate || ""}
+                      onChange={(e) => updateConfig(card.type, "endDate", e.target.value)}
+                      style={{ width: 140 }}
+                    />
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: 240, lineHeight: 1.4 }}>
+                    Leave empty to use the default rolling window. Both dates required for an explicit backfill.
+                  </div>
+                </div>
                 <div
                   style={{
                     display: "grid",
@@ -298,6 +338,7 @@ export default function ReportsPage() {
                     </div>
                   </div>
                 </div>
+                </>
               )}
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>

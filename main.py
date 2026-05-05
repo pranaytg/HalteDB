@@ -21,7 +21,7 @@ from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import NullPool
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 
 from pydantic import BaseModel
 
@@ -423,11 +423,27 @@ async def invoice_sync_status(session: AsyncSession = Depends(get_db)):
     return await get_powerbi_sales_sync_status(session)
 
 
+class InvoiceSyncRequest(BaseModel):
+    startDate: date | None = None
+    endDate: date | None = None
+
+
 @app.post("/sync-invoices")
-async def trigger_invoice_sync(session: AsyncSession = Depends(get_db)):
-    """Fetches Amazon GST invoice reports and syncs PowerBISales."""
+async def trigger_invoice_sync(
+    payload: InvoiceSyncRequest | None = None,
+    session: AsyncSession = Depends(get_db),
+):
+    """Fetches Amazon GST invoice reports and syncs PowerBISales.
+
+    When ``startDate`` and ``endDate`` are both provided, that explicit window
+    is used. Otherwise the rolling lookback / latest-in-db logic applies.
+    """
+    start = payload.startDate if payload else None
+    end = payload.endDate if payload else None
     try:
-        return await run_invoice_sync(session)
+        return await run_invoice_sync(session, start_date=start, end_date=end)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Invoice sync failed: {e}")
         raise HTTPException(status_code=500, detail=str(e) or "Invoice sync failed")

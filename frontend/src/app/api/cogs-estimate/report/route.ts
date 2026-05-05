@@ -31,6 +31,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search")?.trim() || "";
     const brand = searchParams.get("brand")?.trim() || "";
+    const category = searchParams.get("category")?.trim() || "";
 
     const conditions: string[] = [];
     const params: string[] = [];
@@ -43,6 +44,11 @@ export async function GET(req: NextRequest) {
     if (brand) {
       conditions.push(`brand = $${params.length + 1}`);
       params.push(brand);
+    }
+
+    if (category) {
+      conditions.push(`category = $${params.length + 1}`);
+      params.push(category);
     }
 
     const whereClause = conditions.length > 0
@@ -158,6 +164,7 @@ export async function GET(req: NextRequest) {
     const dateStr = new Date().toISOString().slice(0, 10);
     const filters = [
       brand ? `brand_${sanitizeFilenamePart(brand)}` : "",
+      category ? `category_${sanitizeFilenamePart(category)}` : "",
       search ? `search_${sanitizeFilenamePart(search)}` : "",
     ].filter(Boolean);
     const suffix = filters.length ? `_${filters.join("_")}` : "";
