@@ -13,7 +13,9 @@ function recalc(row: Record<string, number | string | null | undefined>) {
   const gstPercent     = row.gst_percent != null ? Number(row.gst_percent) : 18;
   const shippingCost   = Number(row.shipping_cost) || 0;
   const margin1Pct     = Number(row.margin1_percent) || 0;
-  const marketingCost  = Number(row.marketing_cost) || 0;
+  const marketingPct   = row.marketing_cost != null && Number.isFinite(Number(row.marketing_cost))
+    ? Number(row.marketing_cost)
+    : 2;
   const margin2Pct     = Number(row.margin2_percent) || 0;
   const amazonFeePct   = Number(row.amazon_fee_percent) || 15;
   const amazonMarkupPct = row.amazon_markup_percent != null && Number.isFinite(Number(row.amazon_markup_percent))
@@ -26,16 +28,17 @@ function recalc(row: Record<string, number | string | null | undefined>) {
   const finalPrice     = baseBeforeGst + gstAmount + shippingCost;
   const margin1Amount  = finalPrice * (margin1Pct / 100);
   const costPriceHalte = finalPrice + margin1Amount;
-  const margin2Amount  = (costPriceHalte + marketingCost) * (margin2Pct / 100);
-  const sellingPrice   = costPriceHalte + marketingCost + margin2Amount;
+  const margin2Amount  = costPriceHalte * (margin2Pct / 100);
+  const sellingPrice   = costPriceHalte + margin2Amount;
   const mspWithGst     = sellingPrice;
   const halteSP        = sellingPrice * 1.05;
 
   // Amazon SP is derived: Halte SP * (1 + amazon_markup_percent/100)
   const amazonSP = halteSP * (1 + amazonMarkupPct / 100);
 
-  // Profitability = Amazon Selling Price - COGS - Amazon Fee - Shipping - Marketing
+  // Marketing is stored as a percentage and applied only in profitability.
   const amazonFee      = amazonSP * (amazonFeePct / 100);
+  const marketingCost  = amazonSP * (marketingPct / 100);
   const profitability  = amazonSP - finalPrice - amazonFee - shippingCost - marketingCost;
   // Profit % on Amazon Selling Price
   const profitPercent  = amazonSP > 0 ? (profitability / amazonSP) * 100 : 0;
@@ -127,7 +130,7 @@ export async function POST(req: NextRequest) {
       Number(body.margin1_percent) || 0,
       calcs.margin1_amount,
       calcs.cost_price_halte,
-      Number(body.marketing_cost) || 0,
+      body.marketing_cost != null && Number.isFinite(Number(body.marketing_cost)) ? Number(body.marketing_cost) : 2,
       Number(body.margin2_percent) || 0,
       calcs.margin2_amount,
       calcs.selling_price,
@@ -280,7 +283,7 @@ export async function PUT(req: NextRequest) {
         if (value < 0) {
           return NextResponse.json({ error: "Value cannot be negative" }, { status: 400 });
         }
-        if (field.endsWith("_percent") && value > 1000) {
+        if ((field.endsWith("_percent") || field === "marketing_cost") && value > 1000) {
           return NextResponse.json({ error: "Percentage value seems too large" }, { status: 400 });
         }
         if (field === "conversion_rate" && value <= 0) {

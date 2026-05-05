@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
+// Direct backend URL for large uploads (bypasses Vercel 4.5MB body limit).
+// Set NEXT_PUBLIC_BACKEND_URL in Vercel env vars to your Render URL.
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 interface ReportConfig {
   type: "sales" | "inventory" | "cogs" | "profit" | "amazonInvoices";
@@ -27,6 +31,17 @@ interface InvoiceStatus {
   sourceLabel: string | null;
   latestInvoiceDate: string | null;
   syncWindowDays?: number | null;
+}
+
+interface UploadResult {
+  status: string;
+  message: string;
+  totalPdfs: number;
+  extracted: number;
+  inserted: number;
+  skipped: number;
+  errors: number;
+  errorDetails?: { file: string; error: string }[];
 }
 
 const REPORT_CARDS: ReportCard[] = [
@@ -89,6 +104,11 @@ export default function ReportsPage() {
     amazonInvoices: { type: "amazonInvoices", startDate: "", endDate: "" },
   });
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [folderPath, setFolderPath] = useState("");
 
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
@@ -191,6 +211,130 @@ export default function ReportsPage() {
       showToast("Network error, could not sync invoices", "error");
     } finally {
       setSyncingInvoices(false);
+    }
+  };
+
+  const pollUploadStatus = async () => {
+    const statusUrl = BACKEND_URL
+      ? `${BACKEND_URL}/upload-invoices/status`
+      : "/api/reports/invoices/upload-status";
+    const maxAttempts = 300; // 10 minutes max
+    for (let i = 0; i < maxAttempts; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const res = await fetch(statusUrl);
+        const data = await res.json().catch(() => ({}));
+        if (data.state === "completed") {
+          setUploadResult(data as UploadResult);
+          showToast(data.message || "Invoices processed successfully", "success");
+          fetchInvoiceStatus();
+          return;
+        }
+        if (data.state === "error") {
+          showToast(data.message || "Upload processing failed", "error");
+          if (data.extracted > 0) setUploadResult(data as UploadResult);
+          return;
+        }
+        // Still processing — update message
+        setUploadResult(data as UploadResult);
+      } catch {
+        // Ignore network blips during polling
+      }
+    }
+    showToast("Upload timed out. Check status later.", "error");
+  };
+
+  const handleUploadZip = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".zip")) {
+      showToast("Please upload a .zip file containing invoice PDFs.", "error");
+      return;
+    }
+
+    setUploading(true);
+    setUploadResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      // Upload directly to the backend (bypasses Vercel 4.5MB limit)
+      const uploadUrl = BACKEND_URL
+        ? `${BACKEND_URL}/upload-invoices`
+        : "/api/reports/invoices/upload";
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        showToast(data.error || "Failed to upload invoices", "error");
+        setUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        return;
+      }
+
+      showToast(data.message || "Upload started, processing in background…", "success");
+      await pollUploadStatus();
+    } catch {
+      showToast("Network error, could not upload invoices", "error");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleUploadZip(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setDragOver(false);
+  };
+
+  const handleFolderUpload = async () => {
+    const path = folderPath.trim();
+    if (!path) {
+      showToast("Enter a folder path containing invoice PDFs.", "error");
+      return;
+    }
+
+    setUploading(true);
+    setUploadResult(null);
+
+    try {
+      const folderUrl = BACKEND_URL
+        ? `${BACKEND_URL}/upload-invoices-folder`
+        : "/api/reports/invoices/upload-folder";
+      const res = await fetch(folderUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folderPath: path }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        showToast(data.error || "Failed to process folder", "error");
+        setUploading(false);
+        return;
+      }
+
+      showToast(data.message || "Processing started in background…", "success");
+      await pollUploadStatus();
+    } catch {
+      showToast("Network error, could not process folder", "error");
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -338,6 +482,126 @@ export default function ReportsPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* --- ZIP Upload Area --- */}
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => !uploading && fileInputRef.current?.click()}
+                  style={{
+                    border: `2px dashed ${dragOver ? "rgba(99,102,241,0.8)" : "rgba(99,102,241,0.3)"}`,
+                    borderRadius: 12,
+                    padding: "20px 16px",
+                    textAlign: "center",
+                    cursor: uploading ? "wait" : "pointer",
+                    background: dragOver ? "rgba(99,102,241,0.12)" : "rgba(15,23,42,0.3)",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".zip"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleUploadZip(f);
+                    }}
+                  />
+                  {uploading ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                      <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
+                      <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                        {(uploadResult as UploadResult & { message?: string })?.message || "Extracting invoices from PDFs\u2026"}
+                      </span>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 28, marginBottom: 6 }}>📤</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
+                        Drop a ZIP file here or click to upload
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                        Contains Amazon invoice PDFs (e.g. bulkInvoice_*.zip). Data will be extracted and inserted into PowerBISales.
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* --- OR Folder Path --- */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>OR enter folder path</span>
+                  <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                </div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    className="filter-input"
+                    type="text"
+                    placeholder="e.g. C:\\Users\\prana\\...\\Dec 25"
+                    value={folderPath}
+                    onChange={(e) => setFolderPath(e.target.value)}
+                    disabled={uploading}
+                    style={{ flex: 1, fontSize: 12 }}
+                  />
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={handleFolderUpload}
+                    disabled={uploading || !folderPath.trim()}
+                    style={{ whiteSpace: "nowrap", minWidth: 130 }}
+                  >
+                    {uploading ? (
+                      <>
+                        <span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                        Processing…
+                      </>
+                    ) : (
+                      "📂 Process Folder"
+                    )}
+                  </button>
+                </div>
+
+                {/* --- Upload Result --- */}
+                {uploadResult && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))",
+                      gap: 8,
+                      padding: "12px 14px",
+                      borderRadius: 10,
+                      background: uploadResult.errors > 0
+                        ? "rgba(239,68,68,0.08)"
+                        : "rgba(16,185,129,0.08)",
+                      border: `1px solid ${uploadResult.errors > 0 ? "rgba(239,68,68,0.25)" : "rgba(16,185,129,0.25)"}`,
+                      fontSize: 12,
+                    }}
+                  >
+                    <div>
+                      <div style={{ color: "var(--text-muted)", marginBottom: 2 }}>Total PDFs</div>
+                      <div style={{ fontWeight: 700 }}>{uploadResult.totalPdfs}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: "var(--text-muted)", marginBottom: 2 }}>Extracted</div>
+                      <div style={{ fontWeight: 700 }}>{uploadResult.extracted}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: "var(--text-muted)", marginBottom: 2 }}>Inserted</div>
+                      <div style={{ fontWeight: 700, color: "var(--success)" }}>{uploadResult.inserted}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: "var(--text-muted)", marginBottom: 2 }}>Duplicates</div>
+                      <div style={{ fontWeight: 700, color: "var(--warning, #f59e0b)" }}>{uploadResult.skipped}</div>
+                    </div>
+                    {uploadResult.errors > 0 && (
+                      <div>
+                        <div style={{ color: "var(--text-muted)", marginBottom: 2 }}>Errors</div>
+                        <div style={{ fontWeight: 700, color: "var(--error, #ef4444)" }}>{uploadResult.errors}</div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 </>
               )}
 

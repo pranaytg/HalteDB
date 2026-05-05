@@ -17,7 +17,8 @@ import logging
 from contextlib import asynccontextmanager
 from uuid import uuid4
 from dotenv import load_dotenv
-from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException
+from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException, UploadFile, File
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import NullPool
@@ -620,3 +621,237 @@ async def trigger_amazon_prices(background_tasks: BackgroundTasks):
 async def amazon_prices_status():
     """Returns the current status of the background price fetch."""
     return _price_fetch_status
+
+
+# ============================================
+# Invoice PDF Upload (ZIP / Folder) — Background
+# ============================================
+
+_invoice_upload_status: dict = {
+    "state": "idle",        # idle | processing | completed | error
+    "message": "",
+    "totalPdfs": 0,
+    "extracted": 0,
+    "inserted": 0,
+    "skipped": 0,
+    "errors": 0,
+    "errorDetails": [],
+}
+
+
+def _reset_upload_status():
+    _invoice_upload_status.update({
+        "state": "processing",
+        "message": "Starting extraction…",
+        "totalPdfs": 0,
+        "extracted": 0,
+        "inserted": 0,
+        "skipped": 0,
+        "errors": 0,
+        "errorDetails": [],
+    })
+
+
+MAX_ZIP_SIZE_MB = 200
+
+
+async def _process_invoice_rows(raw_rows: list[dict], extraction_errors: list[dict]):
+    """Shared logic: build PowerBI rows from extracted invoice data, deduplicate, insert."""
+    from invoice_extractor import build_powerbi_row
+    from sp_api import (
+        _ensure_powerbi_sales_table,
+        POWERBI_SALES_INSERT_SQL,
+        _load_invoice_sku_meta,
+    )
+    from sqlalchemy import text as sa_text
+
+    async with SessionLocal() as session:
+        await _ensure_powerbi_sales_table(session)
+        sku_meta = await _load_invoice_sku_meta(session)
+
+        existing_result = await session.execute(sa_text("""
+            SELECT "Invoice Number", "Sku"
+            FROM "PowerBISales"
+            WHERE "Invoice Number" IS NOT NULL
+        """))
+        existing_keys: set[tuple[str, str]] = {
+            (str(row[0] or ""), str(row[1] or ""))
+            for row in existing_result.all()
+        }
+
+        inserted = 0
+        skipped = 0
+        batch: list[dict[str, object]] = []
+
+        for raw in raw_rows:
+            pb_row = build_powerbi_row(raw, sku_meta)
+
+            dedupe_key = (str(pb_row.get("invoice_number") or ""), str(pb_row.get("sku") or ""))
+            if dedupe_key[0] and dedupe_key in existing_keys:
+                skipped += 1
+                continue
+            existing_keys.add(dedupe_key)
+
+            batch.append(pb_row)
+            inserted += 1
+
+            if len(batch) >= 500:
+                await session.execute(sa_text(POWERBI_SALES_INSERT_SQL), batch)
+                batch = []
+
+        if batch:
+            await session.execute(sa_text(POWERBI_SALES_INSERT_SQL), batch)
+
+        await session.commit()
+
+    return inserted, skipped
+
+
+async def _run_invoice_upload_from_zip(zip_bytes: bytes):
+    """Background task: extract invoice PDFs from a ZIP and insert into PowerBISales."""
+    from invoice_extractor import extract_invoices_from_zip
+
+    try:
+        _invoice_upload_status["message"] = "Extracting PDFs from ZIP…"
+        raw_rows, extraction_errors = extract_invoices_from_zip(zip_bytes)
+
+        _invoice_upload_status["extracted"] = len(raw_rows)
+        _invoice_upload_status["errors"] = len(extraction_errors)
+        _invoice_upload_status["errorDetails"] = extraction_errors[:20]
+        _invoice_upload_status["totalPdfs"] = len(raw_rows) + len(extraction_errors)
+
+        if not raw_rows:
+            _invoice_upload_status["state"] = "error"
+            _invoice_upload_status["message"] = (
+                f"All {len(extraction_errors)} PDFs failed. "
+                + (f"First error: {extraction_errors[0]['error']}" if extraction_errors else "No PDFs found in ZIP.")
+            )
+            return
+
+        _invoice_upload_status["message"] = f"Inserting {len(raw_rows)} rows into database…"
+        inserted, skipped = await _process_invoice_rows(raw_rows, extraction_errors)
+
+        _invoice_upload_status["inserted"] = inserted
+        _invoice_upload_status["skipped"] = skipped
+        _invoice_upload_status["state"] = "completed"
+        _invoice_upload_status["message"] = (
+            f"Processed {len(raw_rows)} PDFs: {inserted} inserted, {skipped} duplicates skipped."
+        )
+        logger.info(
+            "Invoice ZIP upload complete: %d inserted, %d skipped, %d errors",
+            inserted, skipped, len(extraction_errors),
+        )
+
+    except Exception as exc:
+        logger.exception("Invoice ZIP upload failed")
+        _invoice_upload_status["state"] = "error"
+        _invoice_upload_status["message"] = f"Upload failed: {exc}"
+
+
+async def _run_invoice_upload_from_folder(folder_path: str):
+    """Background task: extract invoice PDFs from a local folder and insert into PowerBISales."""
+    from invoice_extractor import extract_invoices_from_folder
+
+    try:
+        _invoice_upload_status["message"] = f"Extracting PDFs from {folder_path}…"
+        raw_rows, extraction_errors = extract_invoices_from_folder(folder_path)
+
+        _invoice_upload_status["extracted"] = len(raw_rows)
+        _invoice_upload_status["errors"] = len(extraction_errors)
+        _invoice_upload_status["errorDetails"] = extraction_errors[:20]
+        _invoice_upload_status["totalPdfs"] = len(raw_rows) + len(extraction_errors)
+
+        if not raw_rows:
+            _invoice_upload_status["state"] = "error"
+            _invoice_upload_status["message"] = (
+                f"No valid PDFs extracted from {folder_path}. "
+                + (f"First error: {extraction_errors[0]['error']}" if extraction_errors else "No PDF files found.")
+            )
+            return
+
+        _invoice_upload_status["message"] = f"Inserting {len(raw_rows)} rows into database…"
+        inserted, skipped = await _process_invoice_rows(raw_rows, extraction_errors)
+
+        _invoice_upload_status["inserted"] = inserted
+        _invoice_upload_status["skipped"] = skipped
+        _invoice_upload_status["state"] = "completed"
+        _invoice_upload_status["message"] = (
+            f"Processed {len(raw_rows)} PDFs from folder: {inserted} inserted, {skipped} duplicates skipped."
+        )
+        logger.info(
+            "Invoice folder upload complete: %d inserted, %d skipped, %d errors from %s",
+            inserted, skipped, len(extraction_errors), folder_path,
+        )
+
+    except Exception as exc:
+        logger.exception("Invoice folder upload failed")
+        _invoice_upload_status["state"] = "error"
+        _invoice_upload_status["message"] = f"Folder upload failed: {exc}"
+
+
+@app.post("/upload-invoices")
+async def upload_invoices(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+):
+    """Accept a ZIP file containing Amazon invoice PDFs.
+    Starts extraction and DB insertion in the background. Poll /upload-invoices/status for progress.
+    """
+    if _invoice_upload_status["state"] == "processing":
+        raise HTTPException(status_code=409, detail="An upload is already in progress. Check /upload-invoices/status.")
+
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Only .zip files are accepted")
+
+    try:
+        zip_bytes = await file.read()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to read uploaded file: {exc}")
+
+    if len(zip_bytes) == 0:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    size_mb = len(zip_bytes) / (1024 * 1024)
+    if size_mb > MAX_ZIP_SIZE_MB:
+        raise HTTPException(status_code=400, detail=f"File too large ({size_mb:.0f} MB). Maximum is {MAX_ZIP_SIZE_MB} MB.")
+
+    _reset_upload_status()
+    _invoice_upload_status["message"] = f"Upload received ({size_mb:.1f} MB). Starting extraction…"
+
+    background_tasks.add_task(_run_invoice_upload_from_zip, zip_bytes)
+    return {"status": "accepted", "message": f"Upload received. Processing {file.filename} in background."}
+
+
+class FolderUploadRequest(BaseModel):
+    folderPath: str
+
+
+@app.post("/upload-invoices-folder")
+async def upload_invoices_from_folder(
+    payload: FolderUploadRequest,
+    background_tasks: BackgroundTasks,
+):
+    """Accept a local folder path containing Amazon invoice PDFs.
+    This endpoint only works when the backend runs locally (not on Render/cloud).
+    Starts extraction in the background. Poll /upload-invoices/status for progress.
+    """
+    if _invoice_upload_status["state"] == "processing":
+        raise HTTPException(status_code=409, detail="An upload is already in progress. Check /upload-invoices/status.")
+
+    import os
+    folder_path = payload.folderPath.strip()
+    if not folder_path or not os.path.isdir(folder_path):
+        raise HTTPException(status_code=400, detail=f"Folder not found: {folder_path}")
+
+    _reset_upload_status()
+    _invoice_upload_status["message"] = f"Starting extraction from {folder_path}…"
+
+    background_tasks.add_task(_run_invoice_upload_from_folder, folder_path)
+    return {"status": "accepted", "message": f"Processing folder in background: {folder_path}"}
+
+
+@app.get("/upload-invoices/status")
+async def upload_invoices_status():
+    """Returns the current status of the invoice upload/extraction background task."""
+    return _invoice_upload_status
+

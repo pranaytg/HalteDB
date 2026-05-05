@@ -10,7 +10,7 @@ import pool from "@/lib/db";
                   - cogs (final_price from estimated_cogs)
                   - amazon_fee (SP-API actual only; null when not yet settled)
                   - shipping (Amazon SP-API for fulfilled, seller-paid/Shiprocket for self)
-                  - marketing (estimated_cogs.marketing_cost — per-SKU estimate)
+                  - marketing (estimated_cogs.marketing_cost percent applied to order selling price)
 
    Query params:
      page, limit, sku, startDate, endDate, status, brand, category
@@ -98,7 +98,8 @@ export async function GET(req: NextRequest) {
       END
     `;
 
-    const MARKETING_EXPR = `COALESCE(ec.marketing_cost, 0)`;
+    const MARKETING_PERCENT_EXPR = `CASE WHEN ec.sku IS NULL THEN 0 ELSE COALESCE(ec.marketing_cost, 2) END`;
+    const MARKETING_EXPR = `(o.item_price * (${MARKETING_PERCENT_EXPR}) / 100)`;
 
     const PROFIT_EXPR = `
       CASE
@@ -200,7 +201,8 @@ export async function GET(req: NextRequest) {
           ROUND(AVG(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN o.item_price ELSE NULL END)::numeric, 2) AS avg_selling_price,
           ROUND(MAX(ec.final_price)::numeric, 2) AS cogs_per_unit,
           ROUND(MAX(ec.amazon_fee_percent)::numeric, 1) AS amazon_fee_pct,
-          ROUND(MAX(ec.marketing_cost)::numeric, 2) AS marketing_per_unit,
+          ROUND(MAX(${MARKETING_PERCENT_EXPR})::numeric, 1) AS marketing_pct,
+          ROUND(AVG(CASE WHEN o.order_status NOT IN ('Cancelled','Returned') THEN (${MARKETING_EXPR}) ELSE NULL END)::numeric, 2) AS marketing_per_unit,
           ROUND(MAX(ec.margin1_amount)::numeric, 2) AS margin1,
           ROUND(MAX(ec.margin2_amount)::numeric, 2) AS margin2,
           ROUND(SUM(${PROFIT_EXPR})::numeric, 2) AS total_profit,
@@ -245,7 +247,8 @@ export async function GET(req: NextRequest) {
         ec.margin1_amount,
         ec.margin2_amount,
         ec.amazon_fee_percent,
-        ec.marketing_cost,
+        ec.marketing_cost AS marketing_percent,
+        ROUND((${MARKETING_EXPR})::numeric, 2) AS marketing_cost,
         ${AMAZON_FEE_SOURCE_EXPR} AS amazon_fee_source,
         ec.amazon_selling_price AS estimated_amazon_sp,
         ROUND((${AMAZON_FEE_EXPR})::numeric, 2) AS amazon_fee,

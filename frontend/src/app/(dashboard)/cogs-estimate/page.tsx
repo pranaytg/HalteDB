@@ -47,7 +47,7 @@ const EDITABLE_FIELDS = [
   { key: "gst_percent", label: "GST %", type: "number" },
   { key: "shipping_cost", label: "Shipping (₹)", type: "number" },
   { key: "margin1_percent", label: "Margin 1 %", type: "number" },
-  { key: "marketing_cost", label: "Marketing (₹)", type: "number" },
+  { key: "marketing_cost", label: "Marketing %", type: "number" },
   { key: "margin2_percent", label: "Margin 2 %", type: "number" },
   { key: "amazon_markup_percent", label: "Amazon Markup %", type: "number" },
   { key: "amazon_fee_percent", label: "Amazon Fee %", type: "number" },
@@ -76,7 +76,7 @@ export default function CogsEstimatePage() {
   const [addForm, setAddForm] = useState<Record<string, any>>({
     sku: "", article_number: "", brand: "", category: "", import_price: 0, import_currency: "USD",
     custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0,
-    margin1_percent: 0, marketing_cost: 0, margin2_percent: 0, amazon_markup_percent: 15, amazon_fee_percent: 15,
+    margin1_percent: 0, marketing_cost: 2, margin2_percent: 0, amazon_markup_percent: 15, amazon_fee_percent: 15,
   });
 
   // Edit
@@ -136,7 +136,7 @@ export default function CogsEstimatePage() {
       if (!res.ok) { const d = await res.json(); showToast(d.error || "Failed", "error"); return; }
       showToast(`Added ${addForm.sku}`, "success");
       setShowAdd(false);
-      setAddForm({ sku: "", article_number: "", brand: "", category: "", import_price: 0, import_currency: "USD", custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0, margin1_percent: 0, marketing_cost: 0, margin2_percent: 0, amazon_markup_percent: 15, amazon_fee_percent: 15 });
+      setAddForm({ sku: "", article_number: "", brand: "", category: "", import_price: 0, import_currency: "USD", custom_duty: 0, conversion_rate: 83, gst_percent: 18, shipping_cost: 0, margin1_percent: 0, marketing_cost: 2, margin2_percent: 0, amazon_markup_percent: 15, amazon_fee_percent: 15 });
       await fetchItems();
     } catch { showToast("Network error", "error"); }
     finally { setSaving(false); }
@@ -205,7 +205,7 @@ export default function CogsEstimatePage() {
     { key: "amazon_markup_percent", label: "Amazon Markup %" },
     { key: "custom_duty", label: "Custom Duty (₹)" },
     { key: "shipping_cost", label: "Shipping (₹)" },
-    { key: "marketing_cost", label: "Marketing (₹)" },
+    { key: "marketing_cost", label: "Marketing %" },
     { key: "conversion_rate", label: "Conversion Rate (skips INR)" },
     { key: "import_price", label: "Import Price" },
   ];
@@ -629,7 +629,7 @@ export default function CogsEstimatePage() {
                 <th>M1 %</th>
                 <th>M1 (₹)</th>
                 <th>Cost Halte</th>
-                <th>Marketing</th>
+                <th>Marketing %</th>
                 <th>M2 %</th>
                 <th>M2 (₹)</th>
                 <th>Selling ₹</th>
@@ -669,7 +669,7 @@ export default function CogsEstimatePage() {
                     <td>{isEditing ? <input className="filter-input" type="number" step="0.1" style={{ width: 60 }} value={editForm.margin1_percent} onChange={e => setEditForm(f => ({ ...f, margin1_percent: e.target.value }))} /> : `${row.margin1_percent}%`}</td>
                     <td>{fmtCur(row.margin1_amount || 0)}</td>
                     <td style={{ fontWeight: 700, color: "var(--accent)" }}>{fmtCur(row.cost_price_halte || 0)}</td>
-                    <td>{isEditing ? <input className="filter-input" type="number" step="0.01" style={{ width: 70 }} value={editForm.marketing_cost} onChange={e => setEditForm(f => ({ ...f, marketing_cost: e.target.value }))} /> : fmtCur(row.marketing_cost || 0)}</td>
+                    <td>{isEditing ? <input className="filter-input" type="number" step="0.1" style={{ width: 70 }} value={editForm.marketing_cost} onChange={e => setEditForm(f => ({ ...f, marketing_cost: e.target.value }))} /> : fmtPct(row.marketing_cost ?? 2)}</td>
                     <td>{isEditing ? <input className="filter-input" type="number" step="0.1" style={{ width: 60 }} value={editForm.margin2_percent} onChange={e => setEditForm(f => ({ ...f, margin2_percent: e.target.value }))} /> : `${row.margin2_percent}%`}</td>
                     <td>{fmtCur(row.margin2_amount || 0)}</td>
                     <td style={{ fontWeight: 600 }}>{fmtCur(row.selling_price || 0)}</td>
@@ -727,14 +727,14 @@ export default function CogsEstimatePage() {
           <div><strong>GST Amount</strong> = (Import Price ₹ + Custom Duty) × GST%</div>
           <div><strong>Final Price</strong> = Import Price ₹ + Custom Duty + GST Amount + Shipping</div>
           <div><strong>Cost Price Halte</strong> = Final Price + Margin 1 Amount</div>
-          <div><strong>Selling Price</strong> = Cost Price Halte + Marketing + Margin 2 Amount</div>
+          <div><strong>Selling Price</strong> = Cost Price Halte + Margin 2 Amount</div>
           <div><strong>MSP</strong> = Selling Price</div>
           <div><strong>Halte Selling Price</strong> = Selling Price × 1.05 (+5%)</div>
           <div><strong>Amazon Selling Price</strong> = Halte SP × (1 + Amazon Markup % / 100). Edit Markup % to change Amazon SP — default 15%.</div>
-          <div><strong>Profitability (per unit)</strong> = Amazon SP − COGS − Amazon Fee − Shipping − Marketing</div>
+          <div><strong>Profitability (per unit)</strong> = Amazon SP − COGS − Amazon Fee − Shipping − Marketing (Amazon SP × Marketing %)</div>
           <div><strong>Profit %</strong> = Profitability ÷ Amazon SP × 100</div>
           <div style={{ marginTop: 12, color: "var(--accent)" }}>
-            <strong>🔄 Sync to COGS</strong> → Sets COGS price = Final Price (actual COGS), then recalculates order profit as: Selling Price − COGS − Amazon Fee (%) − Shipping − Marketing. Returns: −2 × Shipping.
+            <strong>🔄 Sync to COGS</strong> → Sets COGS price = Final Price (actual COGS), then recalculates order profit as: Selling Price − COGS − Amazon Fee − Shipping − Marketing %. Returns: −2 × Shipping.
           </div>
         </div>
       </div>

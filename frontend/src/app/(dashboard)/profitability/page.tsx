@@ -96,6 +96,7 @@ interface OrderRow {
   margin2_amount: number | null;
   amazon_fee_percent: number | null;
   marketing_cost: number | null;
+  marketing_percent: number | null;
   estimated_amazon_sp: number | null;
   amazon_fee_source: "actual" | "pending";
   amazon_fee: number | null;
@@ -112,6 +113,7 @@ interface SkuRow {
   avg_selling_price: number;
   cogs_per_unit: number | null;
   amazon_fee_pct: number | null;
+  marketing_pct: number | null;
   marketing_per_unit: number | null;
   margin1: number | null;
   margin2: number | null;
@@ -521,7 +523,7 @@ export default function ProfitabilityPage() {
             <div className="card" style={{ padding: 20 }}>
               <h3 style={{ margin: "0 0 16px", fontSize: 15, fontWeight: 600 }}>Cost Breakdown (All Orders)</h3>
               <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16, marginTop: -8 }}>
-                ℹ Amazon fees come from SP API Finance only — orders awaiting settlement show as pending and are excluded from the totals. Marketing is a per-SKU estimate from COGS (Amazon Ads API isn&apos;t wired up, so per-order ad spend isn&apos;t available).
+                ℹ Amazon fees come from SP API Finance only — orders awaiting settlement show as pending and are excluded from the totals. Marketing is calculated from the COGS Estimate marketing percentage.
               </p>
               <div style={{ height: 220 }}>
                 <ResponsiveContainer width="100%" height="100%">
@@ -761,7 +763,7 @@ export default function ProfitabilityPage() {
                     <th>Margin 1</th>
                     <th>Margin 2</th>
                     <th>Amazon Fee%</th>
-                    <th>Marketing / unit</th>
+                    <th>Marketing</th>
                     <th>Total Profit</th>
                     <th>Avg Margin</th>
                   </tr>
@@ -779,7 +781,14 @@ export default function ProfitabilityPage() {
                       <td style={{ color: "#6366f1" }}>{row.margin1 != null ? fmt(Number(row.margin1)) : "—"}</td>
                       <td style={{ color: "#8b5cf6" }}>{row.margin2 != null ? fmt(Number(row.margin2)) : "—"}</td>
                       <td>{row.amazon_fee_pct != null ? `${Number(row.amazon_fee_pct).toFixed(0)}%` : "—"}</td>
-                      <td style={{ color: "#f59e0b" }}>{row.marketing_per_unit != null ? fmt(Number(row.marketing_per_unit)) : "—"}</td>
+                      <td style={{ color: "#f59e0b" }}>
+                        {row.marketing_per_unit != null ? fmt(Number(row.marketing_per_unit)) : "—"}
+                        {row.marketing_pct != null && (
+                          <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 4 }}>
+                            ({Number(row.marketing_pct).toFixed(1)}%)
+                          </span>
+                        )}
+                      </td>
                       <td style={{ fontWeight: 700, color: profitColor(Number(row.total_profit)) }}>
                         {Number(row.total_profit) < 0 ? "-" : ""}
                         {fmt(Math.abs(Number(row.total_profit)))}
@@ -951,7 +960,14 @@ export default function ProfitabilityPage() {
                                   <span style={{ color: "var(--text-muted)" }}>− Shipping:</span>
                                   <span style={{ color: "#f59e0b" }}>−{fmt(Number(row.shipping_price))}</span>
                                   <span style={{ color: "var(--text-muted)" }}>− Marketing (COGS estimate):</span>
-                                  <span style={{ color: "#8b5cf6" }}>−{fmt(Number(row.marketing_cost) || 0)}</span>
+                                  <span style={{ color: "#8b5cf6" }}>
+                                    −{fmt(Number(row.marketing_cost) || 0)}
+                                    {row.marketing_percent != null && (
+                                      <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 4 }}>
+                                        ({Number(row.marketing_percent).toFixed(1)}%)
+                                      </span>
+                                    )}
+                                  </span>
                                   <span style={{ color: "var(--text-muted)", borderTop: "1px solid var(--border)", paddingTop: 4 }}>= Net Profit:</span>
                                   <span style={{ fontWeight: 700, color: profitColor(Number(row.net_profit)), borderTop: "1px solid var(--border)", paddingTop: 4 }}>
                                     {Number(row.net_profit) < 0 ? "-" : ""}{fmt(Math.abs(Number(row.net_profit)))}
