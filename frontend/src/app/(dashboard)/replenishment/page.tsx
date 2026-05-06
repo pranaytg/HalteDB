@@ -232,6 +232,10 @@ export default function ReplenishmentPage() {
     reorder_needed: w.total_reorder_needed,
   }));
 
+  const urgentOrderSkus = skuRecs.filter(
+    (r) => r.reorder_qty > 0 && (r.urgency === "CRITICAL" || r.urgency === "URGENT")
+  );
+
   // Top critical SKUs bar chart (top 15 by reorder qty)
   const topReorderSkus = skuRecs
     .filter((r) => r.reorder_qty > 0)
@@ -289,53 +293,183 @@ export default function ReplenishmentPage() {
     URL.revokeObjectURL(url);
   };
 
-  // ── Excel Export (Order List: SKU × Warehouse × Quantity) ──
+  // ── Excel Export (Urgent SKUs + Warehouse Breakdown) ──
 
-  const exportOrderListXLSX = () => {
-    const rows: Record<string, string | number>[] = [];
-    skuRecs
-      .filter((r) => r.reorder_qty > 0)
-      .forEach((r) => {
-        const allocations = Object.entries(r.warehouse_allocation).filter(([, qty]) => qty > 0);
-        if (allocations.length === 0) {
-          rows.push({
-            SKU: r.sku,
-            "Article No": r.article_number || "",
-            ASIN: r.asin || "",
-            Warehouse: "(unassigned)",
-            Quantity: r.reorder_qty,
-            Urgency: r.urgency,
-          });
-          return;
-        }
-        allocations
-          .sort(([, a], [, b]) => b - a)
-          .forEach(([wh, qty]) => {
-            rows.push({
-              SKU: r.sku,
-              "Article No": r.article_number || "",
-              ASIN: r.asin || "",
-              Warehouse: wh,
-              Quantity: qty,
-              Urgency: r.urgency,
-            });
-          });
-      });
-
-    if (rows.length === 0) {
-      alert("No SKUs currently need to be ordered.");
+  const exportUrgentOrderPlanXLSX = () => {
+    if (urgentOrderSkus.length === 0) {
+      alert("No critical or urgent SKUs currently need to be ordered.");
       return;
     }
 
-    const ws = XLSX.utils.json_to_sheet(rows, {
-      header: ["SKU", "Article No", "ASIN", "Warehouse", "Quantity", "Urgency"],
-    });
-    ws["!cols"] = [
-      { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 18 }, { wch: 10 }, { wch: 10 },
+    const workbook = XLSX.utils.book_new();
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const reportGeneratedAt = generatedAt ? new Date(generatedAt) : new Date();
+    const warehouseNames = warehouseSummary.map((w) => w.warehouse);
+
+    const warehouseTotals = warehouseNames
+      .map((warehouse) => {
+        const matchingSkus = urgentOrderSkus.filter((r) => (r.warehouse_allocation[warehouse] || 0) > 0);
+        return {
+          Warehouse: warehouse,
+          "Order Qty": matchingSkus.reduce((sum, r) => sum + (r.warehouse_allocation[warehouse] || 0), 0),
+          "Critical SKU Lines": matchingSkus.filter((r) => r.urgency === "CRITICAL").length,
+          "Urgent SKU Lines": matchingSkus.filter((r) => r.urgency === "URGENT").length,
+          "Total SKU Lines": matchingSkus.length,
+        };
+      })
+      .filter((row) => row["Order Qty"] > 0)
+      .sort((a, b) => b["Order Qty"] - a["Order Qty"]);
+
+    const totalOrderQty = urgentOrderSkus.reduce((sum, r) => sum + r.reorder_qty, 0);
+    const totalOrderValue = Math.round(urgentOrderSkus.reduce((sum, r) => sum + r.reorder_value, 0) * 100) / 100;
+
+    const summaryRows: (string | number)[][] = [
+      ["Urgent Replenishment Order Plan"],
+      ["Generated At", reportGeneratedAt.toLocaleString("en-IN")],
+      ["Planning Rule", `${config?.lead_time_days || 15}d lead time, ${config?.coverage_days || 60}d target coverage, ${Math.round(((config?.safety_factor || 1.25) - 1) * 100)}% safety buffer`],
+      [],
+      ["Metric", "Value"],
+      ["Critical SKUs to Order", urgentOrderSkus.filter((r) => r.urgency === "CRITICAL").length],
+      ["Urgent SKUs to Order", urgentOrderSkus.filter((r) => r.urgency === "URGENT").length],
+      ["Total SKUs to Order", urgentOrderSkus.length],
+      ["Total Units to Order", totalOrderQty],
+      ["Estimated Order Value", totalOrderValue],
+      ["Warehouses Needing Stock", warehouseTotals.length],
+      [],
+      ["Warehouse", "Order Qty", "Critical SKU Lines", "Urgent SKU Lines", "Total SKU Lines"],
+      ...warehouseTotals.map((row) => [
+        row.Warehouse,
+        row["Order Qty"],
+        row["Critical SKU Lines"],
+        row["Urgent SKU Lines"],
+        row["Total SKU Lines"],
+      ]),
     ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Order List");
-    XLSX.writeFile(wb, `order_list_${new Date().toISOString().slice(0, 10)}.xlsx`);
+
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+    summarySheet["!cols"] = [{ wch: 28 }, { wch: 18 }, { wch: 20 }, { wch: 18 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+
+    const skuPlanRows = urgentOrderSkus.map((r) => ({
+      Status: r.urgency,
+      SKU: r.sku,
+      "Article No": r.article_number || "",
+      ASIN: r.asin || "",
+      "Total Order Qty": r.reorder_qty,
+      "Current Stock": r.current_stock,
+      "In Transit": r.in_transit,
+      "Daily Velocity": r.weighted_velocity,
+      "Days Coverage": r.days_of_coverage >= 999 ? "∞" : r.days_of_coverage,
+      "Lead Time Need": r.lead_time_demand,
+      "Target Stock": r.target_stock_2m,
+      "Order Value": r.reorder_value,
+      Trend: r.trend,
+      ...Object.fromEntries(warehouseNames.map((warehouse) => [warehouse, r.warehouse_allocation[warehouse] || 0])),
+    }));
+    const skuPlanSheet = XLSX.utils.json_to_sheet(skuPlanRows, {
+      header: [
+        "Status",
+        "SKU",
+        "Article No",
+        "ASIN",
+        "Total Order Qty",
+        "Current Stock",
+        "In Transit",
+        "Daily Velocity",
+        "Days Coverage",
+        "Lead Time Need",
+        "Target Stock",
+        "Order Value",
+        "Trend",
+        ...warehouseNames,
+      ],
+    });
+    skuPlanSheet["!cols"] = [
+      { wch: 12 },
+      { wch: 22 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 12 },
+      ...warehouseNames.map(() => ({ wch: 12 })),
+    ];
+    skuPlanSheet["!autofilter"] = { ref: skuPlanSheet["!ref"] || "A1" };
+    XLSX.utils.book_append_sheet(workbook, skuPlanSheet, "Urgent SKU Plan");
+
+    const warehouseBreakdownRows = urgentOrderSkus.flatMap((r) => {
+      const allocations = Object.entries(r.warehouse_allocation)
+        .filter(([, qty]) => qty > 0)
+        .sort(([, a], [, b]) => b - a);
+
+      if (allocations.length === 0) {
+        return [{
+          Warehouse: "(unassigned)",
+          SKU: r.sku,
+          "Article No": r.article_number || "",
+          ASIN: r.asin || "",
+          Status: r.urgency,
+          "Qty Needed": r.reorder_qty,
+          "Total SKU Order Qty": r.reorder_qty,
+          "Warehouse Share %": 100,
+          "Current Stock": r.current_stock,
+          "In Transit": r.in_transit,
+          "Days Coverage": r.days_of_coverage >= 999 ? "∞" : r.days_of_coverage,
+        }];
+      }
+
+      return allocations.map(([warehouse, qty]) => ({
+        Warehouse: warehouse,
+        SKU: r.sku,
+        "Article No": r.article_number || "",
+        ASIN: r.asin || "",
+        Status: r.urgency,
+        "Qty Needed": qty,
+        "Total SKU Order Qty": r.reorder_qty,
+        "Warehouse Share %": Math.round((qty / Math.max(r.reorder_qty, 1)) * 1000) / 10,
+        "Current Stock": r.current_stock,
+        "In Transit": r.in_transit,
+        "Days Coverage": r.days_of_coverage >= 999 ? "∞" : r.days_of_coverage,
+      }));
+    });
+    const warehouseBreakdownSheet = XLSX.utils.json_to_sheet(warehouseBreakdownRows, {
+      header: [
+        "Warehouse",
+        "SKU",
+        "Article No",
+        "ASIN",
+        "Status",
+        "Qty Needed",
+        "Total SKU Order Qty",
+        "Warehouse Share %",
+        "Current Stock",
+        "In Transit",
+        "Days Coverage",
+      ],
+    });
+    warehouseBreakdownSheet["!cols"] = [
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 14 },
+      { wch: 12 },
+      { wch: 14 },
+    ];
+    warehouseBreakdownSheet["!autofilter"] = { ref: warehouseBreakdownSheet["!ref"] || "A1" };
+    XLSX.utils.book_append_sheet(workbook, warehouseBreakdownSheet, "Warehouse Breakdown");
+
+    XLSX.writeFile(workbook, `urgent_replenishment_plan_${dateStr}.xlsx`);
   };
 
   // ── Sort handler ─────────────────────────────────────
@@ -402,11 +536,11 @@ export default function ReplenishmentPage() {
           </button>
           <button
             className="btn"
-            onClick={exportOrderListXLSX}
-            title="Export Excel: only SKUs needing reorder, with quantity per warehouse"
+            onClick={exportUrgentOrderPlanXLSX}
+            title="Download critical and urgent SKUs with warehouse-wise order quantities"
             style={{ fontSize: 13, background: "rgba(16,185,129,0.15)", color: "#6ee7b7", border: "1px solid rgba(16,185,129,0.3)" }}
           >
-            📦 Export Order List (Excel)
+            📦 Download Urgent Excel
           </button>
         </div>
       </div>
