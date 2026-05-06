@@ -1,15 +1,15 @@
 """Add carrier bill audit tables
 
-Revision ID: n4o5p6q7r8s9
-Revises: m3n4o5p6q7r8
+Revision ID: p6q7r8s9t0u1
+Revises: o5p6q7r8s9t0
 Create Date: 2026-04-30 13:10:00.000000
 
 """
 
 from alembic import op
 
-revision = "n4o5p6q7r8s9"
-down_revision = "m3n4o5p6q7r8"
+revision = "p6q7r8s9t0u1"
+down_revision = "o5p6q7r8s9t0"
 branch_labels = None
 depends_on = None
 
