@@ -14,6 +14,7 @@ type IconName =
   | "cogs"
   | "estimate"
   | "shipment"
+  | "billAudit"
   | "specs"
   | "reports"
   | "sync"
@@ -31,6 +32,7 @@ const navItems: { href: string; label: string; icon: IconName }[] = [
   { href: "/cogs", label: "COGS", icon: "cogs" },
   { href: "/cogs-estimate", label: "COGS Estimate", icon: "estimate" },
   { href: "/shipment", label: "Shipments", icon: "shipment" },
+  { href: "/shipment-bill-audit", label: "Bill Audit", icon: "billAudit" },
   { href: "/product-specs", label: "Product Specs", icon: "specs" },
   { href: "/reports", label: "Reports", icon: "reports" },
 ];
@@ -127,6 +129,16 @@ function SidebarIcon({ name, className = "" }: { name: IconName; className?: str
           <path d="M13 10h4l4 4v2h-8" />
           <circle cx="7.5" cy="17.5" r="1.5" />
           <circle cx="17.5" cy="17.5" r="1.5" />
+        </svg>
+      );
+    case "billAudit":
+      return (
+        <svg {...common} className={className}>
+          <path d="M7 4h10a2 2 0 0 1 2 2v14H5V6a2 2 0 0 1 2-2Z" />
+          <path d="M9 8h6" />
+          <path d="M9 12h4" />
+          <path d="M9 16h3" />
+          <path d="M15 15l1.5 1.5L20 13" />
         </svg>
       );
     case "specs":
