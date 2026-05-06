@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
 
     if (!file || !(file instanceof Blob)) {
       return NextResponse.json(
-        { error: "No file provided. Please upload a .zip file." },
+        { error: "No file provided. Please upload a .zip or .pdf file." },
         { status: 400 },
       );
     }

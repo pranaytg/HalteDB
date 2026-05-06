@@ -244,9 +244,10 @@ export default function ReportsPage() {
     showToast("Upload timed out. Check status later.", "error");
   };
 
-  const handleUploadZip = async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".zip")) {
-      showToast("Please upload a .zip file containing invoice PDFs.", "error");
+  const handleUploadFile = async (file: File) => {
+    const name = file.name.toLowerCase();
+    if (!name.endsWith(".zip") && !name.endsWith(".pdf")) {
+      showToast("Please upload a .zip or .pdf file containing invoice(s).", "error");
       return;
     }
 
@@ -289,7 +290,7 @@ export default function ReportsPage() {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files[0];
-    if (file) handleUploadZip(file);
+    if (file) handleUploadFile(file);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -502,11 +503,11 @@ export default function ReportsPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".zip"
+                    accept=".zip,.pdf"
                     style={{ display: "none" }}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
-                      if (f) handleUploadZip(f);
+                      if (f) handleUploadFile(f);
                     }}
                   />
                   {uploading ? (
@@ -520,10 +521,10 @@ export default function ReportsPage() {
                     <>
                       <div style={{ fontSize: 28, marginBottom: 6 }}>📤</div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                        Drop a ZIP file here or click to upload
+                        Drop a ZIP or PDF file here or click to upload
                       </div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                        Contains Amazon invoice PDFs (e.g. bulkInvoice_*.zip). Data will be extracted and inserted into PowerBISales.
+                        Upload a single invoice PDF or a ZIP containing multiple invoice PDFs. Data will be extracted and inserted into PowerBISales.
                       </div>
                     </>
                   )}

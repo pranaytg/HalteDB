@@ -11,6 +11,7 @@ Endpoints:
 Self-schedules an hourly sync (no external cron needed).
 """
 import os
+import io
 import asyncio
 import httpx
 import logging
@@ -748,6 +749,53 @@ async def _run_invoice_upload_from_zip(zip_bytes: bytes):
         _invoice_upload_status["message"] = f"Upload failed: {exc}"
 
 
+async def _run_invoice_upload_from_pdf(pdf_bytes: bytes, filename: str):
+    """Background task: extract a single invoice PDF and insert into PowerBISales."""
+    from invoice_extractor import extract_invoice_row
+
+    try:
+        _invoice_upload_status["message"] = f"Extracting invoice from {filename}…"
+        _invoice_upload_status["totalPdfs"] = 1
+
+        raw_rows: list[dict] = []
+        extraction_errors: list[dict] = []
+
+        try:
+            pdf_file = io.BytesIO(pdf_bytes)
+            row = extract_invoice_row(pdf_file, filename=filename)
+            raw_rows.append(row)
+        except Exception as exc:
+            extraction_errors.append({"file": filename, "error": str(exc)})
+
+        _invoice_upload_status["extracted"] = len(raw_rows)
+        _invoice_upload_status["errors"] = len(extraction_errors)
+        _invoice_upload_status["errorDetails"] = extraction_errors[:20]
+
+        if not raw_rows:
+            _invoice_upload_status["state"] = "error"
+            _invoice_upload_status["message"] = (
+                f"Failed to extract invoice from {filename}. "
+                + (f"Error: {extraction_errors[0]['error']}" if extraction_errors else "")
+            )
+            return
+
+        _invoice_upload_status["message"] = "Inserting into database…"
+        inserted, skipped = await _process_invoice_rows(raw_rows, extraction_errors)
+
+        _invoice_upload_status["inserted"] = inserted
+        _invoice_upload_status["skipped"] = skipped
+        _invoice_upload_status["state"] = "completed"
+        _invoice_upload_status["message"] = (
+            f"Processed {filename}: {inserted} inserted, {skipped} duplicates skipped."
+        )
+        logger.info("Invoice PDF upload complete: %d inserted, %d skipped", inserted, skipped)
+
+    except Exception as exc:
+        logger.exception("Invoice PDF upload failed")
+        _invoice_upload_status["state"] = "error"
+        _invoice_upload_status["message"] = f"Upload failed: {exc}"
+
+
 async def _run_invoice_upload_from_folder(folder_path: str):
     """Background task: extract invoice PDFs from a local folder and insert into PowerBISales."""
     from invoice_extractor import extract_invoices_from_folder
@@ -794,31 +842,38 @@ async def upload_invoices(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
 ):
-    """Accept a ZIP file containing Amazon invoice PDFs.
+    """Accept a ZIP or PDF file containing Amazon invoice(s).
     Starts extraction and DB insertion in the background. Poll /upload-invoices/status for progress.
     """
     if _invoice_upload_status["state"] == "processing":
         raise HTTPException(status_code=409, detail="An upload is already in progress. Check /upload-invoices/status.")
 
-    if not file.filename or not file.filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Only .zip files are accepted")
+    filename = (file.filename or "").lower()
+    is_zip = filename.endswith(".zip")
+    is_pdf = filename.endswith(".pdf")
+
+    if not file.filename or not (is_zip or is_pdf):
+        raise HTTPException(status_code=400, detail="Only .zip and .pdf files are accepted")
 
     try:
-        zip_bytes = await file.read()
+        file_bytes = await file.read()
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Failed to read uploaded file: {exc}")
 
-    if len(zip_bytes) == 0:
+    if len(file_bytes) == 0:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    size_mb = len(zip_bytes) / (1024 * 1024)
+    size_mb = len(file_bytes) / (1024 * 1024)
     if size_mb > MAX_ZIP_SIZE_MB:
         raise HTTPException(status_code=400, detail=f"File too large ({size_mb:.0f} MB). Maximum is {MAX_ZIP_SIZE_MB} MB.")
 
     _reset_upload_status()
     _invoice_upload_status["message"] = f"Upload received ({size_mb:.1f} MB). Starting extraction…"
 
-    background_tasks.add_task(_run_invoice_upload_from_zip, zip_bytes)
+    if is_pdf:
+        background_tasks.add_task(_run_invoice_upload_from_pdf, file_bytes, file.filename or "invoice.pdf")
+    else:
+        background_tasks.add_task(_run_invoice_upload_from_zip, file_bytes)
     return {"status": "accepted", "message": f"Upload received. Processing {file.filename} in background."}
 
 
