@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { normalizeProviderName } from "@/lib/shipment";
+import { getShipmentWindowStart, parseShipmentMonthWindow } from "@/lib/shipmentWindow";
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,13 +9,19 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
     const filter = searchParams.get("filter") || "all"; // all | estimated | pending
+    const months = parseShipmentMonthWindow(searchParams.get("months"));
+    const windowStart = getShipmentWindowStart(months);
 
-    // Build filter clause
-    let filterClause = "";
+    const params: unknown[] = [windowStart, limit, offset];
+    const conditions = [
+      "o.ship_postal_code IS NOT NULL",
+      "o.ship_postal_code != ''",
+      "o.purchase_date >= $1",
+    ];
     if (filter === "estimated") {
-      filterClause = "AND se.id IS NOT NULL";
+      conditions.push("se.id IS NOT NULL");
     } else if (filter === "pending") {
-      filterClause = "AND se.id IS NULL";
+      conditions.push("se.id IS NULL");
     }
 
     // Fetch orders with their shipment estimates + product specs
@@ -66,19 +73,22 @@ export async function GET(req: NextRequest) {
       FROM orders o
       LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
       LEFT JOIN product_specifications ps ON o.sku = ps.sku
-      WHERE o.ship_postal_code IS NOT NULL AND o.ship_postal_code != ''
-        ${filterClause}
+      WHERE ${conditions.join(" AND ")}
       ORDER BY o.purchase_date DESC NULLS LAST
-      LIMIT $1 OFFSET $2
-    `, [limit, offset]);
+      LIMIT $2 OFFSET $3
+    `, params);
 
     // Total count (for the current filter)
-    const countQuery = filter === "estimated"
-      ? `SELECT COUNT(*) as total FROM orders o INNER JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku WHERE o.ship_postal_code IS NOT NULL AND o.ship_postal_code != ''`
-      : filter === "pending"
-      ? `SELECT COUNT(*) as total FROM orders o LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku WHERE o.ship_postal_code IS NOT NULL AND o.ship_postal_code != '' AND se.id IS NULL`
-      : `SELECT COUNT(*) as total FROM orders WHERE ship_postal_code IS NOT NULL AND ship_postal_code != ''`;
-    const countResult = await pool.query(countQuery);
+    const countResult = await pool.query(
+      `
+        SELECT COUNT(*) AS total
+        FROM orders o
+        LEFT JOIN shipment_estimates se
+          ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
+        WHERE ${conditions.join(" AND ")}
+      `,
+      [windowStart],
+    );
     const total = parseInt(countResult.rows[0].total);
 
     // Overall summary
@@ -116,16 +126,24 @@ export async function GET(req: NextRequest) {
       FROM shipment_estimates se
       LEFT JOIN orders o
         ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
-    `);
+      WHERE o.ship_postal_code IS NOT NULL
+        AND o.ship_postal_code != ''
+        AND o.purchase_date >= $1
+    `, [windowStart]);
 
     // Provider wins breakdown — normalize names on the fly
     const winsResult = await pool.query(`
       SELECT cheapest_provider as provider, COUNT(*) as wins
-      FROM shipment_estimates
+      FROM shipment_estimates se
+      INNER JOIN orders o
+        ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
       WHERE cheapest_provider IS NOT NULL AND cheapest_provider != ''
+        AND o.ship_postal_code IS NOT NULL
+        AND o.ship_postal_code != ''
+        AND o.purchase_date >= $1
       GROUP BY cheapest_provider
       ORDER BY wins DESC
-    `);
+    `, [windowStart]);
 
     // Merge wins for variant names (e.g. "XpressBees" and "Xpressbees")
     const winsMap: Record<string, number> = {};
@@ -141,12 +159,16 @@ export async function GET(req: NextRequest) {
     const pendingResult = await pool.query(`
       SELECT COUNT(*) as pending FROM orders o
       LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
-      WHERE o.ship_postal_code IS NOT NULL AND o.ship_postal_code != '' AND se.id IS NULL
-    `);
+      WHERE o.ship_postal_code IS NOT NULL
+        AND o.ship_postal_code != ''
+        AND o.purchase_date >= $1
+        AND se.id IS NULL
+    `, [windowStart]);
 
     return NextResponse.json({
       estimates: estimatesResult.rows,
       total,
+      months,
       summary: overallResult.rows[0] || {},
       providerWins,
       pendingCount: parseInt(pendingResult.rows[0].pending),
