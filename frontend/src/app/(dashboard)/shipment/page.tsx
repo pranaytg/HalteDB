@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, useCallback } from "react";
+import { SHIPMENT_MONTH_OPTIONS, type ShipmentMonthWindow, getShipmentWindowLabel } from "@/lib/shipmentWindow";
 
 const CARRIERS = [
   { key: "amazon", label: "Amazon FBA", color: "#ff9900" },
@@ -140,16 +141,29 @@ export default function ShipmentPage() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterMode>("all");
+  const [monthWindow, setMonthWindow] = useState<ShipmentMonthWindow>(1);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
+  const [downloadingReport, setDownloadingReport] = useState(false);
 
-  const fetchData = useCallback(async (currentFilter?: FilterMode, currentPage?: number) => {
+  const fetchData = useCallback(async (
+    currentFilter?: FilterMode,
+    currentPage?: number,
+    currentMonthWindow?: ShipmentMonthWindow,
+  ) => {
     setLoading(true);
     const f = currentFilter ?? filter;
     const p = currentPage ?? page;
+    const m = currentMonthWindow ?? monthWindow;
     try {
-      const res = await fetch(`/api/shipment?limit=${PAGE_SIZE}&offset=${p * PAGE_SIZE}&filter=${f}`);
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(p * PAGE_SIZE),
+        filter: f,
+        months: String(m),
+      });
+      const res = await fetch(`/api/shipment?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setEstimates(data.estimates || []);
@@ -162,7 +176,7 @@ export default function ShipmentPage() {
       console.error("Failed to fetch shipment data", e);
     }
     setLoading(false);
-  }, [filter, page]);
+  }, [filter, page, monthWindow]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -230,6 +244,50 @@ export default function ShipmentPage() {
     setFilter(f);
     setPage(0);
     fetchData(f, 0);
+  };
+
+  const changeMonthWindow = (value: ShipmentMonthWindow) => {
+    setMonthWindow(value);
+    setPage(0);
+    fetchData(filter, 0, value);
+  };
+
+  const handleDownloadExcel = async () => {
+    setDownloadingReport(true);
+    try {
+      const params = new URLSearchParams({
+        filter,
+        months: String(monthWindow),
+      });
+      const res = await fetch(`/api/shipment/report?${params.toString()}`);
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setToast(data.error || "Failed to download Excel");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const filenameMatch = disposition.match(/filename=\"([^\"]+)\"/);
+      link.download = filenameMatch?.[1] || "haltedb_shipments.xlsx";
+
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setToast(`Downloaded ${getShipmentWindowLabel(monthWindow).toLowerCase()} shipment report`);
+    } catch {
+      setToast("Network error while downloading Excel");
+    } finally {
+      setDownloadingReport(false);
+      setTimeout(() => setToast(null), 4000);
+    }
   };
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -345,7 +403,7 @@ export default function ShipmentPage() {
 
       {/* Filter Tabs + Table */}
       <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Order-wise Rate Comparison</h3>
             <div style={{ display: "flex", gap: 4 }}>
@@ -361,9 +419,31 @@ export default function ShipmentPage() {
               ))}
             </div>
           </div>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {total} orders &middot; Page {page + 1} of {Math.max(totalPages, 1)}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <select
+              className="filter-select"
+              value={monthWindow}
+              onChange={(e) => changeMonthWindow(Number(e.target.value) as ShipmentMonthWindow)}
+              style={{ minWidth: 150 }}
+            >
+              {SHIPMENT_MONTH_OPTIONS.map((months) => (
+                <option key={months} value={months}>
+                  {getShipmentWindowLabel(months)}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn btn-primary"
+              style={{ background: "#166534", fontSize: 13 }}
+              onClick={handleDownloadExcel}
+              disabled={downloadingReport || total === 0}
+            >
+              {downloadingReport ? "Preparing Excel..." : "Download Excel"}
+            </button>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {total} orders &middot; {getShipmentWindowLabel(monthWindow)} &middot; Page {page + 1} of {Math.max(totalPages, 1)}
+            </span>
+          </div>
         </div>
 
         {loading ? (
