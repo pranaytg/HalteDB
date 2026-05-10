@@ -27,6 +27,7 @@ const navItems: { href: string; label: string; icon: IconName }[] = [
   { href: "/customers", label: "Customers", icon: "customers" },
   { href: "/customer-insights", label: "Customer Insights", icon: "insights" },
   { href: "/inventory", label: "Inventory", icon: "inventory" },
+  { href: "/logic-inventory", label: "Logic Inventory", icon: "inventory" },
   { href: "/replenishment", label: "Replenishment", icon: "replenishment" },
   { href: "/cogs", label: "COGS", icon: "cogs" },
   { href: "/cogs-estimate", label: "COGS Estimate", icon: "estimate" },
