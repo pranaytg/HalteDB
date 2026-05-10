@@ -79,6 +79,15 @@ function blankRowData(sheet: LogicInventorySheet) {
   }, {});
 }
 
+function normalizeColumnLabel(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function isSkuColumn(column: LogicInventoryColumn) {
+  const label = normalizeColumnLabel(column.label);
+  return label.includes("sku") || label.includes("itemcode") || label.includes("itemskuname");
+}
+
 export default function LogicInventoryPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploads, setUploads] = useState<LogicInventoryUpload[]>([]);
@@ -86,6 +95,7 @@ export default function LogicInventoryPage() {
   const [sheets, setSheets] = useState<LogicInventorySheet[]>([]);
   const [rows, setRows] = useState<LogicInventoryRow[]>([]);
   const [activeSheetName, setActiveSheetName] = useState("");
+  const [skuSearchTerm, setSkuSearchTerm] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [inventoryMonth, setInventoryMonth] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -154,13 +164,23 @@ export default function LogicInventoryPage() {
     return rows.filter((row) => row.sheet_name === activeSheet.name);
   }, [activeSheet, rows]);
 
+  const skuColumnKeys = useMemo(() => (
+    activeSheet?.columns.filter(isSkuColumn).map((column) => column.key) ?? []
+  ), [activeSheet]);
+
   const filteredRows = useMemo(() => {
+    const skuSearch = skuSearchTerm.trim().toLowerCase();
     const search = searchTerm.trim().toLowerCase();
-    if (!search) return sheetRows;
+
     return sheetRows.filter((row) => (
-      Object.values(row.row_data).some((value) => String(value ?? "").toLowerCase().includes(search))
+      (!skuSearch || (
+        skuColumnKeys.length > 0
+          ? skuColumnKeys.some((key) => String(row.row_data[key] ?? "").toLowerCase().includes(skuSearch))
+          : Object.values(row.row_data).some((value) => String(value ?? "").toLowerCase().includes(skuSearch))
+      )) &&
+      (!search || Object.values(row.row_data).some((value) => String(value ?? "").toLowerCase().includes(search)))
     ));
-  }, [searchTerm, sheetRows]);
+  }, [skuColumnKeys, searchTerm, sheetRows, skuSearchTerm]);
 
   const dirtyCount = Object.keys(dirtyRows).length;
 
@@ -422,7 +442,14 @@ export default function LogicInventoryPage() {
                 <input
                   className="filter-input search-input"
                   type="text"
-                  placeholder="Search this sheet..."
+                  placeholder="Search SKU / item code..."
+                  value={skuSearchTerm}
+                  onChange={(event) => setSkuSearchTerm(event.target.value)}
+                />
+                <input
+                  className="filter-input search-input"
+                  type="text"
+                  placeholder="Search all cells..."
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
                 />
