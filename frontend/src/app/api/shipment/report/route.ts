@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
 import pool from "@/lib/db";
+import { placedOrderConditions } from "@/lib/orderFilters";
 import {
   formatShipmentTimestamp,
   getShipmentWindowStart,
@@ -19,6 +20,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const filter = searchParams.get("filter") || "all";
+    const orderId = (searchParams.get("orderId") || "").trim();
     const months = parseShipmentMonthWindow(searchParams.get("months"));
     const windowStart = getShipmentWindowStart(months);
 
@@ -27,7 +29,12 @@ export async function GET(req: NextRequest) {
       "o.ship_postal_code IS NOT NULL",
       "o.ship_postal_code != ''",
       `o.purchase_date >= $${params.length}`,
+      ...placedOrderConditions("o"),
     ];
+    if (orderId) {
+      params.push(`%${orderId}%`);
+      conditions.push(`o.amazon_order_id ILIKE $${params.length}`);
+    }
 
     if (filter === "estimated") {
       conditions.push("se.id IS NOT NULL");
@@ -42,6 +49,8 @@ export async function GET(req: NextRequest) {
           RIGHT(COALESCE(o.amazon_order_id, ''), 8) AS order_id_identifier,
           o.purchase_date,
           o.sku,
+          o.order_status,
+          o.item_status,
           ps.product_name,
           o.ship_city AS destination_city,
           o.ship_state AS destination_state,
@@ -79,6 +88,8 @@ export async function GET(req: NextRequest) {
       "Order ID Identifier": row.order_id_identifier || null,
       "Purchase Date": formatShipmentTimestamp(row.purchase_date),
       SKU: row.sku,
+      "Order Status": row.order_status || null,
+      "Item Status": row.item_status || null,
       "Product Name": row.product_name || null,
       City: row.destination_city || null,
       State: row.destination_state || null,
@@ -104,6 +115,8 @@ export async function GET(req: NextRequest) {
         "Order ID Identifier",
         "Purchase Date",
         "SKU",
+        "Order Status",
+        "Item Status",
         "Product Name",
         "City",
         "State",
@@ -125,7 +138,9 @@ export async function GET(req: NextRequest) {
 
     const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
     const dateStr = new Date().toISOString().slice(0, 10);
-    const filename = `haltedb_shipments_${sanitizeShipmentFilenamePart(filter)}_last_${months}_month${months === 1 ? "" : "s"}_${dateStr}.xlsx`;
+    const filterPart = filter === "all" ? "placed" : filter;
+    const orderPart = orderId ? `_order_${sanitizeShipmentFilenamePart(orderId)}` : "";
+    const filename = `haltedb_shipments_${sanitizeShipmentFilenamePart(filterPart)}${orderPart}_last_${months}_month${months === 1 ? "" : "s"}_${dateStr}.xlsx`;
 
     return new NextResponse(buffer, {
       status: 200,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { placedOrderConditions } from "@/lib/orderFilters";
 import { normalizeProviderName } from "@/lib/shipment";
 import { getShipmentWindowStart, parseShipmentMonthWindow } from "@/lib/shipmentWindow";
 
@@ -9,20 +10,30 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "100");
     const offset = parseInt(searchParams.get("offset") || "0");
     const filter = searchParams.get("filter") || "all"; // all | estimated | pending
+    const orderId = (searchParams.get("orderId") || "").trim();
     const months = parseShipmentMonthWindow(searchParams.get("months"));
     const windowStart = getShipmentWindowStart(months);
 
-    const params: unknown[] = [windowStart, limit, offset];
-    const conditions = [
+    const params: unknown[] = [windowStart];
+    const baseConditions = [
       "o.ship_postal_code IS NOT NULL",
       "o.ship_postal_code != ''",
       "o.purchase_date >= $1",
+      ...placedOrderConditions("o"),
     ];
+    if (orderId) {
+      params.push(`%${orderId}%`);
+      baseConditions.push(`o.amazon_order_id ILIKE $${params.length}`);
+    }
+
+    const conditions = [...baseConditions];
     if (filter === "estimated") {
       conditions.push("se.id IS NOT NULL");
     } else if (filter === "pending") {
       conditions.push("se.id IS NULL");
     }
+    const limitParamIndex = params.length + 1;
+    const offsetParamIndex = params.length + 2;
 
     // Fetch orders with their shipment estimates + product specs
     const estimatesResult = await pool.query(`
@@ -75,8 +86,8 @@ export async function GET(req: NextRequest) {
       LEFT JOIN product_specifications ps ON o.sku = ps.sku
       WHERE ${conditions.join(" AND ")}
       ORDER BY o.purchase_date DESC NULLS LAST
-      LIMIT $2 OFFSET $3
-    `, params);
+      LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}
+    `, [...params, limit, offset]);
 
     // Total count (for the current filter)
     const countResult = await pool.query(
@@ -87,7 +98,7 @@ export async function GET(req: NextRequest) {
           ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
         WHERE ${conditions.join(" AND ")}
       `,
-      [windowStart],
+      params,
     );
     const total = parseInt(countResult.rows[0].total);
 
@@ -126,10 +137,8 @@ export async function GET(req: NextRequest) {
       FROM shipment_estimates se
       LEFT JOIN orders o
         ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
-      WHERE o.ship_postal_code IS NOT NULL
-        AND o.ship_postal_code != ''
-        AND o.purchase_date >= $1
-    `, [windowStart]);
+      WHERE ${baseConditions.join(" AND ")}
+    `, params);
 
     // Provider wins breakdown — normalize names on the fly
     const winsResult = await pool.query(`
@@ -138,12 +147,10 @@ export async function GET(req: NextRequest) {
       INNER JOIN orders o
         ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
       WHERE cheapest_provider IS NOT NULL AND cheapest_provider != ''
-        AND o.ship_postal_code IS NOT NULL
-        AND o.ship_postal_code != ''
-        AND o.purchase_date >= $1
+        AND ${baseConditions.join(" AND ")}
       GROUP BY cheapest_provider
       ORDER BY wins DESC
-    `, [windowStart]);
+    `, params);
 
     // Merge wins for variant names (e.g. "XpressBees" and "Xpressbees")
     const winsMap: Record<string, number> = {};
@@ -159,11 +166,9 @@ export async function GET(req: NextRequest) {
     const pendingResult = await pool.query(`
       SELECT COUNT(*) as pending FROM orders o
       LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
-      WHERE o.ship_postal_code IS NOT NULL
-        AND o.ship_postal_code != ''
-        AND o.purchase_date >= $1
+      WHERE ${baseConditions.join(" AND ")}
         AND se.id IS NULL
-    `, [windowStart]);
+    `, params);
 
     return NextResponse.json({
       estimates: estimatesResult.rows,

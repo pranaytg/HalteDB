@@ -61,6 +61,12 @@ interface Summary {
 
 type FilterMode = "all" | "estimated" | "pending";
 
+const FILTER_LABELS: Record<FilterMode, string> = {
+  all: "Placed",
+  estimated: "Estimated",
+  pending: "Pending",
+};
+
 function getRateSourceBadge(rateSource: string | null) {
   switch (rateSource) {
     case "shiprocket":
@@ -146,16 +152,20 @@ export default function ShipmentPage() {
   const [total, setTotal] = useState(0);
   const [pendingCount, setPendingCount] = useState(0);
   const [downloadingReport, setDownloadingReport] = useState(false);
+  const [orderIdSearch, setOrderIdSearch] = useState("");
+  const [appliedOrderIdSearch, setAppliedOrderIdSearch] = useState("");
 
   const fetchData = useCallback(async (
     currentFilter?: FilterMode,
     currentPage?: number,
     currentMonthWindow?: ShipmentMonthWindow,
+    currentOrderIdSearch?: string,
   ) => {
     setLoading(true);
     const f = currentFilter ?? filter;
     const p = currentPage ?? page;
     const m = currentMonthWindow ?? monthWindow;
+    const search = currentOrderIdSearch ?? appliedOrderIdSearch;
     try {
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
@@ -163,6 +173,9 @@ export default function ShipmentPage() {
         filter: f,
         months: String(m),
       });
+      if (search.trim()) {
+        params.set("orderId", search.trim());
+      }
       const res = await fetch(`/api/shipment?${params.toString()}`);
       if (res.ok) {
         const data = await res.json();
@@ -176,7 +189,7 @@ export default function ShipmentPage() {
       console.error("Failed to fetch shipment data", e);
     }
     setLoading(false);
-  }, [filter, page, monthWindow]);
+  }, [filter, page, monthWindow, appliedOrderIdSearch]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -243,13 +256,27 @@ export default function ShipmentPage() {
   const changeFilter = (f: FilterMode) => {
     setFilter(f);
     setPage(0);
-    fetchData(f, 0);
+    fetchData(f, 0, undefined, appliedOrderIdSearch);
   };
 
   const changeMonthWindow = (value: ShipmentMonthWindow) => {
     setMonthWindow(value);
     setPage(0);
-    fetchData(filter, 0, value);
+    fetchData(filter, 0, value, appliedOrderIdSearch);
+  };
+
+  const applyOrderSearch = () => {
+    const nextSearch = orderIdSearch.trim();
+    setAppliedOrderIdSearch(nextSearch);
+    setPage(0);
+    fetchData(filter, 0, monthWindow, nextSearch);
+  };
+
+  const clearOrderSearch = () => {
+    setOrderIdSearch("");
+    setAppliedOrderIdSearch("");
+    setPage(0);
+    fetchData(filter, 0, monthWindow, "");
   };
 
   const handleDownloadExcel = async () => {
@@ -259,6 +286,9 @@ export default function ShipmentPage() {
         filter,
         months: String(monthWindow),
       });
+      if (appliedOrderIdSearch.trim()) {
+        params.set("orderId", appliedOrderIdSearch.trim());
+      }
       const res = await fetch(`/api/shipment/report?${params.toString()}`);
 
       if (!res.ok) {
@@ -412,14 +442,47 @@ export default function ShipmentPage() {
                   padding: "4px 12px", fontSize: 11, fontWeight: 600, borderRadius: 6, border: "1px solid var(--border)",
                   background: filter === f ? "var(--accent)" : "transparent",
                   color: filter === f ? "#fff" : "var(--text-muted)", cursor: "pointer",
-                  textTransform: "capitalize",
                 }}>
-                  {f} {f === "pending" && pendingCount > 0 ? `(${pendingCount})` : ""}
+                  {FILTER_LABELS[f]} {f === "pending" && pendingCount > 0 ? `(${pendingCount})` : ""}
                 </button>
               ))}
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                applyOrderSearch();
+              }}
+              style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}
+            >
+              <input
+                className="filter-input search-input"
+                type="search"
+                placeholder="Search Order ID..."
+                aria-label="Search by order ID"
+                value={orderIdSearch}
+                onChange={(event) => setOrderIdSearch(event.target.value)}
+                style={{ minWidth: 190 }}
+              />
+              <button
+                className="btn btn-secondary"
+                type="submit"
+                style={{ fontSize: 13, padding: "8px 12px" }}
+              >
+                Search
+              </button>
+              {appliedOrderIdSearch && (
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={clearOrderSearch}
+                  style={{ fontSize: 13, padding: "8px 10px" }}
+                >
+                  Clear
+                </button>
+              )}
+            </form>
             <select
               className="filter-select"
               value={monthWindow}
@@ -441,7 +504,7 @@ export default function ShipmentPage() {
               {downloadingReport ? "Preparing Excel..." : "Download Excel"}
             </button>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {total} orders &middot; {getShipmentWindowLabel(monthWindow)} &middot; Page {page + 1} of {Math.max(totalPages, 1)}
+              {total} placed orders{appliedOrderIdSearch ? ` matching ${appliedOrderIdSearch}` : ""} &middot; {getShipmentWindowLabel(monthWindow)} &middot; Page {page + 1} of {Math.max(totalPages, 1)}
             </span>
           </div>
         </div>
@@ -453,7 +516,7 @@ export default function ShipmentPage() {
           </div>
         ) : estimates.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center" }}>
-            <p style={{ color: "var(--text-muted)", marginBottom: 16 }}>No orders found for this filter.</p>
+            <p style={{ color: "var(--text-muted)", marginBottom: 16 }}>No placed orders found for this filter.</p>
             {filter === "all" && (
               <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
                 Click <strong>&quot;Estimate New Orders&quot;</strong> to compute shipping costs.
@@ -680,7 +743,7 @@ export default function ShipmentPage() {
             </span>
             <div style={{ display: "flex", gap: 4 }}>
               <button className="btn btn-ghost btn-sm" disabled={page === 0}
-                onClick={() => { setPage(p => p - 1); fetchData(filter, page - 1); }}>
+                onClick={() => { setPage(p => p - 1); fetchData(filter, page - 1, monthWindow, appliedOrderIdSearch); }}>
                 Prev
               </button>
               {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
@@ -689,13 +752,13 @@ export default function ShipmentPage() {
                 return (
                   <button key={pageNum} className="btn btn-ghost btn-sm"
                     style={{ fontWeight: page === pageNum ? 700 : 400, color: page === pageNum ? "var(--accent)" : undefined }}
-                    onClick={() => { setPage(pageNum); fetchData(filter, pageNum); }}>
+                    onClick={() => { setPage(pageNum); fetchData(filter, pageNum, monthWindow, appliedOrderIdSearch); }}>
                     {pageNum + 1}
                   </button>
                 );
               })}
               <button className="btn btn-ghost btn-sm" disabled={page >= totalPages - 1}
-                onClick={() => { setPage(p => p + 1); fetchData(filter, page + 1); }}>
+                onClick={() => { setPage(p => p + 1); fetchData(filter, page + 1, monthWindow, appliedOrderIdSearch); }}>
                 Next
               </button>
             </div>
@@ -709,6 +772,7 @@ export default function ShipmentPage() {
         background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)",
         fontSize: 12, color: "var(--text-muted)",
       }}>
+        Canceled orders are excluded from shipment estimates, table results, and Excel downloads.
         Amazon-fulfilled orders show only the actual SP API shipping cost (no carrier comparison).
         Self-fulfilled orders show <strong style={{ color: "#22c55e" }}>LIVE</strong> Shiprocket quotes only.
         Rows marked <strong style={{ color: "#cbd5e1" }}>PENDING</strong> are still waiting for Amazon Finance settlement.
