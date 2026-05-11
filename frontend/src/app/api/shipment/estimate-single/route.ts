@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { placedOrderConditions } from "@/lib/orderFilters";
 import {
   fetchShiprocketRates, findCheapest,
   normalizePincode, normalizeProviderName, ORIGIN_PIN,
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
       FROM orders o
       LEFT JOIN product_specifications ps ON o.sku = ps.sku
       WHERE o.amazon_order_id = $1 AND o.sku = $2
+        AND ${placedOrderConditions("o").join(" AND ")}
     `, [amazon_order_id, sku]);
 
     const order = orderResult.rows[0];

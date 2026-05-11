@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { placedOrderConditions } from "@/lib/orderFilters";
 import {
   fetchShiprocketRates, findCheapest,
   normalizePincode, normalizeProviderName, ORIGIN_PIN,
@@ -46,6 +47,7 @@ export async function POST() {
       FROM orders o
       LEFT JOIN shipment_estimates se ON o.amazon_order_id = se.amazon_order_id AND o.sku = se.sku
       WHERE o.ship_postal_code IS NOT NULL AND o.ship_postal_code != ''
+        AND ${placedOrderConditions("o").join(" AND ")}
         AND (
           se.id IS NULL
           OR (
