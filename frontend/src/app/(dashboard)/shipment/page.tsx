@@ -154,18 +154,22 @@ export default function ShipmentPage() {
   const [downloadingReport, setDownloadingReport] = useState(false);
   const [orderIdSearch, setOrderIdSearch] = useState("");
   const [appliedOrderIdSearch, setAppliedOrderIdSearch] = useState("");
+  const [skuSearch, setSkuSearch] = useState("");
+  const [appliedSkuSearch, setAppliedSkuSearch] = useState("");
 
   const fetchData = useCallback(async (
     currentFilter?: FilterMode,
     currentPage?: number,
     currentMonthWindow?: ShipmentMonthWindow,
     currentOrderIdSearch?: string,
+    currentSkuSearch?: string,
   ) => {
     setLoading(true);
     const f = currentFilter ?? filter;
     const p = currentPage ?? page;
     const m = currentMonthWindow ?? monthWindow;
-    const search = currentOrderIdSearch ?? appliedOrderIdSearch;
+    const orderSearch = currentOrderIdSearch ?? appliedOrderIdSearch;
+    const skuLookup = currentSkuSearch ?? appliedSkuSearch;
     try {
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
@@ -173,8 +177,11 @@ export default function ShipmentPage() {
         filter: f,
         months: String(m),
       });
-      if (search.trim()) {
-        params.set("orderId", search.trim());
+      if (orderSearch.trim()) {
+        params.set("orderId", orderSearch.trim());
+      }
+      if (skuLookup.trim()) {
+        params.set("sku", skuLookup.trim());
       }
       const res = await fetch(`/api/shipment?${params.toString()}`);
       if (res.ok) {
@@ -189,7 +196,7 @@ export default function ShipmentPage() {
       console.error("Failed to fetch shipment data", e);
     }
     setLoading(false);
-  }, [filter, page, monthWindow, appliedOrderIdSearch]);
+  }, [filter, page, monthWindow, appliedOrderIdSearch, appliedSkuSearch]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -256,27 +263,31 @@ export default function ShipmentPage() {
   const changeFilter = (f: FilterMode) => {
     setFilter(f);
     setPage(0);
-    fetchData(f, 0, undefined, appliedOrderIdSearch);
+    fetchData(f, 0, undefined, appliedOrderIdSearch, appliedSkuSearch);
   };
 
   const changeMonthWindow = (value: ShipmentMonthWindow) => {
     setMonthWindow(value);
     setPage(0);
-    fetchData(filter, 0, value, appliedOrderIdSearch);
+    fetchData(filter, 0, value, appliedOrderIdSearch, appliedSkuSearch);
   };
 
-  const applyOrderSearch = () => {
-    const nextSearch = orderIdSearch.trim();
-    setAppliedOrderIdSearch(nextSearch);
+  const applySearch = () => {
+    const nextOrderSearch = orderIdSearch.trim();
+    const nextSkuSearch = skuSearch.trim();
+    setAppliedOrderIdSearch(nextOrderSearch);
+    setAppliedSkuSearch(nextSkuSearch);
     setPage(0);
-    fetchData(filter, 0, monthWindow, nextSearch);
+    fetchData(filter, 0, monthWindow, nextOrderSearch, nextSkuSearch);
   };
 
-  const clearOrderSearch = () => {
+  const clearSearch = () => {
     setOrderIdSearch("");
     setAppliedOrderIdSearch("");
+    setSkuSearch("");
+    setAppliedSkuSearch("");
     setPage(0);
-    fetchData(filter, 0, monthWindow, "");
+    fetchData(filter, 0, monthWindow, "", "");
   };
 
   const handleDownloadExcel = async () => {
@@ -288,6 +299,9 @@ export default function ShipmentPage() {
       });
       if (appliedOrderIdSearch.trim()) {
         params.set("orderId", appliedOrderIdSearch.trim());
+      }
+      if (appliedSkuSearch.trim()) {
+        params.set("sku", appliedSkuSearch.trim());
       }
       const res = await fetch(`/api/shipment/report?${params.toString()}`);
 
@@ -322,6 +336,11 @@ export default function ShipmentPage() {
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const totalWins = providerWins.reduce((s, p) => s + p.wins, 0) || 1;
+  const activeSearchParts = [
+    appliedOrderIdSearch ? `order ${appliedOrderIdSearch}` : null,
+    appliedSkuSearch ? `SKU ${appliedSkuSearch}` : null,
+  ].filter(Boolean);
+  const activeSearchSummary = activeSearchParts.length > 0 ? ` matching ${activeSearchParts.join(" and ")}` : "";
 
   return (
     <div style={{ padding: "24px 32px", maxWidth: 1500 }}>
@@ -452,7 +471,7 @@ export default function ShipmentPage() {
             <form
               onSubmit={(event) => {
                 event.preventDefault();
-                applyOrderSearch();
+                applySearch();
               }}
               style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}
             >
@@ -465,6 +484,15 @@ export default function ShipmentPage() {
                 onChange={(event) => setOrderIdSearch(event.target.value)}
                 style={{ minWidth: 190 }}
               />
+              <input
+                className="filter-input search-input"
+                type="search"
+                placeholder="Search SKU..."
+                aria-label="Search by SKU"
+                value={skuSearch}
+                onChange={(event) => setSkuSearch(event.target.value)}
+                style={{ minWidth: 150 }}
+              />
               <button
                 className="btn btn-secondary"
                 type="submit"
@@ -472,11 +500,11 @@ export default function ShipmentPage() {
               >
                 Search
               </button>
-              {appliedOrderIdSearch && (
+              {(appliedOrderIdSearch || appliedSkuSearch) && (
                 <button
                   className="btn btn-ghost"
                   type="button"
-                  onClick={clearOrderSearch}
+                  onClick={clearSearch}
                   style={{ fontSize: 13, padding: "8px 10px" }}
                 >
                   Clear
@@ -504,7 +532,7 @@ export default function ShipmentPage() {
               {downloadingReport ? "Preparing Excel..." : "Download Excel"}
             </button>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-              {total} placed orders{appliedOrderIdSearch ? ` matching ${appliedOrderIdSearch}` : ""} &middot; {getShipmentWindowLabel(monthWindow)} &middot; Page {page + 1} of {Math.max(totalPages, 1)}
+              {total} placed orders{activeSearchSummary} &middot; {getShipmentWindowLabel(monthWindow)} &middot; Page {page + 1} of {Math.max(totalPages, 1)}
             </span>
           </div>
         </div>
@@ -743,7 +771,7 @@ export default function ShipmentPage() {
             </span>
             <div style={{ display: "flex", gap: 4 }}>
               <button className="btn btn-ghost btn-sm" disabled={page === 0}
-                onClick={() => { setPage(p => p - 1); fetchData(filter, page - 1, monthWindow, appliedOrderIdSearch); }}>
+                onClick={() => { setPage(p => p - 1); fetchData(filter, page - 1, monthWindow, appliedOrderIdSearch, appliedSkuSearch); }}>
                 Prev
               </button>
               {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
@@ -752,13 +780,13 @@ export default function ShipmentPage() {
                 return (
                   <button key={pageNum} className="btn btn-ghost btn-sm"
                     style={{ fontWeight: page === pageNum ? 700 : 400, color: page === pageNum ? "var(--accent)" : undefined }}
-                    onClick={() => { setPage(pageNum); fetchData(filter, pageNum, monthWindow, appliedOrderIdSearch); }}>
+                    onClick={() => { setPage(pageNum); fetchData(filter, pageNum, monthWindow, appliedOrderIdSearch, appliedSkuSearch); }}>
                     {pageNum + 1}
                   </button>
                 );
               })}
               <button className="btn btn-ghost btn-sm" disabled={page >= totalPages - 1}
-                onClick={() => { setPage(p => p + 1); fetchData(filter, page + 1, monthWindow, appliedOrderIdSearch); }}>
+                onClick={() => { setPage(p => p + 1); fetchData(filter, page + 1, monthWindow, appliedOrderIdSearch, appliedSkuSearch); }}>
                 Next
               </button>
             </div>
