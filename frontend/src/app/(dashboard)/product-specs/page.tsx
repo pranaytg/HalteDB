@@ -16,6 +16,26 @@ interface ProductSpec {
   last_updated: string | null;
 }
 
+type ProductSpecForm = {
+  sku: string;
+  asin: string;
+  product_name: string;
+  weight_kg: number | string;
+  length_cm: number | string;
+  width_cm: number | string;
+  height_cm: number | string;
+};
+
+const emptyProductSpecForm = (): ProductSpecForm => ({
+  sku: "",
+  asin: "",
+  product_name: "",
+  weight_kg: "",
+  length_cm: "",
+  width_cm: "",
+  height_cm: "",
+});
+
 const fmtWeight = (n: number | null | undefined) => {
   if (n == null) return "—";
   return `${Number(n).toFixed(2)} kg`;
@@ -46,6 +66,8 @@ export default function ProductSpecsPage() {
     width_cm?: number | string;
     height_cm?: number | string;
   }>({});
+  const [addingRow, setAddingRow] = useState(false);
+  const [newSpecForm, setNewSpecForm] = useState<ProductSpecForm>(() => emptyProductSpecForm());
   const [saving, setSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -97,6 +119,7 @@ export default function ProductSpecsPage() {
   });
 
   const startEditing = (spec: ProductSpec) => {
+    setAddingRow(false);
     setEditingRow(spec.sku);
     setEditForm({
       weight_kg: spec.weight_kg ?? "",
@@ -109,6 +132,61 @@ export default function ProductSpecsPage() {
   const cancelEditing = () => {
     setEditingRow(null);
     setEditForm({});
+  };
+
+  const startAddingRow = () => {
+    setEditingRow(null);
+    setEditForm({});
+    setAddingRow(true);
+    setNewSpecForm(emptyProductSpecForm());
+  };
+
+  const cancelAddingRow = () => {
+    setAddingRow(false);
+    setNewSpecForm(emptyProductSpecForm());
+  };
+
+  const saveNewRow = async () => {
+    const sku = newSpecForm.sku.trim();
+    if (!sku) {
+      setToast("Error: SKU is required");
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const payload = {
+        sku,
+        asin: newSpecForm.asin.trim() || null,
+        product_name: newSpecForm.product_name.trim() || null,
+        weight_kg: newSpecForm.weight_kg === "" ? null : Number(newSpecForm.weight_kg),
+        length_cm: newSpecForm.length_cm === "" ? null : Number(newSpecForm.length_cm),
+        width_cm: newSpecForm.width_cm === "" ? null : Number(newSpecForm.width_cm),
+        height_cm: newSpecForm.height_cm === "" ? null : Number(newSpecForm.height_cm),
+      };
+
+      const res = await fetch("/api/product-specs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setToast("Specification added successfully");
+        setQuery("");
+        await fetchData();
+        cancelAddingRow();
+      } else {
+        const err = await res.json();
+        setToast(`Error: ${err.error || "Failed to add"}`);
+      }
+    } catch {
+      setToast("Network error trying to add SKU");
+    } finally {
+      setSaving(false);
+      setTimeout(() => setToast(null), 3000);
+    }
   };
 
   const saveEditing = async (sku: string) => {
@@ -162,6 +240,15 @@ export default function ProductSpecsPage() {
         <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>📋 SKU Catalog Dimensions</h3>
           <div style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, justifyContent: "flex-end" }}>
+            <button
+              className="btn btn-primary btn-sm"
+              type="button"
+              disabled={addingRow || saving}
+              onClick={startAddingRow}
+              style={{ padding: "8px 12px", fontSize: 12, whiteSpace: "nowrap" }}
+            >
+              + Add Row
+            </button>
             <div style={{ position: "relative", width: 280, maxWidth: "100%" }}>
               <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "var(--text-muted)", pointerEvents: "none" }}>🔍</span>
               <input
@@ -205,15 +292,15 @@ export default function ProductSpecsPage() {
             <div className="spinner" style={{ width: 24, height: 24, margin: "0 auto 12px" }} />
             <p style={{ color: "var(--text-muted)" }}>Loading specifications...</p>
           </div>
-        ) : specs.length === 0 ? (
+        ) : specs.length === 0 && !addingRow ? (
           <div style={{ padding: 40, textAlign: "center" }}>
             <p style={{ fontSize: 48, margin: "0 0 12px" }}>📦</p>
             <p style={{ color: "var(--text-muted)", marginBottom: 16 }}>No product specifications yet</p>
             <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-              Run the SP-API product spec sync from the backend to fetch initially.
+              Run the SP-API product spec sync from the backend, or click Add Row to enter a SKU manually.
             </p>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : filtered.length === 0 && !addingRow ? (
           <div style={{ padding: 40, textAlign: "center" }}>
             <p style={{ fontSize: 36, margin: "0 0 12px" }}>🔍</p>
             <p style={{ color: "var(--text-muted)", marginBottom: 4 }}>No SKUs match &quot;{query}&quot;</p>
@@ -241,6 +328,79 @@ export default function ProductSpecsPage() {
                 </tr>
               </thead>
               <tbody>
+                {addingRow && (
+                  <tr style={{ borderBottom: "1px solid var(--border)", background: "rgba(34,197,94,0.06)" }}>
+                    <td style={{ ...td, fontWeight: 600 }}>
+                      <input
+                        type="text"
+                        value={newSpecForm.sku}
+                        onChange={(e) => setNewSpecForm({ ...newSpecForm, sku: e.target.value.toUpperCase() })}
+                        placeholder="SKU"
+                        style={{ ...inputStyle, width: 110, textAlign: "left" }}
+                        autoFocus
+                      />
+                    </td>
+                    <td style={td}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 220 }}>
+                        <input
+                          type="text"
+                          value={newSpecForm.product_name}
+                          onChange={(e) => setNewSpecForm({ ...newSpecForm, product_name: e.target.value })}
+                          placeholder="Product name (optional)"
+                          style={{ ...inputStyle, width: "100%", textAlign: "left" }}
+                        />
+                        <input
+                          type="text"
+                          value={newSpecForm.asin}
+                          onChange={(e) => setNewSpecForm({ ...newSpecForm, asin: e.target.value })}
+                          placeholder="ASIN (optional)"
+                          style={{ ...inputStyle, width: "100%", textAlign: "left", fontSize: 11 }}
+                        />
+                      </div>
+                    </td>
+                    <td style={td}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input type="number" min="0" step="0.1" style={inputStyle} value={newSpecForm.length_cm} onChange={(e) => setNewSpecForm({ ...newSpecForm, length_cm: e.target.value })} placeholder="L" />
+                        <span style={{ color: "var(--text-muted)", fontSize: 11 }}>×</span>
+                        <input type="number" min="0" step="0.1" style={inputStyle} value={newSpecForm.width_cm} onChange={(e) => setNewSpecForm({ ...newSpecForm, width_cm: e.target.value })} placeholder="W" />
+                        <span style={{ color: "var(--text-muted)", fontSize: 11 }}>×</span>
+                        <input type="number" min="0" step="0.1" style={inputStyle} value={newSpecForm.height_cm} onChange={(e) => setNewSpecForm({ ...newSpecForm, height_cm: e.target.value })} placeholder="H" />
+                      </div>
+                    </td>
+                    <td style={{ ...td, textAlign: "center" }}>
+                      <input type="number" min="0" step="0.01" style={{ ...inputStyle, width: 70 }} value={newSpecForm.weight_kg} onChange={(e) => setNewSpecForm({ ...newSpecForm, weight_kg: e.target.value })} placeholder="kg" />
+                    </td>
+                    <td style={{ ...td, textAlign: "center", color: "var(--text-muted)" }}>
+                      <em>Auto calc</em>
+                    </td>
+                    <td style={{ ...td, textAlign: "center", color: "var(--text-muted)" }}>
+                      <em>Auto calc</em>
+                    </td>
+                    <td style={{ ...td, fontSize: 11, color: "var(--text-muted)" }}>
+                      New
+                    </td>
+                    <td style={{ ...td, textAlign: "center" }}>
+                      <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          style={{ padding: "4px 10px", fontSize: 11 }}
+                          disabled={saving}
+                          onClick={saveNewRow}
+                        >
+                          {saving ? "..." : "Save"}
+                        </button>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: "4px 10px", fontSize: 11, background: "transparent", color: "var(--text-muted)", border: "1px solid var(--border)" }}
+                          disabled={saving}
+                          onClick={cancelAddingRow}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 {sorted.map((s) => {
                   const isEditing = editingRow === s.sku;
 
