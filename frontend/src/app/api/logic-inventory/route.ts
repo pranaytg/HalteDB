@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
 import {
   ensureLogicInventoryTables,
+  type LogicInventorySheetMeta,
   parseLogicInventoryWorkbook,
+  withDerivedConsolidatedCountDate,
+  withDerivedConsolidatedCountDateForStoredRows,
 } from "@/lib/logicInventory";
 
 export const runtime = "nodejs";
@@ -25,15 +28,25 @@ type UploadWithSheets = {
   updated_at: string;
 };
 
+type StoredLogicInventoryRow = {
+  id: number;
+  upload_id: number;
+  sheet_name: string;
+  sheet_index: number;
+  row_index: number;
+  row_data: Record<string, string>;
+  updated_at: string;
+};
+
 function normalizeSheetsJson(value: unknown) {
   if (typeof value === "string") return JSON.parse(value);
   return value ?? [];
 }
 
-function sheetsWithLiveCounts(value: unknown, rows: { sheet_name: string }[]) {
+function sheetsWithLiveCounts(value: unknown, rows: { sheet_name: string }[]): LogicInventorySheetMeta[] {
   const parsedSheets = normalizeSheetsJson(value);
   const sheets = Array.isArray(parsedSheets)
-    ? parsedSheets as Array<{ name: string; rowCount: number }>
+    ? parsedSheets as LogicInventorySheetMeta[]
     : [];
   const rowCounts = rows.reduce<Record<string, number>>((acc, row) => {
     acc[row.sheet_name] = (acc[row.sheet_name] ?? 0) + 1;
@@ -44,6 +57,19 @@ function sheetsWithLiveCounts(value: unknown, rows: { sheet_name: string }[]) {
     ...sheet,
     rowCount: rowCounts[sheet.name] ?? 0,
   }));
+}
+
+function normalizeRowData(value: unknown): Record<string, string> {
+  if (!value) return {};
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return typeof parsed === "object" && parsed ? parsed as Record<string, string> : {};
+    } catch {
+      return {};
+    }
+  }
+  return typeof value === "object" ? value as Record<string, string> : {};
 }
 
 export async function GET(req: NextRequest) {
@@ -94,7 +120,18 @@ export async function GET(req: NextRequest) {
     `, [selectedUpload]);
 
     const upload = uploadResult.rows[0] as UploadWithSheets;
-    const sheets = sheetsWithLiveCounts(upload.sheets_json, rowsResult.rows);
+    const storedRows = rowsResult.rows.map((row) => ({
+      ...row,
+      row_data: normalizeRowData(row.row_data),
+    })) as StoredLogicInventoryRow[];
+    const derived = withDerivedConsolidatedCountDateForStoredRows(
+      sheetsWithLiveCounts(upload.sheets_json, storedRows),
+      storedRows,
+      {
+        inventoryMonth: upload.inventory_month,
+        referenceDate: upload.created_at,
+      },
+    );
 
     return NextResponse.json({
       uploads: uploadsResult.rows,
@@ -107,8 +144,8 @@ export async function GET(req: NextRequest) {
         created_at: upload.created_at,
         updated_at: upload.updated_at,
       },
-      sheets,
-      rows: rowsResult.rows,
+      sheets: derived.sheets,
+      rows: derived.rows,
     });
   } catch (error) {
     console.error("Logic inventory GET error:", error);
@@ -142,7 +179,13 @@ export async function POST(req: NextRequest) {
   }
 
   const buffer = Buffer.from(await filePart.arrayBuffer());
-  const parsed = parseLogicInventoryWorkbook(buffer);
+  const parsed = withDerivedConsolidatedCountDate(
+    parseLogicInventoryWorkbook(buffer),
+    {
+      inventoryMonth,
+      referenceDate: new Date(),
+    },
+  );
 
   if (parsed.rows.length === 0 || parsed.sheets.length === 0) {
     return NextResponse.json(
