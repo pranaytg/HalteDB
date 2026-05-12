@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const filter = searchParams.get("filter") || "all";
     const orderId = (searchParams.get("orderId") || "").trim();
+    const sku = (searchParams.get("sku") || "").trim();
     const months = parseShipmentMonthWindow(searchParams.get("months"));
     const windowStart = getShipmentWindowStart(months);
 
@@ -34,6 +35,10 @@ export async function GET(req: NextRequest) {
     if (orderId) {
       params.push(`%${orderId}%`);
       conditions.push(`o.amazon_order_id ILIKE $${params.length}`);
+    }
+    if (sku) {
+      params.push(`%${sku}%`);
+      conditions.push(`o.sku ILIKE $${params.length}`);
     }
 
     if (filter === "estimated") {
@@ -140,7 +145,8 @@ export async function GET(req: NextRequest) {
     const dateStr = new Date().toISOString().slice(0, 10);
     const filterPart = filter === "all" ? "placed" : filter;
     const orderPart = orderId ? `_order_${sanitizeShipmentFilenamePart(orderId)}` : "";
-    const filename = `haltedb_shipments_${sanitizeShipmentFilenamePart(filterPart)}${orderPart}_last_${months}_month${months === 1 ? "" : "s"}_${dateStr}.xlsx`;
+    const skuPart = sku ? `_sku_${sanitizeShipmentFilenamePart(sku)}` : "";
+    const filename = `haltedb_shipments_${sanitizeShipmentFilenamePart(filterPart)}${orderPart}${skuPart}_last_${months}_month${months === 1 ? "" : "s"}_${dateStr}.xlsx`;
 
     return new NextResponse(buffer, {
       status: 200,

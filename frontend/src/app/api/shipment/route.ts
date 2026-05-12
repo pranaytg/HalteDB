@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
     const offset = parseInt(searchParams.get("offset") || "0");
     const filter = searchParams.get("filter") || "all"; // all | estimated | pending
     const orderId = (searchParams.get("orderId") || "").trim();
+    const sku = (searchParams.get("sku") || "").trim();
     const months = parseShipmentMonthWindow(searchParams.get("months"));
     const windowStart = getShipmentWindowStart(months);
 
@@ -24,6 +25,10 @@ export async function GET(req: NextRequest) {
     if (orderId) {
       params.push(`%${orderId}%`);
       baseConditions.push(`o.amazon_order_id ILIKE $${params.length}`);
+    }
+    if (sku) {
+      params.push(`%${sku}%`);
+      baseConditions.push(`o.sku ILIKE $${params.length}`);
     }
 
     const conditions = [...baseConditions];
