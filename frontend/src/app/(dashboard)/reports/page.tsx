@@ -111,6 +111,7 @@ export default function ReportsPage() {
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   const [folderPath, setFolderPath] = useState("");
 
   const showToast = (msg: string, type: "success" | "error") => {
@@ -290,11 +291,88 @@ export default function ReportsPage() {
     }
   };
 
+  const handleMultipleFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const pdfFiles = fileArray.filter(f => f.name.toLowerCase().endsWith(".pdf"));
+    const zipFiles = fileArray.filter(f => f.name.toLowerCase().endsWith(".zip"));
+
+    // If a single file (zip or pdf), use the existing handler
+    if (fileArray.length === 1) {
+      handleUploadFile(fileArray[0]);
+      return;
+    }
+
+    // If there's exactly one zip and no pdfs, upload the zip
+    if (zipFiles.length === 1 && pdfFiles.length === 0) {
+      handleUploadFile(zipFiles[0]);
+      return;
+    }
+
+    // Multiple PDFs: bundle them into a ZIP client-side
+    if (pdfFiles.length === 0) {
+      showToast("No PDF or ZIP files found in the selection.", "error");
+      return;
+    }
+
+    setUploading(true);
+    setUploadResult(null);
+
+    try {
+      // Dynamically import JSZip for client-side zipping
+      const JSZip = (await import("jszip")).default;
+      const zip = new JSZip();
+
+      for (const pdf of pdfFiles) {
+        const buffer = await pdf.arrayBuffer();
+        zip.file(pdf.name, buffer);
+      }
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const zipFile = new File([zipBlob], "invoices_bundle.zip", { type: "application/zip" });
+
+      showToast(`Bundled ${pdfFiles.length} PDFs into a ZIP. Uploading…`, "success");
+
+      const formData = new FormData();
+      formData.append("file", zipFile);
+
+      const uploadUrl = BACKEND_URL
+        ? `${BACKEND_URL}/upload-invoices`
+        : "/api/reports/invoices/upload";
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        showToast(data.error || "Failed to upload invoices", "error");
+        setUploading(false);
+        return;
+      }
+
+      showToast(data.message || "Upload started, processing in background…", "success");
+      await pollUploadStatus();
+    } catch {
+      showToast("Network error, could not upload invoices", "error");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await handleMultipleFiles(files);
+    e.currentTarget.value = "";
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleUploadFile(file);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleMultipleFiles(files);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -501,7 +579,7 @@ export default function ReportsPage() {
                   </div>
                 </div>
 
-                {/* --- ZIP Upload Area --- */}
+                {/* --- Upload Area --- */}
                 <div
                   onDrop={handleDrop}
                   onDragOver={handleDragOver}
@@ -521,42 +599,67 @@ export default function ReportsPage() {
                     ref={fileInputRef}
                     type="file"
                     accept=".zip,.pdf"
+                    multiple
                     style={{ display: "none" }}
                     onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleUploadFile(f);
+                      const files = e.target.files;
+                      if (files && files.length > 0) handleMultipleFiles(files);
                       e.currentTarget.value = "";
                     }}
+                  />
+                  <input
+                    ref={folderInputRef}
+                    type="file"
+                    /* @ts-expect-error webkitdirectory is non-standard */
+                    webkitdirectory=""
+                    directory=""
+                    multiple
+                    style={{ display: "none" }}
+                    onChange={handleFolderSelect}
                   />
                   {uploading ? (
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                       <span className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
                       <span style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                        {(uploadResult as UploadResult & { message?: string })?.message || "Extracting invoices from PDFs\u2026"}
+                        {(uploadResult as UploadResult & { message?: string })?.message || "Extracting invoices from PDFs…"}
                       </span>
                     </div>
                   ) : (
                     <>
                       <div style={{ fontSize: 28, marginBottom: 6 }}>📤</div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                        Drop a ZIP or PDF file here to insert invoices
+                        Drop files, ZIP, or a folder here to insert invoices
                       </div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                        Import a single invoice PDF or a ZIP containing multiple invoice PDFs into PowerBISales.
+                        Supports single/multiple PDFs, ZIP archives, or a folder of invoices.
+                        All PDFs are read, processed, and added to the database.
                       </div>
-                      <button
-                        type="button"
-                        className="btn btn-primary btn-sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          fileInputRef.current?.click();
-                        }}
-                        style={{ marginTop: 14, minWidth: 170 }}
-                      >
-                        Insert Invoice File
-                      </button>
+                      <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 14 }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fileInputRef.current?.click();
+                          }}
+                          style={{ minWidth: 130 }}
+                        >
+                          📄 Insert File(s)
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            folderInputRef.current?.click();
+                          }}
+                          style={{ minWidth: 130 }}
+                        >
+                          📁 Insert Folder
+                        </button>
+                      </div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
-                        You can also click anywhere in this box.
+                        You can also drag &amp; drop anywhere in this box.
                       </div>
                     </>
                   )}

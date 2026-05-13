@@ -73,7 +73,9 @@ export function PasswordGate({
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}>
       <div className="card" style={{ padding: 40, textAlign: "center", maxWidth: 400, width: "100%" }}>
         <h2 style={{ marginBottom: 20 }}>{title}</h2>
-        <p style={{ marginBottom: 20, color: "var(--text-muted)" }}>This page requires a password.</p>
+        <p style={{ marginBottom: 20, color: "var(--text-muted)" }}>
+          This page requires {role === "admin" ? "an admin" : "a user"} password.
+        </p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -92,7 +94,7 @@ export function PasswordGate({
             style={{ width: "100%", marginBottom: 16 }}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter password..."
+            placeholder={role === "admin" ? "Enter admin password..." : "Enter user password..."}
             autoFocus
           />
           <button type="submit" className="btn btn-primary" style={{ width: "100%" }}>
