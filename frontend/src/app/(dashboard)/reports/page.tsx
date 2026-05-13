@@ -508,6 +508,7 @@ export default function ReportsPage() {
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) handleUploadFile(f);
+                      e.currentTarget.value = "";
                     }}
                   />
                   {uploading ? (
@@ -521,10 +522,24 @@ export default function ReportsPage() {
                     <>
                       <div style={{ fontSize: 28, marginBottom: 6 }}>📤</div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>
-                        Drop a ZIP or PDF file here or click to upload
+                        Drop a ZIP or PDF file here to insert invoices
                       </div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                        Upload a single invoice PDF or a ZIP containing multiple invoice PDFs. Data will be extracted and inserted into PowerBISales.
+                        Import a single invoice PDF or a ZIP containing multiple invoice PDFs into PowerBISales.
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fileInputRef.current?.click();
+                        }}
+                        style={{ marginTop: 14, minWidth: 170 }}
+                      >
+                        Insert Invoice File
+                      </button>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
+                        You can also click anywhere in this box.
                       </div>
                     </>
                   )}
@@ -558,7 +573,7 @@ export default function ReportsPage() {
                         Processing…
                       </>
                     ) : (
-                      "📂 Process Folder"
+                      "Insert Folder"
                     )}
                   </button>
                 </div>
@@ -579,6 +594,11 @@ export default function ReportsPage() {
                       fontSize: 12,
                     }}
                   >
+                    {uploadResult.message && (
+                      <div style={{ gridColumn: "1 / -1", color: "var(--text)", fontWeight: 600 }}>
+                        {uploadResult.message}
+                      </div>
+                    )}
                     <div>
                       <div style={{ color: "var(--text-muted)", marginBottom: 2 }}>Total PDFs</div>
                       <div style={{ fontWeight: 700 }}>{uploadResult.totalPdfs}</div>
