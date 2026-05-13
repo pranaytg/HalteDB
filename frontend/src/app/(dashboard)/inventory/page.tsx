@@ -6,6 +6,8 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from "recharts";
 
+import { PasswordGate, usePageAccess } from "@/lib/pageAccess";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 interface WarehouseSummary {
@@ -80,6 +82,7 @@ interface InboundShipmentRow {
 const COLORS = ["#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#14b8a6"];
 
 export default function InventoryPage() {
+  const { checkedAccess, isAuthorized, authorize } = usePageAccess("user");
   const [activeTab, setActiveTab] = useState<"overview" | "warehouse" | "predictions">("overview");
   const [overall, setOverall] = useState<SkuInventory[]>([]);
   const [warehouseSummary, setWarehouseSummary] = useState<WarehouseSummary[]>([]);
@@ -95,6 +98,7 @@ export default function InventoryPage() {
   const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
+    if (!isAuthorized) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     Promise.all([
@@ -114,7 +118,7 @@ export default function InventoryPage() {
         setInboundShipments(inb.shipments || []);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [isAuthorized]);
 
   const filteredOverall = overall.filter((item) =>
     item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -150,6 +154,19 @@ export default function InventoryPage() {
   warehouseList.forEach(w => {
     maxPerWarehouse[w] = Math.max(...Object.values(pivotData).map(r => r.warehouses[w] || 0), 1);
   });
+
+  if (!checkedAccess) {
+    return (
+      <div className="loading-spinner">
+        <div className="spinner" />
+        Checking access...
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return <PasswordGate role="user" onUnlock={authorize} />;
+  }
 
   if (loading) {
     return (

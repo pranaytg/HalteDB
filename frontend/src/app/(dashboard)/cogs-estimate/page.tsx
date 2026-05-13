@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 
+import { PasswordGate, usePageAccess } from "@/lib/pageAccess";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 interface EstItem {
@@ -68,8 +70,7 @@ export default function CogsEstimatePage() {
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   // Security
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
+  const { checkedAccess, isAuthorized, authorize } = usePageAccess("admin");
 
   // Add form
   const [showAdd, setShowAdd] = useState(false);
@@ -358,32 +359,14 @@ export default function CogsEstimatePage() {
     return matchesBrand && matchesCategory && matchesSearch;
   });
 
+  if (!checkedAccess) {
+    return (<div className="loading-spinner"><div className="spinner" />Checking access...</div>);
+  }
+
   if (!isAuthorized) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div className="card" style={{ padding: 40, textAlign: 'center', maxWidth: 400, width: '100%' }}>
-          <h2 style={{ marginBottom: 20 }}>Security Check</h2>
-          <p style={{ marginBottom: 20, color: 'var(--text-muted)' }}>This page requires a password.</p>
-          <form onSubmit={e => {
-            e.preventDefault();
-            if (passwordInput === "OnlyForRamanSir") {
-              setIsAuthorized(true);
-            } else {
-              showToast("Incorrect password", "error");
-            }
-          }}>
-            <input 
-              type="password" 
-              className="filter-input" 
-              style={{ width: '100%', marginBottom: 16 }}
-              value={passwordInput}
-              onChange={e => setPasswordInput(e.target.value)}
-              placeholder="Enter password..."
-              autoFocus
-            />
-            <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Unlock Dashboard</button>
-          </form>
-        </div>
+      <div>
+        <PasswordGate role="admin" onUnlock={authorize} onInvalid={() => showToast("Incorrect password", "error")} />
         {toast && (<div className={`toast toast-${toast.type}`}>{toast.msg}</div>)}
       </div>
     );

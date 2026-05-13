@@ -6,6 +6,8 @@ import {
   Tooltip, ResponsiveContainer, Legend, Cell,
 } from "recharts";
 
+import { PasswordGate, usePageAccess } from "@/lib/pageAccess";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 // ── Formatters ──────────────────────────────────────────────
@@ -156,6 +158,7 @@ export default function ProfitabilityPage() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [skuData, setSkuData] = useState<SkuRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [downloadingReport, setDownloadingReport] = useState(false);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
   const LIMIT = 50;
@@ -171,9 +174,7 @@ export default function ProfitabilityPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
 
   // ── Security ──
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
-  const [authError, setAuthError] = useState("");
+  const { checkedAccess, isAuthorized, authorize } = usePageAccess("admin");
 
   // ── Amazon Finance manual sync ──
   const [financeSyncing, setFinanceSyncing] = useState(false);
@@ -285,6 +286,37 @@ export default function ProfitabilityPage() {
     }
   };
 
+  const downloadExcelReport = async () => {
+    if (downloadingReport) return;
+    setDownloadingReport(true);
+    try {
+      const p = buildParams();
+      const res = await fetch(`/api/profitability/report${p.toString() ? `?${p}` : ""}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setFinanceSyncMsg(err.error || "Failed to download profitability report.");
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      const disposition = res.headers.get("Content-Disposition") || "";
+      link.download =
+        disposition.match(/filename="([^"]+)"/)?.[1] ||
+        `haltedb_profitability_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setFinanceSyncMsg(`Failed to download report: ${(e as Error).message}`);
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
   const applyFilters = () => {
     setPage(0);
     fetchAll();
@@ -340,35 +372,18 @@ export default function ProfitabilityPage() {
 
   const totalPages = Math.ceil(total / LIMIT);
 
+  if (!checkedAccess) {
+    return (
+      <div className="loading-spinner">
+        <div className="spinner" />
+        Checking access...
+      </div>
+    );
+  }
+
   if (!isAuthorized) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div className="card" style={{ padding: 40, textAlign: 'center', maxWidth: 400, width: '100%' }}>
-          <h2 style={{ marginBottom: 20 }}>Security Check</h2>
-          <p style={{ marginBottom: 20, color: 'var(--text-muted)' }}>This page requires a password.</p>
-          <form onSubmit={e => {
-            e.preventDefault();
-            if (passwordInput === "OnlyForRamanSir") {
-              setIsAuthorized(true);
-              setAuthError("");
-            } else {
-              setAuthError("Incorrect password");
-            }
-          }}>
-            <input
-              type="password"
-              className="filter-input"
-              style={{ width: '100%', marginBottom: 16 }}
-              value={passwordInput}
-              onChange={e => setPasswordInput(e.target.value)}
-              placeholder="Enter password..."
-              autoFocus
-            />
-            <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>Unlock Dashboard</button>
-            {authError && <div style={{ marginTop: 12, color: 'var(--danger)' }}>{authError}</div>}
-          </form>
-        </div>
-      </div>
+      <PasswordGate role="admin" onUnlock={authorize} />
     );
   }
 
@@ -406,6 +421,11 @@ export default function ProfitabilityPage() {
             {financeSyncing
               ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Syncing Amazon Finance...</>
               : "↻ Sync Amazon Finance (15d)"}
+          </button>
+          <button className="btn btn-primary" onClick={downloadExcelReport} disabled={downloadingReport}>
+            {downloadingReport
+              ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Preparing Excel...</>
+              : "Download Excel"}
           </button>
           <button className="btn btn-secondary" onClick={fetchAll} disabled={loading}>
             {loading ? <><span className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} /> Refreshing...</> : "↻ Refresh"}

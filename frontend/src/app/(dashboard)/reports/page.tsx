@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { PasswordGate, usePageAccess } from "@/lib/pageAccess";
+
 // Direct backend URL for large uploads (bypasses Vercel 4.5MB body limit).
 // Set NEXT_PUBLIC_BACKEND_URL in Vercel env vars to your Render URL.
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
@@ -93,6 +95,7 @@ const REPORT_CARDS: ReportCard[] = [
 ];
 
 export default function ReportsPage() {
+  const { checkedAccess, isAuthorized, authorize } = usePageAccess("user");
   const [downloading, setDownloading] = useState<string | null>(null);
   const [syncingInvoices, setSyncingInvoices] = useState(false);
   const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatus | null>(null);
@@ -127,8 +130,9 @@ export default function ReportsPage() {
   };
 
   useEffect(() => {
+    if (!isAuthorized) return;
     fetchInvoiceStatus();
-  }, []);
+  }, [isAuthorized]);
 
   const updateConfig = (type: string, key: string, value: string) => {
     setConfigs((prev) => ({
@@ -338,6 +342,19 @@ export default function ReportsPage() {
       setUploading(false);
     }
   };
+
+  if (!checkedAccess) {
+    return (
+      <div className="loading-spinner">
+        <div className="spinner" />
+        Checking access...
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return <PasswordGate role="user" onUnlock={authorize} />;
+  }
 
   return (
     <div>

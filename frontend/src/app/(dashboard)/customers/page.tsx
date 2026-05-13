@@ -6,6 +6,8 @@ import {
   Tooltip, ResponsiveContainer, AreaChart, Area, Legend,
 } from "recharts";
 
+import { PasswordGate, usePageAccess } from "@/lib/pageAccess";
+
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 interface Customer {
@@ -36,6 +38,7 @@ const COLORS = [
 ];
 
 export default function CustomersPage() {
+  const { checkedAccess, isAuthorized, authorize } = usePageAccess("user");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -73,9 +76,10 @@ export default function CustomersPage() {
   }, [search]);
 
   useEffect(() => {
+    if (!isAuthorized) return;
     const timeout = setTimeout(fetchData, 300);
     return () => clearTimeout(timeout);
-  }, [fetchData]);
+  }, [fetchData, isAuthorized]);
 
   const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,6 +160,19 @@ export default function CustomersPage() {
     const phone = customer.phone.replace(/[^0-9]/g, "");
     window.open(`sms:+${phone}?body=${encodeURIComponent(message || `Hi ${customer.name}, this is Halte.`)}`, "_blank");
   };
+
+  if (!checkedAccess) {
+    return (
+      <div className="loading-spinner">
+        <div className="spinner" />
+        Checking access...
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return <PasswordGate role="user" onUnlock={authorize} />;
+  }
 
   if (loading) {
     return (
