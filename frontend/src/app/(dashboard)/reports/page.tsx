@@ -249,116 +249,137 @@ export default function ReportsPage() {
     showToast("Upload timed out. Check status later.", "error");
   };
 
-  const handleUploadFile = async (file: File) => {
-    const name = file.name.toLowerCase();
-    if (!name.endsWith(".zip") && !name.endsWith(".pdf")) {
-      showToast("Please upload a .zip or .pdf file containing invoice(s).", "error");
+  // ── Chunked upload: send each PDF one-by-one via /upload-invoice-single ──
+  // This keeps every request under Vercel's 4.5 MB body-size limit.
+
+  const singleUploadUrl = "/api/reports/invoices/upload-single";
+
+  /** Send one PDF, return the result object. */
+  const sendSinglePdf = async (file: File): Promise<{
+    status: string;
+    inserted: number;
+    skipped: number;
+    errors: number;
+    errorDetails?: { file: string; error: string }[];
+    message: string;
+  }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(singleUploadUrl, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || data.detail || "Upload failed");
+    return data;
+  };
+
+  /** Core: process an array of PDF Files one at a time, updating progress. */
+  const processFilesSequentially = async (pdfFiles: File[]) => {
+    if (pdfFiles.length === 0) {
+      showToast("No PDF files found in the selection.", "error");
       return;
     }
 
     setUploading(true);
-    setUploadResult(null);
+    const aggregate: UploadResult = {
+      status: "processing",
+      message: "",
+      totalPdfs: pdfFiles.length,
+      extracted: 0,
+      inserted: 0,
+      skipped: 0,
+      errors: 0,
+      errorDetails: [],
+    };
+    setUploadResult({ ...aggregate, message: `Processing 0 / ${pdfFiles.length} PDFs…` });
 
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
+    for (let i = 0; i < pdfFiles.length; i++) {
+      const file = pdfFiles[i];
+      aggregate.message = `Processing ${i + 1} / ${pdfFiles.length}: ${file.name}`;
+      setUploadResult({ ...aggregate });
 
-      // Upload directly to the backend (bypasses Vercel 4.5MB limit)
-      const uploadUrl = BACKEND_URL
-        ? `${BACKEND_URL}/upload-invoices`
-        : "/api/reports/invoices/upload";
-      const res = await fetch(uploadUrl, {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        showToast(data.error || "Failed to upload invoices", "error");
-        setUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
-        return;
+      try {
+        const result = await sendSinglePdf(file);
+        aggregate.extracted += 1;
+        aggregate.inserted += result.inserted;
+        aggregate.skipped += result.skipped;
+        aggregate.errors += result.errors;
+        if (result.errorDetails?.length) {
+          aggregate.errorDetails = [
+            ...(aggregate.errorDetails || []),
+            ...result.errorDetails,
+          ].slice(0, 20);
+        }
+      } catch (err) {
+        aggregate.errors += 1;
+        aggregate.errorDetails = [
+          ...(aggregate.errorDetails || []),
+          { file: file.name, error: err instanceof Error ? err.message : String(err) },
+        ].slice(0, 20);
       }
-
-      showToast(data.message || "Upload started, processing in background…", "success");
-      await pollUploadStatus();
-    } catch {
-      showToast("Network error, could not upload invoices", "error");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
+
+    aggregate.status = "completed";
+    aggregate.message = `Done: ${aggregate.inserted} inserted, ${aggregate.skipped} duplicates, ${aggregate.errors} errors out of ${pdfFiles.length} PDFs.`;
+    setUploadResult({ ...aggregate });
+    showToast(aggregate.message, aggregate.errors > 0 && aggregate.inserted === 0 ? "error" : "success");
+    fetchInvoiceStatus();
+    setUploading(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  /** Handle file(s) selected or dropped — ZIPs are extracted client-side first. */
   const handleMultipleFiles = async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
-    const pdfFiles = fileArray.filter(f => f.name.toLowerCase().endsWith(".pdf"));
-    const zipFiles = fileArray.filter(f => f.name.toLowerCase().endsWith(".zip"));
+    const pdfFiles = fileArray.filter((f) => f.name.toLowerCase().endsWith(".pdf"));
+    const zipFiles = fileArray.filter((f) => f.name.toLowerCase().endsWith(".zip"));
 
-    // If a single file (zip or pdf), use the existing handler
-    if (fileArray.length === 1) {
-      handleUploadFile(fileArray[0]);
-      return;
-    }
-
-    // If there's exactly one zip and no pdfs, upload the zip
-    if (zipFiles.length === 1 && pdfFiles.length === 0) {
-      handleUploadFile(zipFiles[0]);
-      return;
-    }
-
-    // Multiple PDFs: bundle them into a ZIP client-side
-    if (pdfFiles.length === 0) {
+    if (pdfFiles.length === 0 && zipFiles.length === 0) {
       showToast("No PDF or ZIP files found in the selection.", "error");
       return;
     }
 
-    setUploading(true);
-    setUploadResult(null);
+    // Collect all PDFs — extract from ZIPs client-side
+    const allPdfs: File[] = [...pdfFiles];
 
-    try {
-      // Dynamically import JSZip for client-side zipping
-      const JSZip = (await import("jszip")).default;
-      const zip = new JSZip();
-
-      for (const pdf of pdfFiles) {
-        const buffer = await pdf.arrayBuffer();
-        zip.file(pdf.name, buffer);
-      }
-
-      const zipBlob = await zip.generateAsync({ type: "blob" });
-      const zipFile = new File([zipBlob], "invoices_bundle.zip", { type: "application/zip" });
-
-      showToast(`Bundled ${pdfFiles.length} PDFs into a ZIP. Uploading…`, "success");
-
-      const formData = new FormData();
-      formData.append("file", zipFile);
-
-      const uploadUrl = BACKEND_URL
-        ? `${BACKEND_URL}/upload-invoices`
-        : "/api/reports/invoices/upload";
-      const res = await fetch(uploadUrl, {
-        method: "POST",
-        body: formData,
+    if (zipFiles.length > 0) {
+      setUploading(true);
+      setUploadResult({
+        status: "processing",
+        message: `Extracting PDFs from ${zipFiles.length} ZIP file(s)…`,
+        totalPdfs: 0,
+        extracted: 0,
+        inserted: 0,
+        skipped: 0,
+        errors: 0,
       });
 
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        showToast(data.error || "Failed to upload invoices", "error");
+      try {
+        const JSZip = (await import("jszip")).default;
+        for (const zipFile of zipFiles) {
+          const zipData = await zipFile.arrayBuffer();
+          const zip = await JSZip.loadAsync(zipData);
+          const pdfEntries = Object.entries(zip.files).filter(
+            ([name, entry]) => !entry.dir && name.toLowerCase().endsWith(".pdf"),
+          );
+          for (const [name, entry] of pdfEntries) {
+            const blob = await entry.async("blob");
+            const basename = name.split("/").pop() || name;
+            allPdfs.push(new File([blob], basename, { type: "application/pdf" }));
+          }
+        }
+      } catch (err) {
+        showToast(
+          `Failed to read ZIP: ${err instanceof Error ? err.message : String(err)}`,
+          "error",
+        );
         setUploading(false);
         return;
       }
-
-      showToast(data.message || "Upload started, processing in background…", "success");
-      await pollUploadStatus();
-    } catch {
-      showToast("Network error, could not upload invoices", "error");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
+
+    await processFilesSequentially(allPdfs);
   };
 
   const handleFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {

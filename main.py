@@ -967,3 +967,64 @@ async def upload_invoices_from_folder(
 async def upload_invoices_status():
     """Returns the current status of the invoice upload/extraction background task."""
     return _invoice_upload_status
+
+
+@app.post("/upload-invoice-single")
+async def upload_invoice_single(file: UploadFile = File(...)):
+    """Process a single invoice PDF **synchronously** and return the result.
+
+    Designed for chunked uploads from the frontend: the client sends one PDF
+    at a time so each request stays under Vercel's 4.5 MB body-size limit.
+    No background task — the response contains the insert/skip counts directly.
+    """
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only .pdf files are accepted by this endpoint")
+
+    try:
+        temp_path, size_mb = await _save_upload_to_temp(file, ".pdf")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to read uploaded file: {exc}")
+
+    from invoice_extractor import extract_invoice_row
+
+    raw_rows: list[dict] = []
+    extraction_errors: list[dict] = []
+
+    try:
+        row = extract_invoice_row(temp_path, filename=file.filename or "invoice.pdf")
+        raw_rows.append(row)
+    except Exception as exc:
+        extraction_errors.append({"file": file.filename or "invoice.pdf", "error": str(exc)})
+    finally:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+
+    if not raw_rows:
+        return {
+            "status": "error",
+            "inserted": 0,
+            "skipped": 0,
+            "errors": len(extraction_errors),
+            "errorDetails": extraction_errors,
+            "message": f"Failed to extract: {extraction_errors[0]['error']}" if extraction_errors else "No data extracted",
+        }
+
+    try:
+        inserted, skipped = await _process_invoice_rows(raw_rows, extraction_errors)
+    except Exception as exc:
+        logger.exception("Single invoice insert failed for %s", file.filename)
+        raise HTTPException(status_code=500, detail=f"Database insert failed: {exc}")
+
+    return {
+        "status": "ok",
+        "inserted": inserted,
+        "skipped": skipped,
+        "errors": len(extraction_errors),
+        "errorDetails": extraction_errors,
+        "message": f"{file.filename}: {inserted} inserted, {skipped} duplicates",
+    }

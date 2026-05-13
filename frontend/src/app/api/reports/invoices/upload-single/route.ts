@@ -3,13 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
 export const runtime = "nodejs";
-export const maxDuration = 60; // seconds — just for the upload, processing is background
-
-// Increase the body size limit for this upload route (default is ~1MB).
-// On Vercel Free/Pro plans the hard ceiling is ~4.5MB regardless of this setting,
-// so for production use NEXT_PUBLIC_BACKEND_URL to send directly to the backend.
-export const fetchCache = "force-no-store";
-
+export const maxDuration = 30; // single PDF — should be fast
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,16 +12,16 @@ export async function POST(req: NextRequest) {
 
     if (!file || !(file instanceof Blob)) {
       return NextResponse.json(
-        { error: "No file provided. Please upload a .zip or .pdf file." },
+        { error: "No file provided. Please upload a .pdf file." },
         { status: 400 },
       );
     }
 
-    // Forward the file to the backend as multipart/form-data
+    // Forward the single PDF to the backend
     const backendForm = new FormData();
     backendForm.append("file", file);
 
-    const res = await fetch(`${BACKEND_URL}/upload-invoices`, {
+    const res = await fetch(`${BACKEND_URL}/upload-invoice-single`, {
       method: "POST",
       body: backendForm,
     });
@@ -36,14 +30,14 @@ export async function POST(req: NextRequest) {
 
     if (!res.ok) {
       return NextResponse.json(
-        { error: data.detail || data.error || "Failed to upload invoices" },
+        { error: data.detail || data.error || "Failed to process invoice" },
         { status: res.status || 500 },
       );
     }
 
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Invoice upload proxy error:", error);
+    console.error("Single invoice upload proxy error:", error);
     return NextResponse.json(
       { error: "Failed to reach backend upload endpoint" },
       { status: 502 },
