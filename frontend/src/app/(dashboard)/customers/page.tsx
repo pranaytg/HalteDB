@@ -24,6 +24,7 @@ interface Customer {
   total_spent: number;
   last_order_date: string | null;
   notes: string | null;
+  channel: string | null;
 }
 
 const fmtCur = (v: number) =>
@@ -43,13 +44,14 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [channelFilter, setChannelFilter] = useState("");
   const [activeTab, setActiveTab] = useState<"customers" | "analytics">("customers");
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
 
   // Add/Edit customer
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", state: "", pincode: "", notes: "" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", city: "", state: "", pincode: "", channel: "manual", notes: "" });
 
   // Messaging
   const [messageCustomer, setMessageCustomer] = useState<Customer | null>(null);
@@ -64,6 +66,7 @@ export default function CustomersPage() {
     try {
       const params = new URLSearchParams();
       if (search) params.set("search", search);
+      if (channelFilter) params.set("channel", channelFilter);
       const res = await fetch(`/api/customers?${params}`);
       const d = await res.json();
       if (d.error) setError(d.error);
@@ -73,7 +76,7 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, channelFilter]);
 
   useEffect(() => {
     if (!isAuthorized) return;
@@ -93,7 +96,7 @@ export default function CustomersPage() {
       if (!res.ok) { const d = await res.json(); showToast(d.error || "Failed", "error"); return; }
       showToast("Customer added", "success");
       setShowAddForm(false);
-      setForm({ name: "", phone: "", email: "", address: "", city: "", state: "", pincode: "", notes: "" });
+      setForm({ name: "", phone: "", email: "", address: "", city: "", state: "", pincode: "", channel: "manual", notes: "" });
       fetchData();
     } catch { showToast("Network error", "error"); }
   };
@@ -137,6 +140,7 @@ export default function CustomersPage() {
       city: c.city || "",
       state: c.state || "",
       pincode: c.pincode || "",
+      channel: c.channel || "manual",
       notes: c.notes || "",
     });
   };
@@ -197,6 +201,8 @@ export default function CustomersPage() {
   const byState: any[] = data?.byState || [];
   const repeatLocations: any[] = data?.repeatLocations || [];
   const newLocationsTrend: any[] = data?.newLocationsTrend || [];
+  const byChannel: any[] = data?.byChannel || [];
+  const channels: string[] = data?.filters?.channels || [];
 
   const filteredCustomers = customers.filter(c =>
     !search ||
@@ -205,7 +211,8 @@ export default function CustomersPage() {
     c.phone?.includes(search) ||
     c.email?.toLowerCase().includes(search.toLowerCase()) ||
     c.city?.toLowerCase().includes(search.toLowerCase()) ||
-    c.state?.toLowerCase().includes(search.toLowerCase())
+    c.state?.toLowerCase().includes(search.toLowerCase()) ||
+    c.channel?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -219,13 +226,14 @@ export default function CustomersPage() {
       </div>
 
       {/* KPI Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 }}>
         {[
           { label: "Total Customers", value: fmtNum(kpi.total_customers || kpi.unique_postal_codes || 0), color: "#6366f1", icon: "P" },
           { label: "Total Orders", value: fmtNum(kpi.total_orders || 0), color: "#f59e0b", icon: "O" },
           { label: "Total Revenue", value: fmtCur(kpi.total_revenue || 0), color: "#10b981", icon: "R" },
           { label: "Unique Cities", value: fmtNum(kpi.unique_cities || 0), color: "#8b5cf6", icon: "C" },
           { label: "Unique States", value: fmtNum(kpi.unique_states || 0), color: "#06b6d4", icon: "S" },
+          { label: "Channels", value: fmtNum(channels.length || 0), color: "#ec4899", icon: "H" },
         ].map((card) => (
           <div key={card.label} className="card" style={{ padding: "16px 20px", borderLeft: `4px solid ${card.color}`, position: "relative" }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>
@@ -261,6 +269,17 @@ export default function CustomersPage() {
               onChange={e => setSearch(e.target.value)}
               style={{ flex: 1, minWidth: 250 }}
             />
+            <select
+              className="filter-input"
+              value={channelFilter}
+              onChange={(e) => setChannelFilter(e.target.value)}
+              style={{ minWidth: 220 }}
+            >
+              <option value="">All channels</option>
+              {channels.map((channel) => (
+                <option key={channel} value={channel}>{channel}</option>
+              ))}
+            </select>
             <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
               {filteredCustomers.length} customer{filteredCustomers.length !== 1 ? "s" : ""}
             </span>
@@ -282,6 +301,7 @@ export default function CustomersPage() {
                   { key: "city", label: "City", width: 130 },
                   { key: "state", label: "State", width: 140 },
                   { key: "pincode", label: "Pincode", width: 100 },
+                  { key: "channel", label: "Channel", width: 180 },
                   { key: "notes", label: "Notes", width: 200 },
                 ].map(f => (
                   <div className="filter-group" key={f.key}>
@@ -359,6 +379,7 @@ export default function CustomersPage() {
                       <th>Email</th>
                       <th>City</th>
                       <th>State</th>
+                      <th>Channel</th>
                       <th>Pincode</th>
                       <th>Orders</th>
                       <th>Total Spent</th>
@@ -389,6 +410,7 @@ export default function CustomersPage() {
                         </td>
                         <td>{c.city || "--"}</td>
                         <td style={{ color: "var(--text-muted)" }}>{c.state || "--"}</td>
+                        <td style={{ fontSize: 11, color: "var(--accent)" }}>{c.channel || "--"}</td>
                         <td style={{ fontFamily: "monospace" }}>{c.pincode || "--"}</td>
                         <td style={{ fontWeight: 700 }}>{c.total_orders || 0}</td>
                         <td style={{ fontWeight: 600, color: "var(--success)" }}>{fmtCur(c.total_spent || 0)}</td>

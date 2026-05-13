@@ -10,13 +10,13 @@ const ADMIN_KEY = "haltedb:page-access:admin";
 const USER_KEY = "haltedb:page-access:user";
 
 function storageAvailable() {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+  return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
 }
 
 function hasStoredAccess(role: PageAccessRole) {
   if (!storageAvailable()) return false;
-  if (window.localStorage.getItem(ADMIN_KEY) === "1") return true;
-  return role === "user" && window.localStorage.getItem(USER_KEY) === "1";
+  if (window.sessionStorage.getItem(ADMIN_KEY) === "1") return true;
+  return role === "user" && window.sessionStorage.getItem(USER_KEY) === "1";
 }
 
 export function usePageAccess(role: PageAccessRole) {
@@ -43,12 +43,12 @@ export function usePageAccess(role: PageAccessRole) {
 export function unlockPageAccess(role: PageAccessRole, password: string) {
   const trimmed = password.trim();
   if (trimmed === ADMIN_PASSWORD) {
-    if (storageAvailable()) window.localStorage.setItem(ADMIN_KEY, "1");
+    if (storageAvailable()) window.sessionStorage.setItem(ADMIN_KEY, "1");
     return true;
   }
 
   if (role === "user" && trimmed === USER_PASSWORD) {
-    if (storageAvailable()) window.localStorage.setItem(USER_KEY, "1");
+    if (storageAvailable()) window.sessionStorage.setItem(USER_KEY, "1");
     return true;
   }
 

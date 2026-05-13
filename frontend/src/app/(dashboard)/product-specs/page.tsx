@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, useCallback } from "react";
+import { PasswordGate, usePageAccess } from "@/lib/pageAccess";
 
 interface ProductSpec {
   sku: string;
@@ -47,6 +48,7 @@ const fmtDate = (d: string | null | undefined) => {
 };
 
 export default function ProductSpecsPage() {
+  const { checkedAccess, isAuthorized, authorize } = usePageAccess("user");
   const [specs, setSpecs] = useState<ProductSpec[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<string | null>(null);
@@ -222,6 +224,19 @@ export default function ProductSpecsPage() {
       setTimeout(() => setToast(null), 3000);
     }
   };
+
+  if (!checkedAccess) {
+    return (
+      <div className="loading-spinner">
+        <div className="spinner" />
+        Checking access...
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return <PasswordGate role="user" onUnlock={authorize} />;
+  }
 
   return (
     <div style={{ padding: "24px 32px", maxWidth: 1500 }}>

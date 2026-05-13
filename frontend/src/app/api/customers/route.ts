@@ -7,6 +7,7 @@ export async function GET(req: NextRequest) {
     const search = searchParams.get("search") || "";
     const state = searchParams.get("state") || "";
     const city = searchParams.get("city") || "";
+    const channel = searchParams.get("channel") || "";
 
     // Build filter conditions
     const conditions: string[] = [];
@@ -26,6 +27,11 @@ export async function GET(req: NextRequest) {
     if (city) {
       conditions.push(`LOWER(c.city) = LOWER($${idx})`);
       params.push(city);
+      idx++;
+    }
+    if (channel) {
+      conditions.push(`LOWER(c.channel) = LOWER($${idx})`);
+      params.push(channel);
       idx++;
     }
 
@@ -66,6 +72,19 @@ export async function GET(req: NextRequest) {
       const citiesResult = await pool.query(
         `SELECT DISTINCT city FROM customers WHERE city IS NOT NULL ORDER BY city`
       );
+      const channelsResult = await pool.query(
+        `SELECT DISTINCT channel FROM customers WHERE channel IS NOT NULL ORDER BY channel`
+      );
+      const byChannelResult = await pool.query(`
+        SELECT
+          channel,
+          COUNT(*) AS customer_count,
+          COALESCE(SUM(total_orders), 0) AS order_count,
+          COALESCE(SUM(total_spent), 0) AS total_revenue
+        FROM customers
+        GROUP BY channel
+        ORDER BY customer_count DESC
+      `);
 
       // Order-based analytics (keep existing analytics)
       const topPostalResult = await pool.query(`
@@ -107,9 +126,11 @@ export async function GET(req: NextRequest) {
         byState: byStateResult.rows,
         repeatLocations: repeatResult.rows,
         newLocationsTrend: newLocationsTrendResult.rows,
+        byChannel: byChannelResult.rows,
         filters: {
           states: statesResult.rows.map((r: { state: string }) => r.state),
           cities: citiesResult.rows.map((r: { city: string }) => r.city),
+          channels: channelsResult.rows.map((r: { channel: string }) => r.channel),
         },
       });
     }
@@ -161,7 +182,8 @@ export async function GET(req: NextRequest) {
       byState: byStateResult.rows,
       repeatLocations: repeatResult.rows,
       newLocationsTrend: newLocationsTrendResult.rows,
-      filters: { states: [], cities: [] },
+      byChannel: [],
+      filters: { states: [], cities: [], channels: [] },
     });
   } catch (error) {
     console.error("Customers API error:", error);
@@ -172,7 +194,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, phone, email, address, city, state, pincode, notes } = body;
+    const { name, phone, email, address, city, state, pincode, notes, channel } = body;
 
     if (!name) {
       return NextResponse.json({ error: "Customer name is required" }, { status: 400 });
@@ -184,9 +206,9 @@ export async function POST(req: NextRequest) {
     const customerId = `CUST-${String(nextId).padStart(4, "0")}`;
 
     const result = await pool.query(
-      `INSERT INTO customers (customer_id, name, phone, email, address, city, state, pincode, notes)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [customerId, name, phone || null, email || null, address || null, city || null, state || null, pincode || null, notes || null]
+      `INSERT INTO customers (customer_id, name, phone, email, address, city, state, pincode, notes, channel)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [customerId, name, phone || null, email || null, address || null, city || null, state || null, pincode || null, notes || null, channel || "manual"]
     );
 
     return NextResponse.json({ customer: result.rows[0] });
@@ -199,16 +221,16 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { customer_id, name, phone, email, address, city, state, pincode, notes } = body;
+    const { customer_id, name, phone, email, address, city, state, pincode, notes, channel } = body;
 
     if (!customer_id) {
       return NextResponse.json({ error: "Customer ID is required" }, { status: 400 });
     }
 
     const result = await pool.query(
-      `UPDATE customers SET name=$2, phone=$3, email=$4, address=$5, city=$6, state=$7, pincode=$8, notes=$9, updated_at=NOW()
+      `UPDATE customers SET name=$2, phone=$3, email=$4, address=$5, city=$6, state=$7, pincode=$8, notes=$9, channel=$10, updated_at=NOW()
        WHERE customer_id=$1 RETURNING *`,
-      [customer_id, name, phone || null, email || null, address || null, city || null, state || null, pincode || null, notes || null]
+      [customer_id, name, phone || null, email || null, address || null, city || null, state || null, pincode || null, notes || null, channel || "manual"]
     );
 
     if (result.rowCount === 0) {

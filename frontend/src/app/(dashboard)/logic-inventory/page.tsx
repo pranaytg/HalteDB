@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PasswordGate, usePageAccess } from "@/lib/pageAccess";
 
 type Toast = { msg: string; type: "success" | "error" };
 
@@ -89,6 +90,7 @@ function isSkuColumn(column: LogicInventoryColumn) {
 }
 
 export default function LogicInventoryPage() {
+  const { checkedAccess, isAuthorized, authorize } = usePageAccess("user");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploads, setUploads] = useState<LogicInventoryUpload[]>([]);
   const [activeUpload, setActiveUpload] = useState<LogicInventoryUpload | null>(null);
@@ -324,6 +326,19 @@ export default function LogicInventoryPage() {
       setDeletingRowId(null);
     }
   };
+
+  if (!checkedAccess) {
+    return (
+      <div className="loading-spinner">
+        <div className="spinner" />
+        Checking access...
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return <PasswordGate role="user" onUnlock={authorize} />;
+  }
 
   if (loading && !activeUpload) {
     return (
