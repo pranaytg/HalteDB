@@ -19,6 +19,8 @@ from crud import (
     get_sync_meta,
     update_orders_sync_time,
     update_inventory_sync_time,
+    update_inbound_shipments_sync_time,
+    update_inbound_shipments_sync_error,
 )
 from shiprocket import (
     find_cheapest,
@@ -237,6 +239,18 @@ def _parse_booked_date(shipment_name: str | None):
 
 
 async def run_inbound_shipments_sync(session: AsyncSession, lookback_days: int = 90):
+    try:
+        return await _run_inbound_shipments_sync(session, lookback_days)
+    except Exception as exc:
+        await session.rollback()
+        try:
+            await update_inbound_shipments_sync_error(session, str(exc))
+        except Exception:
+            logger.exception("Failed to record inbound shipments sync error")
+        raise
+
+
+async def _run_inbound_shipments_sync(session: AsyncSession, lookback_days: int = 90):
     """Pulls active FBA inbound shipments (last `lookback_days` of activity) into
     the `inbound_shipments` table. Independent from the existing inventory sync."""
     endpoint = os.getenv("SP_API_ENDPOINT", "").strip('"').strip("'")
@@ -250,7 +264,8 @@ async def run_inbound_shipments_sync(session: AsyncSession, lookback_days: int =
     access_token = await get_amazon_access_token()
     headers = {"x-amz-access-token": access_token}
 
-    last_updated_after = (datetime.now(timezone.utc) - timedelta(days=lookback_days)).isoformat()
+    sync_started = datetime.now(timezone.utc)
+    last_updated_after = (sync_started - timedelta(days=lookback_days)).isoformat()
     statuses = "WORKING,SHIPPED,IN_TRANSIT,DELIVERED,CHECKED_IN,RECEIVING"
 
     url = f"{endpoint}/fba/inbound/v0/shipments"
@@ -305,6 +320,7 @@ async def run_inbound_shipments_sync(session: AsyncSession, lookback_days: int =
             "booked_date": _parse_booked_date(s.get("ShipmentName")),
             "ship_from_city": addr.get("City"),
             "ship_from_state": addr.get("StateOrProvinceCode"),
+            "last_synced": sync_started,
         })
 
     if batch:
@@ -314,72 +330,89 @@ async def run_inbound_shipments_sync(session: AsyncSession, lookback_days: int =
     # ── Fetch per-SKU items and aggregate into inventory.inbound_*_quantity ──
     # Uses existing inventory columns (no schema change). Buckets by shipment status:
     #   WORKING -> inbound_working_quantity
-    #   SHIPPED / IN_TRANSIT -> inbound_shipped_quantity
-    #   RECEIVING -> inbound_receiving_quantity
-    active_statuses = {"WORKING", "SHIPPED", "IN_TRANSIT", "RECEIVING"}
+    #   SHIPPED / IN_TRANSIT / DELIVERED -> inbound_shipped_quantity
+    #   CHECKED_IN / RECEIVING -> inbound_receiving_quantity
+    active_statuses = {"WORKING", "SHIPPED", "IN_TRANSIT", "DELIVERED", "CHECKED_IN", "RECEIVING"}
     active_shipments = [
         b for b in batch
         if b.get("shipment_id") and b.get("destination_fc") and b.get("shipment_status") in active_statuses
     ]
+    active_by_id = {sh["shipment_id"]: sh for sh in active_shipments}
     logger.info("Fetching items for %d active inbound shipments...", len(active_shipments))
 
     in_transit_by_sku_fc: dict[tuple[str, str], dict[str, int]] = {}
+    item_fetch_failures: list[str] = []
 
     async with httpx.AsyncClient(timeout=60.0, headers=headers) as client:
-        for sh in active_shipments:
-            sid = sh["shipment_id"]
-            fc = sh["destination_fc"]
-            status = sh["shipment_status"]
-            items_url = f"{endpoint}/fba/inbound/v0/shipments/{sid}/items"
-            next_token: str | None = None
-            while True:
-                params = {"MarketplaceId": marketplace_id}
-                if next_token:
-                    params["NextToken"] = next_token
-                    params["QueryType"] = "NEXT_TOKEN"
-                try:
-                    r = await client.get(items_url, params=params)
-                except Exception as e:
-                    logger.warning("Items fetch failed for %s: %s", sid, e)
-                    break
-                if r.status_code == 429:
-                    logger.warning("Inbound items rate-limited, sleeping 5s...")
-                    await asyncio.sleep(5)
+        items_url = f"{endpoint}/fba/inbound/v0/shipmentItems"
+        next_token: str | None = None
+        while True:
+            if next_token:
+                params = {
+                    "MarketplaceId": marketplace_id,
+                    "QueryType": "NEXT_TOKEN",
+                    "NextToken": next_token,
+                }
+            else:
+                params = {
+                    "MarketplaceId": marketplace_id,
+                    "QueryType": "DATE_RANGE",
+                    "LastUpdatedAfter": last_updated_after,
+                    "LastUpdatedBefore": sync_started.isoformat(),
+                }
+            try:
+                r = await client.get(items_url, params=params)
+            except Exception as e:
+                logger.warning("Inbound items fetch failed: %s", e)
+                item_fetch_failures.append(str(e))
+                break
+            if r.status_code == 429:
+                logger.warning("Inbound items rate-limited, sleeping 5s...")
+                await asyncio.sleep(5)
+                continue
+            if r.status_code >= 400:
+                logger.warning("Inbound items fetch HTTP %s: %s", r.status_code, r.text[:200])
+                item_fetch_failures.append(f"HTTP {r.status_code}")
+                break
+            payload = r.json().get("payload", {})
+            for it in (payload.get("ItemData") or []):
+                sh = active_by_id.get(it.get("ShipmentId"))
+                if not sh:
                     continue
-                if r.status_code >= 400:
-                    logger.warning("Items fetch HTTP %s for %s: %s", r.status_code, sid, r.text[:200])
-                    break
-                payload = r.json().get("payload", {})
-                for it in (payload.get("ItemData") or []):
-                    sku = it.get("SellerSKU")
-                    if not sku:
-                        continue
-                    qty_remaining = max(
-                        0,
-                        int(it.get("QuantityShipped") or 0) - int(it.get("QuantityReceived") or 0),
-                    )
-                    if qty_remaining <= 0:
-                        continue
-                    bucket_key = (
-                        "working" if status == "WORKING"
-                        else "receiving" if status == "RECEIVING"
-                        else "shipped"  # SHIPPED + IN_TRANSIT
-                    )
-                    buckets = in_transit_by_sku_fc.setdefault(
-                        (sku, fc), {"working": 0, "shipped": 0, "receiving": 0}
-                    )
-                    buckets[bucket_key] += qty_remaining
-                next_token = payload.get("NextToken")
-                if not next_token:
-                    break
-                await asyncio.sleep(0.2)
-            # SP-API limits this endpoint to ~2 req/sec; pause between shipments
+                sku = it.get("SellerSKU")
+                if not sku:
+                    continue
+                qty_remaining = max(
+                    0,
+                    int(it.get("QuantityShipped") or 0) - int(it.get("QuantityReceived") or 0),
+                )
+                if qty_remaining <= 0:
+                    continue
+                status = sh["shipment_status"]
+                bucket_key = (
+                    "working" if status == "WORKING"
+                    else "receiving" if status in {"CHECKED_IN", "RECEIVING"}
+                    else "shipped"  # SHIPPED + IN_TRANSIT + DELIVERED
+                )
+                buckets = in_transit_by_sku_fc.setdefault(
+                    (sku, sh["destination_fc"]), {"working": 0, "shipped": 0, "receiving": 0}
+                )
+                buckets[bucket_key] += qty_remaining
+            next_token = payload.get("NextToken")
+            if not next_token:
+                break
             await asyncio.sleep(0.6)
+
+    if item_fetch_failures:
+        sample = "; ".join(item_fetch_failures[:5])
+        suffix = "" if len(item_fetch_failures) <= 5 else f"; +{len(item_fetch_failures) - 5} more"
+        raise RuntimeError(f"Inbound shipment item fetch failed; preserving previous matrix quantities. {sample}{suffix}")
 
     await reset_and_upsert_inbound_quantities(session, in_transit_by_sku_fc)
     total_units = sum(sum(b.values()) for b in in_transit_by_sku_fc.values())
     logger.info("Wrote in-transit quantities for %d (sku,fc) pairs (%d units total)",
                 len(in_transit_by_sku_fc), total_units)
+    await update_inbound_shipments_sync_time(session, datetime.now(timezone.utc))
 
     logger.info("Inbound shipments sync complete!")
 
@@ -2507,6 +2540,7 @@ async def run_full_sync(session: AsyncSession):
     Called by the hourly cron and the manual Sync button.
     """
     logger.info("=== STARTING FULL SYNC ===")
+    failures: list[str] = []
 
     async def _run_phase(label: str, runner):
         logger.info(label)
@@ -2514,7 +2548,9 @@ async def run_full_sync(session: AsyncSession):
             await runner(session)
         except Exception:
             await session.rollback()
-            logger.exception("%s failed", label.replace("--- ", "").replace(" ---", ""))
+            phase_name = label.replace("--- ", "").replace(" ---", "")
+            failures.append(phase_name)
+            logger.exception("%s failed", phase_name)
 
     await _run_phase("--- Phase 1: Inventory Sync ---", run_inventory_sync_job)
     await _run_phase("--- Phase 2: Incremental Orders Sync ---", run_incremental_orders_sync)
@@ -2523,7 +2559,10 @@ async def run_full_sync(session: AsyncSession):
     await _run_phase("--- Phase 5: Inbound Shipments Sync ---", run_inbound_shipments_sync)
     await _run_phase("--- Phase 6: Amazon Finance Actuals Sync ---", run_amazon_finance_actuals_sync)
 
-    logger.info("=== FULL SYNC COMPLETE ===")
+    if failures:
+        logger.warning("=== FULL SYNC COMPLETE WITH FAILURES: %s ===", ", ".join(failures))
+    else:
+        logger.info("=== FULL SYNC COMPLETE ===")
 
 
 async def run_shipment_sync_full(session: AsyncSession, max_batches: int = 500) -> int:

@@ -6,7 +6,9 @@ export async function GET() {
     // Overall inventory summary
     const overallQuery = `
       SELECT 
-        sku, asin, fnsku,
+        sku,
+        MAX(asin) FILTER (WHERE asin IS NOT NULL) as asin,
+        MAX(fnsku) FILTER (WHERE fnsku IS NOT NULL) as fnsku,
         SUM(fulfillable_quantity) as total_fulfillable,
         SUM(unfulfillable_quantity) as total_unfulfillable,
         SUM(reserved_quantity) as total_reserved,
@@ -16,7 +18,7 @@ export async function GET() {
         COUNT(DISTINCT fulfillment_center_id) as warehouse_count,
         MAX(last_updated) as last_updated
       FROM inventory
-      GROUP BY sku, asin, fnsku
+      GROUP BY sku
       ORDER BY total_fulfillable DESC
     `;
     const overallResult = await pool.query(overallQuery);
@@ -25,15 +27,17 @@ export async function GET() {
     const warehouseQuery = `
       SELECT 
         fulfillment_center_id as warehouse,
-        sku, asin,
-        fulfillable_quantity,
-        unfulfillable_quantity,
-        reserved_quantity,
-        inbound_working_quantity,
-        inbound_shipped_quantity,
-        inbound_receiving_quantity,
-        last_updated
+        sku,
+        MAX(asin) FILTER (WHERE asin IS NOT NULL) as asin,
+        SUM(fulfillable_quantity) as fulfillable_quantity,
+        SUM(unfulfillable_quantity) as unfulfillable_quantity,
+        SUM(reserved_quantity) as reserved_quantity,
+        SUM(inbound_working_quantity) as inbound_working_quantity,
+        SUM(inbound_shipped_quantity) as inbound_shipped_quantity,
+        SUM(inbound_receiving_quantity) as inbound_receiving_quantity,
+        MAX(last_updated) as last_updated
       FROM inventory
+      GROUP BY fulfillment_center_id, sku
       ORDER BY fulfillment_center_id, sku
     `;
     const warehouseResult = await pool.query(warehouseQuery);
@@ -45,10 +49,13 @@ export async function GET() {
         COUNT(DISTINCT sku) as total_skus,
         SUM(fulfillable_quantity) as total_fulfillable,
         SUM(unfulfillable_quantity) as total_unfulfillable,
-        SUM(reserved_quantity) as total_reserved
+        SUM(reserved_quantity) as total_reserved,
+        SUM(inbound_working_quantity) as total_inbound_working,
+        SUM(inbound_shipped_quantity) as total_inbound_shipped,
+        SUM(inbound_receiving_quantity) as total_inbound_receiving
       FROM inventory
       GROUP BY fulfillment_center_id
-      ORDER BY total_fulfillable DESC
+      ORDER BY (SUM(fulfillable_quantity) + SUM(inbound_working_quantity) + SUM(inbound_shipped_quantity) + SUM(inbound_receiving_quantity)) DESC
     `;
     const warehouseSummaryResult = await pool.query(warehouseSummaryQuery);
 
@@ -59,6 +66,9 @@ export async function GET() {
         SUM(fulfillable_quantity) as total_fulfillable,
         SUM(unfulfillable_quantity) as total_unfulfillable,
         SUM(reserved_quantity) as total_reserved,
+        SUM(inbound_working_quantity) as total_inbound_working,
+        SUM(inbound_shipped_quantity) as total_inbound_shipped,
+        SUM(inbound_receiving_quantity) as total_inbound_receiving,
         COUNT(DISTINCT fulfillment_center_id) as total_warehouses
       FROM inventory
     `;

@@ -16,6 +16,9 @@ interface WarehouseSummary {
   total_fulfillable: string;
   total_unfulfillable: string;
   total_reserved: string;
+  total_inbound_working: string;
+  total_inbound_shipped: string;
+  total_inbound_receiving: string;
 }
 
 interface SkuInventory {
@@ -37,6 +40,9 @@ interface GrandTotal {
   total_fulfillable: string;
   total_unfulfillable: string;
   total_reserved: string;
+  total_inbound_working: string;
+  total_inbound_shipped: string;
+  total_inbound_receiving: string;
   total_warehouses: string;
 }
 
@@ -66,6 +72,9 @@ interface InboundShipmentsSummary {
   latest_booked: string | null;
   earliest_active_booked: string | null;
   last_synced: string | null;
+  quantity_last_synced?: string | null;
+  sync_error?: string | null;
+  is_stale?: boolean;
 }
 
 interface InboundFcRow { destination_fc: string; count: number; }
@@ -77,6 +86,15 @@ interface InboundShipmentRow {
   booked_date: string | null;
   ship_from_city: string | null;
   ship_from_state: string | null;
+}
+
+interface WarehouseCell {
+  fulfillable: number;
+  inboundWorking: number;
+  inboundShipped: number;
+  inboundReceiving: number;
+  inbound: number;
+  total: number;
 }
 
 const COLORS = ["#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444", "#ec4899", "#14b8a6"];
@@ -135,24 +153,60 @@ export default function InventoryPage() {
   /* ── Pivot: build SKU × Warehouse matrix ── */
   const warehouseList = [...new Set(warehouseBreakdown.map((r: any) => r.warehouse))].sort();
 
-  const pivotData: Record<string, { sku: string; asin: string; total: number; warehouses: Record<string, number> }> = {};
+  const pivotData: Record<string, {
+    sku: string;
+    asin: string;
+    fulfillableTotal: number;
+    inboundTotal: number;
+    totalWithInbound: number;
+    warehouses: Record<string, WarehouseCell>;
+  }> = {};
   warehouseBreakdown.forEach((r: any) => {
     if (!pivotData[r.sku]) {
-      pivotData[r.sku] = { sku: r.sku, asin: r.asin || "", total: 0, warehouses: {} };
+      pivotData[r.sku] = {
+        sku: r.sku,
+        asin: r.asin || "",
+        fulfillableTotal: 0,
+        inboundTotal: 0,
+        totalWithInbound: 0,
+        warehouses: {},
+      };
     }
-    const qty = parseInt(r.fulfillable_quantity) || 0;
-    pivotData[r.sku].warehouses[r.warehouse] = qty;
-    pivotData[r.sku].total += qty;
+    const fulfillable = parseInt(r.fulfillable_quantity) || 0;
+    const inboundWorking = parseInt(r.inbound_working_quantity) || 0;
+    const inboundShipped = parseInt(r.inbound_shipped_quantity) || 0;
+    const inboundReceiving = parseInt(r.inbound_receiving_quantity) || 0;
+    const inbound = inboundWorking + inboundShipped + inboundReceiving;
+    const existing = pivotData[r.sku].warehouses[r.warehouse] || {
+      fulfillable: 0,
+      inboundWorking: 0,
+      inboundShipped: 0,
+      inboundReceiving: 0,
+      inbound: 0,
+      total: 0,
+    };
+    const cell = {
+      fulfillable: existing.fulfillable + fulfillable,
+      inboundWorking: existing.inboundWorking + inboundWorking,
+      inboundShipped: existing.inboundShipped + inboundShipped,
+      inboundReceiving: existing.inboundReceiving + inboundReceiving,
+      inbound: existing.inbound + inbound,
+      total: existing.total + fulfillable + inbound,
+    };
+    pivotData[r.sku].warehouses[r.warehouse] = cell;
+    pivotData[r.sku].fulfillableTotal += fulfillable;
+    pivotData[r.sku].inboundTotal += inbound;
+    pivotData[r.sku].totalWithInbound += fulfillable + inbound;
   });
 
   const pivotRows = Object.values(pivotData)
     .filter(r => r.sku.toLowerCase().includes(searchTerm.toLowerCase()) || r.asin.toLowerCase().includes(searchTerm.toLowerCase()))
-    .sort((a, b) => b.total - a.total);
+    .sort((a, b) => b.totalWithInbound - a.totalWithInbound);
 
   // Find max per warehouse for color scaling
   const maxPerWarehouse: Record<string, number> = {};
   warehouseList.forEach(w => {
-    maxPerWarehouse[w] = Math.max(...Object.values(pivotData).map(r => r.warehouses[w] || 0), 1);
+    maxPerWarehouse[w] = Math.max(...Object.values(pivotData).map(r => r.warehouses[w]?.total || 0), 1);
   });
 
   if (!checkedAccess) {
@@ -306,7 +360,8 @@ export default function InventoryPage() {
                   const dt = new Date(d);
                   return dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
                 };
-                const active = s ? s.working + s.shipped + s.in_transit + s.receiving : 0;
+                const active = s ? s.working + s.shipped + s.in_transit + s.delivered + s.checked_in + s.receiving : 0;
+                const inboundIsStale = s?.is_stale ?? true;
                 return (
                   <div
                     key={w.warehouse}
@@ -339,6 +394,7 @@ export default function InventoryPage() {
                       {s && s.working > 0 && <span style={{ background: "rgba(99,102,241,0.15)", color: "#a5b4fc", padding: "2px 6px", borderRadius: 4 }}>{s.working} Working</span>}
                       {s && s.delivered > 0 && <span style={{ background: "rgba(148,163,184,0.15)", color: "#cbd5e1", padding: "2px 6px", borderRadius: 4 }}>{s.delivered} Delivered</span>}
                       {s && s.checked_in > 0 && <span style={{ background: "rgba(148,163,184,0.15)", color: "#cbd5e1", padding: "2px 6px", borderRadius: 4 }}>{s.checked_in} Checked In</span>}
+                      {inboundIsStale && <span style={{ background: "rgba(239,68,68,0.14)", color: "#fca5a5", padding: "2px 6px", borderRadius: 4 }}>Sync stale</span>}
                       {(!s || s.total === 0) && <span style={{ color: "var(--text-muted)" }}>No active shipments</span>}
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-muted)", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: 6 }}>
@@ -349,6 +405,10 @@ export default function InventoryPage() {
                   </div>
                 );
               }
+              const inboundTotal =
+                (parseInt(w.total_inbound_working) || 0) +
+                (parseInt(w.total_inbound_shipped) || 0) +
+                (parseInt(w.total_inbound_receiving) || 0);
               return (
                 <div key={w.warehouse} className="card" style={{ padding: "12px 14px" }}>
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>Warehouse</div>
@@ -364,6 +424,10 @@ export default function InventoryPage() {
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
                     <span style={{ color: "var(--text-muted)" }}>Reserved</span>
                     <span style={{ fontWeight: 600 }}>{parseInt(w.total_reserved).toLocaleString()}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                    <span style={{ color: "var(--text-muted)" }}>Inbound</span>
+                    <span style={{ fontWeight: 600, color: inboundTotal > 0 ? "#22d3ee" : "var(--text-muted)" }}>{inboundTotal.toLocaleString()}</span>
                   </div>
                 </div>
               );
@@ -426,20 +490,22 @@ export default function InventoryPage() {
             <div className="card-header">
               <div>
                 <div className="card-title">SKU × Warehouse Matrix</div>
-                <div className="card-subtitle">{pivotRows.length} SKUs across {warehouseList.length} warehouses · Cell color = stock intensity</div>
+                <div className="card-subtitle">{pivotRows.length} SKUs across {warehouseList.length} warehouses · Cell color = on-hand + inbound intensity</div>
               </div>
               <input className="filter-input search-input" type="text" placeholder="Search SKU or ASIN..."
                 value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
             </div>
             <div className="table-container" style={{ maxHeight: 600, overflowY: "auto", overflowX: "auto" }}>
-              <table style={{ minWidth: warehouseList.length * 85 + 250 }}>
+              <table style={{ minWidth: warehouseList.length * 95 + 360 }}>
                 <thead>
                   <tr>
                     <th style={{ position: "sticky", left: 0, zIndex: 10, background: "#0f172a", minWidth: 100 }}>SKU</th>
                     <th style={{ position: "sticky", left: 100, zIndex: 10, background: "#0f172a", minWidth: 80 }}>ASIN</th>
-                    <th style={{ minWidth: 60, fontWeight: 700, color: "#10b981" }}>Total</th>
+                    <th style={{ minWidth: 70, fontWeight: 700, color: "#10b981" }}>On Hand</th>
+                    <th style={{ minWidth: 70, fontWeight: 700, color: "#22d3ee" }}>Inbound</th>
+                    <th style={{ minWidth: 90, fontWeight: 700, color: "#a5b4fc" }}>With Inbound</th>
                     {warehouseList.map((w, i) => (
-                      <th key={w} style={{ minWidth: 75, fontSize: 10, fontWeight: 600, color: COLORS[i % COLORS.length], whiteSpace: "nowrap" }}>
+                      <th key={w} style={{ minWidth: 85, fontSize: 10, fontWeight: 600, color: COLORS[i % COLORS.length], whiteSpace: "nowrap" }}>
                         {w}
                       </th>
                     ))}
@@ -455,24 +521,38 @@ export default function InventoryPage() {
                         {row.asin?.slice(0, 10) || "\u2014"}
                       </td>
                       <td style={{ fontWeight: 700 }}>
-                        <span className="badge badge-success">{row.total.toLocaleString()}</span>
+                        <span className="badge badge-success">{row.fulfillableTotal.toLocaleString()}</span>
+                      </td>
+                      <td style={{ fontWeight: 700 }}>
+                        <span style={{ color: row.inboundTotal > 0 ? "#22d3ee" : "var(--text-muted)" }}>{row.inboundTotal.toLocaleString()}</span>
+                      </td>
+                      <td style={{ fontWeight: 700, color: "#a5b4fc" }}>
+                        {row.totalWithInbound.toLocaleString()}
                       </td>
                       {warehouseList.map((w) => {
-                        const qty = row.warehouses[w] || 0;
-                        const intensity = maxPerWarehouse[w] > 0 ? qty / maxPerWarehouse[w] : 0;
-                        const bgColor = qty === 0
+                        const cell = row.warehouses[w];
+                        const qty = cell?.fulfillable || 0;
+                        const inbound = cell?.inbound || 0;
+                        const total = cell?.total || 0;
+                        const intensity = maxPerWarehouse[w] > 0 ? total / maxPerWarehouse[w] : 0;
+                        const bgColor = total === 0
                           ? "transparent"
                           : `rgba(99, 102, 241, ${(0.1 + intensity * 0.5).toFixed(2)})`;
                         return (
                           <td key={w} style={{
                             textAlign: "center",
-                            fontWeight: qty > 0 ? 600 : 400,
-                            color: qty === 0 ? "var(--text-muted)" : "#e2e8f0",
+                            fontWeight: total > 0 ? 600 : 400,
+                            color: total === 0 ? "var(--text-muted)" : "#e2e8f0",
                             background: bgColor,
                             fontSize: 12,
                             borderLeft: "1px solid rgba(255,255,255,0.04)",
                           }}>
-                            {qty > 0 ? qty.toLocaleString() : "\u2014"}
+                            {total > 0 ? (
+                              <div>
+                                <div>{qty > 0 ? qty.toLocaleString() : "\u2014"}</div>
+                                {inbound > 0 && <div style={{ color: "#22d3ee", fontSize: 10, lineHeight: 1.2 }}>+{inbound.toLocaleString()}</div>}
+                              </div>
+                            ) : "\u2014"}
                           </td>
                         );
                       })}
@@ -482,12 +562,19 @@ export default function InventoryPage() {
                   <tr style={{ borderTop: "2px solid rgba(255,255,255,0.15)", fontWeight: 700 }}>
                     <td style={{ position: "sticky", left: 0, background: "#0f172a", zIndex: 5, color: "#a5b4fc" }}>TOTAL</td>
                     <td style={{ position: "sticky", left: 100, background: "#0f172a", zIndex: 5 }} />
-                    <td><span className="badge badge-success">{pivotRows.reduce((a, r) => a + r.total, 0).toLocaleString()}</span></td>
-                    {warehouseList.map(w => (
-                      <td key={w} style={{ textAlign: "center", color: "#a5b4fc", fontSize: 12, borderLeft: "1px solid rgba(255,255,255,0.04)" }}>
-                        {pivotRows.reduce((a, r) => a + (r.warehouses[w] || 0), 0).toLocaleString()}
-                      </td>
-                    ))}
+                    <td><span className="badge badge-success">{pivotRows.reduce((a, r) => a + r.fulfillableTotal, 0).toLocaleString()}</span></td>
+                    <td style={{ color: "#22d3ee" }}>{pivotRows.reduce((a, r) => a + r.inboundTotal, 0).toLocaleString()}</td>
+                    <td style={{ color: "#a5b4fc" }}>{pivotRows.reduce((a, r) => a + r.totalWithInbound, 0).toLocaleString()}</td>
+                    {warehouseList.map(w => {
+                      const onHand = pivotRows.reduce((a, r) => a + (r.warehouses[w]?.fulfillable || 0), 0);
+                      const inbound = pivotRows.reduce((a, r) => a + (r.warehouses[w]?.inbound || 0), 0);
+                      return (
+                        <td key={w} style={{ textAlign: "center", color: "#a5b4fc", fontSize: 12, borderLeft: "1px solid rgba(255,255,255,0.04)" }}>
+                          <div>{(onHand + inbound).toLocaleString()}</div>
+                          {inbound > 0 && <div style={{ color: "#22d3ee", fontSize: 10, lineHeight: 1.2 }}>+{inbound.toLocaleString()}</div>}
+                        </td>
+                      );
+                    })}
                   </tr>
                 </tbody>
               </table>

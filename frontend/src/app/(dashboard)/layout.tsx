@@ -203,6 +203,8 @@ export default function DashboardLayout({
   const [syncStatus, setSyncStatus] = useState<{
     last_orders_sync: string | null;
     last_inventory_sync: string | null;
+    last_inbound_shipments_sync?: string | null;
+    last_inbound_shipments_error?: string | null;
   } | null>(null);
   const [syncToast, setSyncToast] = useState<string | null>(null);
 
@@ -336,6 +338,15 @@ export default function DashboardLayout({
                   <SidebarIcon name="ordersStatus" className="sidebar-status-icon" />
                   <span>Orders: {formatSyncTime(syncStatus.last_orders_sync)}</span>
                 </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <SidebarIcon name="inventoryStatus" className="sidebar-status-icon" />
+                  <span>Inbound: {formatSyncTime(syncStatus.last_inbound_shipments_sync || null)}</span>
+                </div>
+                {syncStatus.last_inbound_shipments_error && (
+                  <div style={{ color: "var(--danger)", marginTop: 4 }}>
+                    Inbound sync needs attention
+                  </div>
+                )}
               </div>
             )}
           </div>

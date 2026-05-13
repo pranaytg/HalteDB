@@ -125,11 +125,13 @@ async def _scheduled_sync_loop():
 async def lifespan(app: FastAPI):
     logger.info("HalteDB backend starting up...")
     sync_task: asyncio.Task | None = None
-    if ENABLE_INTERNAL_SCHEDULER:
+    if ENABLE_INTERNAL_SCHEDULER and SYNC_INTERVAL > 0:
         sync_task = asyncio.create_task(_scheduled_sync_loop())
         logger.info(f"Hourly sync scheduler started (interval: {SYNC_INTERVAL}s)")
-    else:
+    elif not ENABLE_INTERNAL_SCHEDULER:
         logger.info("Internal hourly sync scheduler disabled.")
+    else:
+        logger.info("Hourly sync scheduler disabled.")
     yield
     if sync_task:
         sync_task.cancel()
@@ -194,6 +196,8 @@ async def sync_status(session: AsyncSession = Depends(get_db)):
     return {
         "last_orders_sync": meta.last_orders_sync.isoformat() if meta.last_orders_sync else None,
         "last_inventory_sync": meta.last_inventory_sync.isoformat() if meta.last_inventory_sync else None,
+        "last_inbound_shipments_sync": meta.last_inbound_shipments_sync.isoformat() if meta.last_inbound_shipments_sync else None,
+        "last_inbound_shipments_error": meta.last_inbound_shipments_error,
     }
 
 
@@ -207,7 +211,7 @@ async def trigger_full_sync(
     session: AsyncSession = Depends(get_db),
 ):
     """
-    Triggers a full sync: inventory + incremental orders.
+    Triggers a full sync: inventory, orders, inbound shipments, and finance.
     Called by Render's hourly cron job and the frontend Sync button.
     """
     global _sync_running
@@ -218,7 +222,7 @@ async def trigger_full_sync(
     background_tasks.add_task(_run_full_sync_job, "manual", True)
     return {
         "status": "accepted",
-        "message": "Full sync (inventory + orders) started in background.",
+        "message": "Full sync started in background.",
     }
 
 

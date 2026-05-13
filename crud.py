@@ -1,11 +1,24 @@
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy import text, select
+from sqlalchemy import text
 from models import Inventory, Order, SyncMeta, InboundShipment
 from datetime import datetime, timezone
 
 logger = logging.getLogger("haltedb")
+
+
+def _is_missing_inbound_sync_meta_column_error(exc: Exception) -> bool:
+    """Detect deployments where the inbound sync metadata migration has not run yet."""
+    sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
+    if sqlstate == "42703":
+        return True
+
+    message = str(exc)
+    return (
+        "last_inbound_shipments_" in message
+        and ("does not exist" in message or "UndefinedColumn" in message)
+    )
 
 
 async def upsert_inventory_batch(session: AsyncSession, batch: list[dict]):
@@ -51,6 +64,7 @@ async def upsert_inbound_shipments_batch(session: AsyncSession, batch: list[dict
         "booked_date": stmt.excluded.booked_date,
         "ship_from_city": stmt.excluded.ship_from_city,
         "ship_from_state": stmt.excluded.ship_from_state,
+        "last_synced": stmt.excluded.last_synced,
     }
     upsert_stmt = stmt.on_conflict_do_update(
         index_elements=['shipment_id'],
@@ -87,7 +101,7 @@ async def reset_and_upsert_inbound_quantities(
         {
             "sku": sku,
             "fulfillment_center_id": fc,
-            "condition": "NewItem",
+            "condition": "SELLABLE",
             "fulfillable_quantity": 0,
             "unfulfillable_quantity": 0,
             "reserved_quantity": 0,
@@ -226,14 +240,46 @@ async def assign_cogs_to_orders(session: AsyncSession):
 # ============================================
 
 async def get_sync_meta(session: AsyncSession) -> SyncMeta:
-    """Get or create the singleton sync_meta row."""
-    result = await session.execute(select(SyncMeta).where(SyncMeta.id == 1))
-    meta = result.scalar_one_or_none()
-    if meta is None:
-        meta = SyncMeta(id=1)
-        session.add(meta)
-        await session.commit()
-        await session.refresh(meta)
+    """Get or create the singleton sync_meta row.
+
+    Keep this compatible with deployments that have not run the inbound sync
+    metadata migration yet. The old columns are selected first, and the inbound
+    columns are optional until Alembic adds them.
+    """
+    await session.execute(text("INSERT INTO sync_meta (id) VALUES (1) ON CONFLICT (id) DO NOTHING"))
+    await session.commit()
+
+    result = await session.execute(text("""
+        SELECT id, last_orders_sync, last_inventory_sync
+        FROM sync_meta
+        WHERE id = 1
+    """))
+    row = result.mappings().one()
+    meta = SyncMeta(
+        id=row["id"],
+        last_orders_sync=row["last_orders_sync"],
+        last_inventory_sync=row["last_inventory_sync"],
+    )
+
+    try:
+        inbound_result = await session.execute(text("""
+            SELECT last_inbound_shipments_sync, last_inbound_shipments_error
+            FROM sync_meta
+            WHERE id = 1
+        """))
+        inbound_row = inbound_result.mappings().one()
+        meta.last_inbound_shipments_sync = inbound_row["last_inbound_shipments_sync"]
+        meta.last_inbound_shipments_error = inbound_row["last_inbound_shipments_error"]
+    except Exception as exc:
+        if not _is_missing_inbound_sync_meta_column_error(exc):
+            raise
+        await session.rollback()
+        meta.last_inbound_shipments_sync = None
+        meta.last_inbound_shipments_error = None
+        logger.warning(
+            "Inbound sync metadata columns are missing; run alembic upgrade head "
+            "to enable inbound sync status fields."
+        )
     return meta
 
 
@@ -253,3 +299,50 @@ async def update_inventory_sync_time(session: AsyncSession, sync_time: datetime)
         {"t": sync_time}
     )
     await session.commit()
+
+
+async def update_inbound_shipments_sync_time(session: AsyncSession, sync_time: datetime):
+    """Update inbound shipment sync status after shipment and item quantities are fresh."""
+    await session.execute(text("INSERT INTO sync_meta (id) VALUES (1) ON CONFLICT (id) DO NOTHING"))
+    try:
+        await session.execute(
+            text("""
+                UPDATE sync_meta
+                SET last_inbound_shipments_sync = :t,
+                    last_inbound_shipments_error = NULL
+                WHERE id = 1
+            """),
+            {"t": sync_time},
+        )
+        await session.commit()
+    except Exception as exc:
+        if not _is_missing_inbound_sync_meta_column_error(exc):
+            raise
+        await session.rollback()
+        logger.warning(
+            "Skipped inbound sync metadata timestamp update because the migration "
+            "has not run yet."
+        )
+
+
+async def update_inbound_shipments_sync_error(session: AsyncSession, error: str):
+    """Record why the latest inbound shipment sync failed without touching fresh data."""
+    await session.execute(text("INSERT INTO sync_meta (id) VALUES (1) ON CONFLICT (id) DO NOTHING"))
+    try:
+        await session.execute(
+            text("""
+                UPDATE sync_meta
+                SET last_inbound_shipments_error = :error
+                WHERE id = 1
+            """),
+            {"error": (error or "Unknown inbound shipment sync error")[:1000]},
+        )
+        await session.commit()
+    except Exception as exc:
+        if not _is_missing_inbound_sync_meta_column_error(exc):
+            raise
+        await session.rollback()
+        logger.warning(
+            "Skipped inbound sync metadata error update because the migration "
+            "has not run yet."
+        )
