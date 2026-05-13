@@ -94,6 +94,8 @@ class SyncMeta(Base):
     id = Column(Integer, primary_key=True, default=1)
     last_orders_sync = Column(DateTime(timezone=True), nullable=True)
     last_inventory_sync = Column(DateTime(timezone=True), nullable=True)
+    last_inbound_shipments_sync = Column(DateTime(timezone=True), nullable=True)
+    last_inbound_shipments_error = Column(String, nullable=True)
 
 
 class EstimatedCogs(Base):

@@ -51,6 +51,7 @@ async def upsert_inbound_shipments_batch(session: AsyncSession, batch: list[dict
         "booked_date": stmt.excluded.booked_date,
         "ship_from_city": stmt.excluded.ship_from_city,
         "ship_from_state": stmt.excluded.ship_from_state,
+        "last_synced": stmt.excluded.last_synced,
     }
     upsert_stmt = stmt.on_conflict_do_update(
         index_elements=['shipment_id'],
@@ -87,7 +88,7 @@ async def reset_and_upsert_inbound_quantities(
         {
             "sku": sku,
             "fulfillment_center_id": fc,
-            "condition": "NewItem",
+            "condition": "SELLABLE",
             "fulfillable_quantity": 0,
             "unfulfillable_quantity": 0,
             "reserved_quantity": 0,
@@ -251,5 +252,34 @@ async def update_inventory_sync_time(session: AsyncSession, sync_time: datetime)
     await session.execute(
         text("UPDATE sync_meta SET last_inventory_sync = :t WHERE id = 1"),
         {"t": sync_time}
+    )
+    await session.commit()
+
+
+async def update_inbound_shipments_sync_time(session: AsyncSession, sync_time: datetime):
+    """Update inbound shipment sync status after shipment and item quantities are fresh."""
+    await session.execute(text("INSERT INTO sync_meta (id) VALUES (1) ON CONFLICT (id) DO NOTHING"))
+    await session.execute(
+        text("""
+            UPDATE sync_meta
+            SET last_inbound_shipments_sync = :t,
+                last_inbound_shipments_error = NULL
+            WHERE id = 1
+        """),
+        {"t": sync_time},
+    )
+    await session.commit()
+
+
+async def update_inbound_shipments_sync_error(session: AsyncSession, error: str):
+    """Record why the latest inbound shipment sync failed without touching fresh data."""
+    await session.execute(text("INSERT INTO sync_meta (id) VALUES (1) ON CONFLICT (id) DO NOTHING"))
+    await session.execute(
+        text("""
+            UPDATE sync_meta
+            SET last_inbound_shipments_error = :error
+            WHERE id = 1
+        """),
+        {"error": (error or "Unknown inbound shipment sync error")[:1000]},
     )
     await session.commit()

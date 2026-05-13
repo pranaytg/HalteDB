@@ -19,6 +19,32 @@ export async function GET() {
       FROM inbound_shipments
     `);
 
+    let quantityLastSynced: string | null = null;
+    let syncError: string | null = null;
+    try {
+      const meta = await pool.query(`
+        SELECT last_inbound_shipments_sync, last_inbound_shipments_error
+        FROM sync_meta
+        WHERE id = 1
+      `);
+      quantityLastSynced = meta.rows[0]?.last_inbound_shipments_sync || null;
+      syncError = meta.rows[0]?.last_inbound_shipments_error || null;
+    } catch (error: unknown) {
+      const code = typeof error === "object" && error !== null && "code" in error
+        ? (error as { code?: string }).code
+        : null;
+      if (code !== "42703" && code !== "42P01") {
+        throw error;
+      }
+      console.warn("Inbound sync metadata is unavailable; treating inbound quantities as stale.");
+    }
+    const quantityLastSyncedMs = quantityLastSynced ? new Date(quantityLastSynced).getTime() : Number.NaN;
+    const isStale =
+      !quantityLastSynced ||
+      Number.isNaN(quantityLastSyncedMs) ||
+      quantityLastSyncedMs < Date.now() - 24 * 60 * 60 * 1000 ||
+      Boolean(syncError);
+
     const byStatus = await pool.query(`
       SELECT shipment_status, COUNT(*)::int AS count
       FROM inbound_shipments
@@ -41,7 +67,14 @@ export async function GET() {
     `);
 
     return NextResponse.json({
-      summary: summary.rows[0] || null,
+      summary: summary.rows[0]
+        ? {
+            ...summary.rows[0],
+            quantity_last_synced: quantityLastSynced,
+            sync_error: syncError,
+            is_stale: isStale,
+          }
+        : null,
       byStatus: byStatus.rows,
       byFc: byFc.rows,
       shipments: shipments.rows,
