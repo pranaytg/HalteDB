@@ -98,7 +98,6 @@ export default function LogicInventoryPage() {
   const [rows, setRows] = useState<LogicInventoryRow[]>([]);
   const [activeSheetName, setActiveSheetName] = useState("");
   const [skuSearchTerm, setSkuSearchTerm] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
   const [inventoryMonth, setInventoryMonth] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [dirtyRows, setDirtyRows] = useState<Record<number, Record<string, string>>>({});
@@ -172,17 +171,15 @@ export default function LogicInventoryPage() {
 
   const filteredRows = useMemo(() => {
     const skuSearch = skuSearchTerm.trim().toLowerCase();
-    const search = searchTerm.trim().toLowerCase();
 
     return sheetRows.filter((row) => (
-      (!skuSearch || (
+      !skuSearch || (
         skuColumnKeys.length > 0
           ? skuColumnKeys.some((key) => String(row.row_data[key] ?? "").toLowerCase().includes(skuSearch))
           : Object.values(row.row_data).some((value) => String(value ?? "").toLowerCase().includes(skuSearch))
-      )) &&
-      (!search || Object.values(row.row_data).some((value) => String(value ?? "").toLowerCase().includes(search)))
+      )
     ));
-  }, [skuColumnKeys, searchTerm, sheetRows, skuSearchTerm]);
+  }, [skuColumnKeys, sheetRows, skuSearchTerm]);
 
   const dirtyCount = Object.keys(dirtyRows).length;
 
@@ -460,13 +457,6 @@ export default function LogicInventoryPage() {
                   placeholder="Search SKU / item code..."
                   value={skuSearchTerm}
                   onChange={(event) => setSkuSearchTerm(event.target.value)}
-                />
-                <input
-                  className="filter-input search-input"
-                  type="text"
-                  placeholder="Search all cells..."
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
                 />
                 <button className="btn btn-ghost btn-sm" onClick={handleAddRow} disabled={addingRow}>
                   {addingRow ? "Adding..." : "Add Row"}
