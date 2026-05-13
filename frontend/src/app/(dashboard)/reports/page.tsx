@@ -9,7 +9,7 @@ import { PasswordGate, usePageAccess } from "@/lib/pageAccess";
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "";
 
 interface ReportConfig {
-  type: "sales" | "inventory" | "cogs" | "profit" | "amazonInvoices";
+  type: "sales" | "inventory" | "cogs" | "productSpecs" | "profit" | "amazonInvoices";
   period?: "weekly" | "monthly" | "yearly";
   startDate?: string;
   endDate?: string;
@@ -67,12 +67,21 @@ const REPORT_CARDS: ReportCard[] = [
   },
   {
     type: "cogs",
-    title: "COGS & Product Specs",
+    title: "COGS Report",
     icon: "💰",
-    description: "Current COGS, estimate metadata, and product dimensions in one export.",
+    description: "Current COGS pricing data — Halte and Amazon selling/cost prices per SKU.",
     hasPeriod: false,
     hasDateRange: false,
-    sheets: ["COGS & Product Specs"],
+    sheets: ["COGS"],
+  },
+  {
+    type: "productSpecs",
+    title: "Product Specs",
+    icon: "📐",
+    description: "Product dimensions, weights, and physical specifications for all SKUs.",
+    hasPeriod: false,
+    hasDateRange: false,
+    sheets: ["Product Specifications"],
   },
   {
     type: "profit",
@@ -103,6 +112,7 @@ export default function ReportsPage() {
     sales: { type: "sales", period: "monthly", startDate: "", endDate: "" },
     inventory: { type: "inventory" },
     cogs: { type: "cogs" },
+    productSpecs: { type: "productSpecs" },
     profit: { type: "profit", startDate: "", endDate: "" },
     amazonInvoices: { type: "amazonInvoices", startDate: "", endDate: "" },
   });

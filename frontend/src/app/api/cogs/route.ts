@@ -20,6 +20,7 @@ export async function GET() {
       WHERE c.sku NOT LIKE '%,%'
         AND c.sku NOT LIKE '%|%'
         AND c.sku NOT LIKE '% %'
+        AND c.sku NOT LIKE 'CUSTOMER-DATA-%'
         AND LENGTH(c.sku) <= 30
       ORDER BY c.sku ASC
     `;
