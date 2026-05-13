@@ -201,3 +201,40 @@ export async function PUT(req: NextRequest) {
     );
   }
 }
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const { sku } = await req.json();
+
+    if (!sku) {
+      return NextResponse.json(
+        { error: "SKU is required" },
+        { status: 400 }
+      );
+    }
+
+    const result = await pool.query(
+      "DELETE FROM cogs WHERE sku = $1 RETURNING *",
+      [sku]
+    );
+
+    if (result.rowCount === 0) {
+      return NextResponse.json(
+        { error: "SKU not found in COGS table" },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json({
+      status: "success",
+      message: `Deleted COGS entry for ${sku}`,
+      deleted: result.rows[0],
+    });
+  } catch (error) {
+    console.error("COGS DELETE error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete COGS entry" },
+      { status: 500 }
+    );
+  }
+}

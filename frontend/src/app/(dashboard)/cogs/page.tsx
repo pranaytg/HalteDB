@@ -36,6 +36,7 @@ export default function CogsPage() {
   const [newSku, setNewSku] = useState("");
   const [newPrice, setNewPrice] = useState("");
   const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const showToast = (msg: string, type: "success" | "error") => {
     setToast({ msg, type });
@@ -192,6 +193,32 @@ export default function CogsPage() {
       showToast("Network error", "error");
     } finally {
       setAdding(false);
+    }
+  };
+
+  const handleDelete = async (sku: string) => {
+    if (!window.confirm(`Are you sure you want to delete COGS entry for ${sku}?`)) return;
+
+    setDeleting(sku);
+    try {
+      const res = await fetch("/api/cogs", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sku }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showToast(data.error || "Failed to delete", "error");
+        return;
+      }
+
+      showToast(`Deleted COGS entry for ${sku}`, "success");
+      await fetchCogs();
+    } catch {
+      showToast("Network error", "error");
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -424,12 +451,23 @@ export default function CogsPage() {
                         </button>
                       </div>
                     ) : (
-                      <button
-                        className="btn btn-ghost btn-sm"
-                        onClick={() => handleEdit(entry.sku, entry.cogs_price)}
-                      >
-                        ✏ Edit
-                      </button>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => handleEdit(entry.sku, entry.cogs_price)}
+                        >
+                          ✏ Edit
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => handleDelete(entry.sku)}
+                          disabled={deleting === entry.sku}
+                          style={{ color: "var(--error, #ef4444)" }}
+                          title={`Delete ${entry.sku}`}
+                        >
+                          {deleting === entry.sku ? "…" : "🗑"}
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
