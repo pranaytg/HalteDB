@@ -372,7 +372,7 @@ export default function ReportsPage() {
           const cfg = configs[card.type];
           const isDownloading = downloading === card.type;
           const isInvoiceCard = card.type === "amazonInvoices";
-          const canDownloadInvoices = !isInvoiceCard || !!invoiceStatus?.tableExists;
+          const canDownloadInvoices = !isInvoiceCard || invoiceStatus?.tableExists !== false;
 
           return (
             <div key={card.type} className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>

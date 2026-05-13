@@ -5,11 +5,6 @@ const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 export const runtime = "nodejs";
 export const maxDuration = 60; // seconds — just for the upload, processing is background
 
-// Increase body size limit for ZIP uploads (default is 4MB)
-export const config = {
-  api: { bodyParser: { sizeLimit: "200mb" } },
-};
-
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();

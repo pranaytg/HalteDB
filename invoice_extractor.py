@@ -447,10 +447,10 @@ def build_powerbi_row(
 # ---------------------------------------------------------------------------
 
 def extract_invoices_from_zip(
-    zip_source: bytes | BinaryIO,
+    zip_source: str | Path | bytes | BinaryIO,
 ) -> tuple[list[dict], list[dict]]:
     """
-    Unzip in-memory and extract all PDF invoices.
+    Unzip and extract all PDF invoices.
 
     Returns:
         (rows, errors) where rows is a list of extracted invoice dicts
