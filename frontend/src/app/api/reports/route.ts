@@ -10,7 +10,7 @@ import {
 
 export const runtime = "nodejs";
 
-type ReportType = "sales" | "inventory" | "cogs" | "profit" | "amazonInvoices";
+type ReportType = "sales" | "inventory" | "cogs" | "productSpecs" | "profit" | "amazonInvoices";
 
 const SHIPPING_EXPR = `
   CASE
@@ -485,6 +485,7 @@ async function appendCogsReport(workbook: XLSX.WorkBook) {
       ORDER BY last_updated DESC
       LIMIT 1
     ) ec ON true
+    WHERE c.sku NOT LIKE 'CUSTOMER-DATA-%'
     ORDER BY c.sku ASC
   `);
 
@@ -503,6 +504,36 @@ async function appendCogsReport(workbook: XLSX.WorkBook) {
       })),
     ),
     "COGS",
+  );
+}
+
+async function appendProductSpecsReport(workbook: XLSX.WorkBook) {
+  const specsRes = await pool.query(`
+    SELECT sku, asin, product_name, weight_kg, length_cm, width_cm, height_cm,
+           volumetric_weight_kg, chargeable_weight_kg, last_updated
+    FROM product_specifications
+    ORDER BY sku ASC
+  `);
+
+  XLSX.utils.book_append_sheet(
+    workbook,
+    jsonSheet(
+      specsRes.rows.map((row) => ({
+        SKU: row.sku,
+        ASIN: row.asin || "-",
+        "Product Name": row.product_name || "-",
+        "Weight (kg)": row.weight_kg == null ? null : Number(row.weight_kg),
+        "Length (cm)": row.length_cm == null ? null : Number(row.length_cm),
+        "Width (cm)": row.width_cm == null ? null : Number(row.width_cm),
+        "Height (cm)": row.height_cm == null ? null : Number(row.height_cm),
+        "Volumetric Weight (kg)": row.volumetric_weight_kg == null ? null : Number(row.volumetric_weight_kg),
+        "Chargeable Weight (kg)": row.chargeable_weight_kg == null ? null : Number(row.chargeable_weight_kg),
+        "Last Updated": row.last_updated
+          ? new Date(row.last_updated).toISOString().replace("T", " ").slice(0, 19)
+          : null,
+      })),
+    ),
+    "Product Specifications",
   );
 }
 
@@ -661,6 +692,8 @@ export async function GET(req: NextRequest) {
       await appendInventoryReport(workbook);
     } else if (type === "cogs") {
       await appendCogsReport(workbook);
+    } else if (type === "productSpecs") {
+      await appendProductSpecsReport(workbook);
     } else if (type === "profit") {
       await appendProfitReport(workbook, startDate, endDate);
     } else if (type === "amazonInvoices") {
