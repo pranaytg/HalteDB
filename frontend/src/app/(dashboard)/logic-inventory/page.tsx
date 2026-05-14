@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import { PasswordGate, usePageAccess } from "@/lib/pageAccess";
 
 type Toast = { msg: string; type: "success" | "error" };
@@ -89,6 +90,29 @@ function isSkuColumn(column: LogicInventoryColumn) {
   return label.includes("sku") || label.includes("itemcode") || label.includes("itemskuname");
 }
 
+function isConsolidatedSheetName(value: string) {
+  return normalizeColumnLabel(value).includes("consolidated");
+}
+
+function sanitizeFilenamePart(value: string) {
+  const sanitized = value
+    .trim()
+    .replace(/[^a-z0-9]+/gi, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+
+  return sanitized || "upload";
+}
+
+function safeWorksheetName(value: string) {
+  return value.replace(/[:\\/?*[\]]/g, " ").trim().slice(0, 31) || "Consolidated";
+}
+
+function excelColumnWidth(header: string, values: Array<string | number>) {
+  const maxLength = values.reduce<number>((max, value) => Math.max(max, String(value ?? "").length), header.length);
+  return { wch: Math.min(48, Math.max(10, maxLength + 2)) };
+}
+
 export default function LogicInventoryPage() {
   const { checkedAccess, isAuthorized, authorize } = usePageAccess("user");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -106,6 +130,7 @@ export default function LogicInventoryPage() {
   const [saving, setSaving] = useState(false);
   const [addingRow, setAddingRow] = useState(false);
   const [deletingRowId, setDeletingRowId] = useState<number | null>(null);
+  const [downloadingConsolidated, setDownloadingConsolidated] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
 
   const showToast = (msg: string, type: "success" | "error") => {
@@ -181,6 +206,7 @@ export default function LogicInventoryPage() {
     ));
   }, [skuColumnKeys, sheetRows, skuSearchTerm]);
 
+  const isConsolidatedTab = activeSheet ? isConsolidatedSheetName(activeSheet.name) : false;
   const dirtyCount = Object.keys(dirtyRows).length;
 
   const handleUpload = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -324,6 +350,43 @@ export default function LogicInventoryPage() {
     }
   };
 
+  const handleDownloadConsolidatedExcel = () => {
+    if (!activeUpload || !activeSheet || !isConsolidatedTab) return;
+    if (filteredRows.length === 0) {
+      showToast("No consolidated rows to download.", "error");
+      return;
+    }
+
+    setDownloadingConsolidated(true);
+    try {
+      const headers = ["#", ...activeSheet.columns.map((column) => column.label)];
+      const bodyRows = filteredRows.map((row) => [
+        row.row_index,
+        ...activeSheet.columns.map((column) => row.row_data[column.key] ?? ""),
+      ]);
+      const worksheet = XLSX.utils.aoa_to_sheet([headers, ...bodyRows]);
+
+      worksheet["!cols"] = headers.map((header, index) => (
+        excelColumnWidth(header, bodyRows.map((row) => row[index] ?? ""))
+      ));
+      worksheet["!autofilter"] = { ref: worksheet["!ref"] || "A1" };
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, safeWorksheetName(activeSheet.name));
+
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const monthPart = activeUpload.inventory_month ? `_${sanitizeFilenamePart(activeUpload.inventory_month)}` : "";
+      const searchPart = skuSearchTerm.trim() ? "_filtered" : "";
+      XLSX.writeFile(workbook, `haltedb_logic_inventory_consolidated${monthPart}${searchPart}_${dateStr}.xlsx`);
+
+      showToast(`Downloaded ${filteredRows.length.toLocaleString()} consolidated row${filteredRows.length === 1 ? "" : "s"}.`, "success");
+    } catch {
+      showToast("Failed to prepare consolidated Excel.", "error");
+    } finally {
+      setDownloadingConsolidated(false);
+    }
+  };
+
   if (!checkedAccess) {
     return (
       <div className="loading-spinner">
@@ -458,6 +521,16 @@ export default function LogicInventoryPage() {
                   value={skuSearchTerm}
                   onChange={(event) => setSkuSearchTerm(event.target.value)}
                 />
+                {isConsolidatedTab && (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={handleDownloadConsolidatedExcel}
+                    disabled={downloadingConsolidated || filteredRows.length === 0}
+                    type="button"
+                  >
+                    {downloadingConsolidated ? "Preparing Excel..." : "Download Excel"}
+                  </button>
+                )}
                 <button className="btn btn-ghost btn-sm" onClick={handleAddRow} disabled={addingRow}>
                   {addingRow ? "Adding..." : "Add Row"}
                 </button>
