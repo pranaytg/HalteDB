@@ -383,6 +383,7 @@ export default function CogsPage() {
               <tr>
                 <th>#</th>
                 <th>SKU</th>
+                <th>COGS Price</th>
                 <th style={{ color: "#8b5cf6" }}>Halte SP</th>
                 <th style={{ color: "#8b5cf6" }}>Halte Price</th>
                 <th style={{ color: "#f59e0b" }}>Amazon SP</th>
@@ -397,6 +398,22 @@ export default function CogsPage() {
                   <td style={{ color: "var(--text-muted)" }}>{i + 1}</td>
                   <td style={{ fontWeight: 600, color: "var(--accent-hover)" }}>
                     {entry.sku}
+                  </td>
+                  <td style={{ fontWeight: 700 }}>
+                    {editingSku === entry.sku ? (
+                      <input
+                        className="filter-input"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        style={{ width: 120 }}
+                        autoFocus
+                      />
+                    ) : (
+                      fmtCur(entry.cogs_price || 0)
+                    )}
                   </td>
                   <td style={{ fontWeight: 600, color: (() => {
                     if (entry.halte_selling_price == null || entry.halte_price == null) return "#8b5cf6";

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { normalizedSkuExpr } from "@/lib/skuNormalize";
 
 /* ──────────────────────────────────────────────────────────
    Recalculate all derived fields server-side
@@ -205,19 +206,141 @@ export async function PUT(req: NextRequest) {
 
     /* ── Sync to COGS table ── */
     if (action === "sync_cogs") {
-      const result = await pool.query(`
-        INSERT INTO cogs (sku, cogs_price, last_updated)
-        SELECT sku, COALESCE(final_price, 0), NOW()
-        FROM estimated_cogs
-        ON CONFLICT (sku) DO UPDATE SET
-          cogs_price = EXCLUDED.cogs_price,
-          last_updated = NOW()
-      `);
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
 
-      return NextResponse.json({
-        message: `Synced ${result.rowCount} SKUs to COGS table.`,
-        synced: result.rowCount,
-      });
+        const exactSync = await client.query(`
+          WITH source AS (
+            SELECT DISTINCT ON (sku)
+              sku,
+              COALESCE(final_price, 0) AS cogs_price
+            FROM estimated_cogs
+            WHERE sku IS NOT NULL AND TRIM(sku) <> ''
+            ORDER BY sku, last_updated DESC NULLS LAST, id DESC
+          )
+          INSERT INTO cogs (sku, cogs_price, last_updated)
+          SELECT sku, cogs_price, NOW()
+          FROM source
+          ON CONFLICT (sku) DO UPDATE SET
+            cogs_price = EXCLUDED.cogs_price,
+            last_updated = NOW()
+          RETURNING sku
+        `);
+
+        const cogsNormSku = normalizedSkuExpr("c.sku");
+        const cogsMatchedSync = await client.query(`
+          WITH matched AS (
+            SELECT DISTINCT ON (c.sku)
+              c.sku,
+              COALESCE(ec.final_price, 0) AS cogs_price
+            FROM cogs c
+            JOIN LATERAL (
+              SELECT ec_inner.*
+              FROM estimated_cogs ec_inner
+              WHERE LOWER(ec_inner.sku) = LOWER(c.sku)
+                 OR LOWER(ec_inner.sku) = LOWER(${cogsNormSku})
+              ORDER BY
+                CASE WHEN COALESCE(ec_inner.final_price, 0) > 0 THEN 0 ELSE 1 END,
+                CASE WHEN LOWER(ec_inner.sku) = LOWER(c.sku) THEN 0 ELSE 1 END,
+                ec_inner.last_updated DESC NULLS LAST,
+                ec_inner.id DESC
+              LIMIT 1
+            ) ec ON TRUE
+            WHERE c.sku NOT LIKE '%,%'
+              AND c.sku NOT LIKE '%|%'
+              AND c.sku NOT LIKE 'CUSTOMER-DATA-%'
+              AND LENGTH(c.sku) <= 30
+            ORDER BY c.sku
+          )
+          UPDATE cogs c
+          SET cogs_price = matched.cogs_price,
+              last_updated = NOW()
+          FROM matched
+          WHERE c.sku = matched.sku
+            AND c.cogs_price IS DISTINCT FROM matched.cogs_price
+          RETURNING c.sku
+        `);
+
+        const shippingExpr = `
+          CASE
+            WHEN LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%amazon%'
+              OR LOWER(COALESCE(o.fulfillment_channel, '')) LIKE '%afn%'
+            THEN COALESCE(
+              NULLIF(o.shipping_price, 0),
+              NULLIF((
+                SELECT COALESCE(NULLIF(se.amazon_shipping_cost, 0), NULLIF(se.cheapest_cost, 0))
+                FROM shipment_estimates se
+                WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+                LIMIT 1
+              ), 0),
+              0
+            )
+            ELSE COALESCE(
+              NULLIF(o.shipping_price, 0),
+              NULLIF((
+                SELECT se.cheapest_cost
+                FROM shipment_estimates se
+                WHERE se.amazon_order_id = o.amazon_order_id AND se.sku = o.sku
+                LIMIT 1
+              ), 0),
+              0
+            )
+          END
+        `;
+
+        const orderNormSku = normalizedSkuExpr("o.sku");
+        const orderRecalc = await client.query(`
+          WITH matched AS (
+            SELECT
+              o.id,
+              COALESCE(ec.final_price, 0) AS cogs_price,
+              COALESCE(ec.amazon_fee_percent, 15) AS amazon_fee_percent,
+              COALESCE(ec.marketing_cost, 0) AS marketing_cost
+            FROM orders o
+            LEFT JOIN LATERAL (
+              SELECT ec_inner.*
+              FROM estimated_cogs ec_inner
+              WHERE LOWER(ec_inner.sku) = LOWER(o.sku)
+                 OR LOWER(ec_inner.sku) = LOWER(${orderNormSku})
+              ORDER BY
+                CASE WHEN COALESCE(ec_inner.final_price, 0) > 0 THEN 0 ELSE 1 END,
+                CASE WHEN LOWER(ec_inner.sku) = LOWER(o.sku) THEN 0 ELSE 1 END,
+                ec_inner.last_updated DESC NULLS LAST,
+                ec_inner.id DESC
+              LIMIT 1
+            ) ec ON TRUE
+            WHERE ec.sku IS NOT NULL
+          )
+          UPDATE orders o
+          SET cogs_price = matched.cogs_price,
+              profit = CASE
+                WHEN o.order_status IN ('Cancelled', 'Returned') THEN
+                  -2 * (${shippingExpr})
+                ELSE
+                  o.item_price - matched.cogs_price
+                  - (o.item_price * matched.amazon_fee_percent / 100)
+                  - (${shippingExpr})
+                  - matched.marketing_cost
+              END
+          FROM matched
+          WHERE o.id = matched.id
+        `);
+
+        await client.query("COMMIT");
+
+        return NextResponse.json({
+          message: `Synced ${exactSync.rowCount} SKUs to COGS table and recalculated ${orderRecalc.rowCount} orders.`,
+          synced: exactSync.rowCount,
+          matchedRowsUpdated: cogsMatchedSync.rowCount,
+          ordersRecalculated: orderRecalc.rowCount,
+        });
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
     }
 
     /* ── Recalculate All Rows ── */
