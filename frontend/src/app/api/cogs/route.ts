@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { normalizedSkuExpr } from "@/lib/skuNormalize";
 
 export async function GET() {
   try {
+    const cogsNormSku = normalizedSkuExpr("c.sku");
     const query = `
       SELECT c.id, c.sku, c.cogs_price, c.amazon_price, c.last_updated,
              c.halte_price,
@@ -10,11 +12,19 @@ export async function GET() {
       FROM cogs c
       LEFT JOIN LATERAL (
         SELECT halte_selling_price, amazon_selling_price, brand
-        FROM estimated_cogs
-        WHERE estimated_cogs.sku = c.sku
-           OR estimated_cogs.sku LIKE c.sku || ' %'
-           OR estimated_cogs.sku LIKE c.sku || '-%'
-        ORDER BY last_updated DESC
+        FROM estimated_cogs ec_inner
+        WHERE LOWER(ec_inner.sku) = LOWER(c.sku)
+           OR LOWER(ec_inner.sku) = LOWER(${cogsNormSku})
+        ORDER BY
+          CASE
+            WHEN COALESCE(ec_inner.halte_selling_price, 0) > 0
+              OR COALESCE(ec_inner.amazon_selling_price, 0) > 0
+              OR COALESCE(ec_inner.final_price, 0) > 0
+            THEN 0 ELSE 1
+          END,
+          CASE WHEN LOWER(ec_inner.sku) = LOWER(c.sku) THEN 0 ELSE 1 END,
+          ec_inner.last_updated DESC NULLS LAST,
+          ec_inner.id DESC
         LIMIT 1
       ) ec ON true
       WHERE c.sku NOT LIKE '%,%'
