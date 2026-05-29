@@ -22,9 +22,6 @@ export default function CogsPage() {
   const haltePriceInputRef = useRef<HTMLInputElement | null>(null);
   const [cogs, setCogs] = useState<CogsEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingSku, setEditingSku] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
@@ -110,50 +107,6 @@ export default function CogsPage() {
     fetchCogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleEdit = (sku: string, currentPrice: number) => {
-    setEditingSku(sku);
-    setEditValue(String(currentPrice));
-  };
-
-  const handleSave = async (sku: string) => {
-    const price = parseFloat(editValue);
-    if (isNaN(price) || price < 0) {
-      showToast("Please enter a valid price", "error");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const res = await fetch("/api/cogs", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sku, cogs_price: price }),
-      });
-      const data = await res.json();
-
-      if (!res.ok) {
-        showToast(data.error || "Failed to update", "error");
-        return;
-      }
-
-      showToast(
-        `Updated ${sku} COGS to ₹${price}. ${data.ordersRecalculated} orders recalculated.`,
-        "success"
-      );
-      setEditingSku(null);
-      await fetchCogs();
-    } catch {
-      showToast("Network error", "error");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setEditingSku(null);
-    setEditValue("");
-  };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -383,7 +336,6 @@ export default function CogsPage() {
               <tr>
                 <th>#</th>
                 <th>SKU</th>
-                <th>COGS Price</th>
                 <th style={{ color: "#8b5cf6" }}>Halte SP</th>
                 <th style={{ color: "#8b5cf6" }}>Halte Price</th>
                 <th style={{ color: "#f59e0b" }}>Amazon SP</th>
@@ -398,22 +350,6 @@ export default function CogsPage() {
                   <td style={{ color: "var(--text-muted)" }}>{i + 1}</td>
                   <td style={{ fontWeight: 600, color: "var(--accent-hover)" }}>
                     {entry.sku}
-                  </td>
-                  <td style={{ fontWeight: 700 }}>
-                    {editingSku === entry.sku ? (
-                      <input
-                        className="filter-input"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        style={{ width: 120 }}
-                        autoFocus
-                      />
-                    ) : (
-                      fmtCur(entry.cogs_price || 0)
-                    )}
                   </td>
                   <td style={{ fontWeight: 600, color: (() => {
                     if (entry.halte_selling_price == null || entry.halte_price == null) return "#8b5cf6";
@@ -451,41 +387,15 @@ export default function CogsPage() {
                     {new Date(entry.last_updated).toLocaleDateString("en-IN")}
                   </td>
                   <td>
-                    {editingSku === entry.sku ? (
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button
-                          className="btn btn-success btn-sm"
-                          onClick={() => handleSave(entry.sku)}
-                          disabled={saving}
-                        >
-                          {saving ? "Saving..." : "Save"}
-                        </button>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          onClick={handleCancel}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => handleEdit(entry.sku, entry.cogs_price)}
-                        >
-                          ✏ Edit
-                        </button>
-                        <button
-                          className="btn btn-ghost btn-sm"
-                          onClick={() => handleDelete(entry.sku)}
-                          disabled={deleting === entry.sku}
-                          style={{ color: "var(--error, #ef4444)" }}
-                          title={`Delete ${entry.sku}`}
-                        >
-                          {deleting === entry.sku ? "…" : "🗑"}
-                        </button>
-                      </div>
-                    )}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => handleDelete(entry.sku)}
+                      disabled={deleting === entry.sku}
+                      style={{ color: "var(--error, #ef4444)" }}
+                      title={`Delete ${entry.sku}`}
+                    >
+                      {deleting === entry.sku ? "…" : "🗑"}
+                    </button>
                   </td>
                 </tr>
               ))}
