@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     const endDate = searchParams.get("endDate");
 
     /* ── Build WHERE clause ── */
-    let where = "WHERE orders.ship_city IS NOT NULL AND orders.ship_city != '' AND orders.item_price > 0 AND orders.amazon_order_id NOT LIKE 'ORD-%'";
+    let where = "WHERE orders.ship_city IS NOT NULL AND orders.ship_city != '' AND orders.item_price > 0 AND (orders.amazon_order_id IS NULL OR orders.amazon_order_id NOT LIKE 'ORD-%')";
     const params: (string | number)[] = [];
     let idx = 1;
 

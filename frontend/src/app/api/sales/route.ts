@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
 
     const conditions: string[] = [
       "o.item_price > 0",
-      "o.amazon_order_id NOT LIKE 'ORD-%'",
+      "(o.amazon_order_id IS NULL OR o.amazon_order_id NOT LIKE 'ORD-%')",
     ];
     const params: (string | number)[] = [];
     let paramIdx = 1;
