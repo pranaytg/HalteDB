@@ -14,7 +14,7 @@ function buildUpstreamUrl(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const state = searchParams.get("state")?.trim().toUpperCase();
 
-  if (state === "PAID" || state === "UNPAID") {
+  if (state && ['PAID', 'UNPAID', 'SHIPPED', 'DELIVERED'].includes(state)) {
     upstreamUrl.searchParams.set("state", state);
   }
 
