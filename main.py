@@ -18,7 +18,7 @@ import tempfile
 from contextlib import asynccontextmanager
 from uuid import uuid4
 from dotenv import load_dotenv
-from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException, UploadFile, File, Header
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
@@ -40,6 +40,7 @@ from sp_api import (
 )
 from shiprocket import get_shipping_rates_with_source
 from crud import get_sync_meta
+from website_sync import run_website_orders_sync
 
 # ============================================
 # Configuration
@@ -98,6 +99,10 @@ async def _run_full_sync_job(source: str, already_reserved: bool = False) -> boo
     try:
         async with SessionLocal() as session:
             await run_full_sync(session)
+            
+        async with SessionLocal() as session:
+            await run_website_orders_sync(session)
+            
         return True
     except Exception:
         logger.exception("%s full sync failed", source.capitalize())
@@ -241,6 +246,27 @@ async def trigger_inventory_sync(
 
     background_tasks.add_task(_run)
     return {"status": "accepted", "message": "Inventory sync started."}
+
+
+@app.post("/sync-website-orders")
+async def trigger_website_orders_sync(
+    background_tasks: BackgroundTasks,
+    x_api_key: str = Header(None),
+):
+    """Triggers website orders sync manually."""
+    valid_key = os.getenv("DASHBOARD_API_KEY")
+    if not x_api_key or x_api_key != valid_key:
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid API Key")
+    
+    async def _run():
+        try:
+            async with SessionLocal() as sync_session:
+                await run_website_orders_sync(sync_session, sync_all=False)
+        except Exception as e:
+            logger.error(f"Website orders sync failed: {e}")
+
+    background_tasks.add_task(_run)
+    return {"status": "accepted", "message": "Website orders sync started."}
 
 
 @app.post("/sync-inbound-shipments")

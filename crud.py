@@ -280,6 +280,19 @@ async def get_sync_meta(session: AsyncSession) -> SyncMeta:
             "Inbound sync metadata columns are missing; run alembic upgrade head "
             "to enable inbound sync status fields."
         )
+        
+    try:
+        website_result = await session.execute(text("""
+            SELECT last_website_orders_sync
+            FROM sync_meta
+            WHERE id = 1
+        """))
+        website_row = website_result.mappings().one()
+        meta.last_website_orders_sync = website_row["last_website_orders_sync"]
+    except Exception as exc:
+        await session.rollback()
+        meta.last_website_orders_sync = None
+
     return meta
 
 
@@ -290,6 +303,19 @@ async def update_orders_sync_time(session: AsyncSession, sync_time: datetime):
         {"t": sync_time}
     )
     await session.commit()
+
+
+async def update_website_orders_sync_time(session: AsyncSession, sync_time: datetime):
+    """Update the last_website_orders_sync timestamp."""
+    try:
+        await session.execute(
+            text("UPDATE sync_meta SET last_website_orders_sync = :t WHERE id = 1"),
+            {"t": sync_time}
+        )
+        await session.commit()
+    except Exception as exc:
+        await session.rollback()
+        logger.warning(f"Could not update last_website_orders_sync: {exc}")
 
 
 async def update_inventory_sync_time(session: AsyncSession, sync_time: datetime):

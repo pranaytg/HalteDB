@@ -96,6 +96,7 @@ class SyncMeta(Base):
     last_inventory_sync = Column(DateTime(timezone=True), nullable=True)
     last_inbound_shipments_sync = Column(DateTime(timezone=True), nullable=True)
     last_inbound_shipments_error = Column(String, nullable=True)
+    last_website_orders_sync = Column(DateTime(timezone=True), nullable=True)
 
 
 class EstimatedCogs(Base):
